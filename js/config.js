@@ -27,11 +27,8 @@ export const CONFIG = {
     TANK_SPEED:          3.0, // world-units / second
     TANK_REVERSE_FACTOR: 0.4, // backward speed multiplier
     TANK_ROTATION_SPEED: 3.5, // radians / second
-    TANK_SIZE:           0.35,// collision radius in world-units
-    TANK_BODY_HALF:      0.28,// visual half-size for the iso diamond
-    TANK_BODY_HEIGHT:    5,   // pixel height of the 3-D body box
-    TANK_BARREL_LENGTH:  0.48,// barrel length in world-units
-    TANK_BARREL_WIDTH:   3,   // barrel stroke width in pixels
+    TANK_SIZE:           0.45,// collision radius in world-units
+    TANK_BARREL_LENGTH:  0.52,// barrel tip distance from centre (world-units)
     TANK_RESPAWN_TIME:   2.0, // seconds before respawn
 
     // ── Bullet ───────────────────────────────────────────────

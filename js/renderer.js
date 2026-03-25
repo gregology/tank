@@ -7,7 +7,7 @@
  */
 
 import { CONFIG, TILES as T } from './config.js';
-import { worldToScreen, worldDirToScreen, clamp, lerp } from './utils.js';
+import { worldToScreen, clamp } from './utils.js';
 
 const TW = CONFIG.TILE_WIDTH;
 const TH = CONFIG.TILE_HEIGHT;
@@ -296,91 +296,214 @@ export class Renderer {
 
     /* ── tank drawing ─────────────────────────────────────── */
 
+    /**
+     * Draw a fully-rotated isometric tank with visible 3-D depth.
+     *
+     * Every shape is defined in **local space** (+x = forward, +y = right)
+     * then rotated by the tank's angle and projected through the
+     * isometric transform.  Vertical height is faked by drawing each
+     * layer at a screen-Y offset so the tank looks stacked:
+     *
+     *   ground → tracks → hull → turret → barrel
+     *
+     * Each layer has a dark "side wall" drawn below its top face.
+     */
     _drawTank(ctx, tank, sx, sy) {
         if (!tank.alive) return;
-
-        // Flashing when recently respawned
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
-        const bh  = CONFIG.TANK_BODY_HEIGHT;
-        const bs  = CONFIG.TANK_BODY_HALF;
-        const bw  = bs * TW;   // half-width on screen
-        const bd  = bs * TH;   // half-depth on screen
+        const ca = Math.cos(tank.angle), sa = Math.sin(tank.angle);
+        const HTW = TW / 2, HTH = TH / 2;
 
-        // ── Shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.18)';
-        ctx.beginPath();
-        ctx.ellipse(sx, sy + TH * 0.28, bw * 0.9, bd * 0.7, 0, 0, Math.PI * 2);
-        ctx.fill();
+        // Project local point → screen.  lx = forward, ly = right.
+        const P = (lx, ly) => {
+            const wx = lx * ca - ly * sa;
+            const wy = lx * sa + ly * ca;
+            return [sx + (wx - wy) * HTW,
+                    sy + (wx + wy) * HTH];
+        };
 
-        // ── Body left side (SW)
-        ctx.fillStyle = tank.darkColor;
-        ctx.beginPath();
-        ctx.moveTo(sx - bw, sy - bh);
-        ctx.lineTo(sx,      sy + bd - bh);
-        ctx.lineTo(sx,      sy + bd);
-        ctx.lineTo(sx - bw, sy);
-        ctx.closePath();
-        ctx.fill();
+        // Fill polygon helper
+        const fill = (pts, color) => {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.fill();
+        };
 
-        // ── Body right side (SE)
-        ctx.beginPath();
-        ctx.moveTo(sx + bw, sy - bh);
-        ctx.lineTo(sx,      sy + bd - bh);
-        ctx.lineTo(sx,      sy + bd);
-        ctx.lineTo(sx + bw, sy);
-        ctx.closePath();
-        ctx.fill();
+        // Stroke polygon outline
+        const outline = (pts, color, width) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.stroke();
+        };
 
-        // ── Body top face
-        ctx.fillStyle = tank.color;
-        ctx.beginPath();
-        ctx.moveTo(sx,      sy - bd - bh);
-        ctx.lineTo(sx + bw, sy - bh);
-        ctx.lineTo(sx,      sy + bd - bh);
-        ctx.lineTo(sx - bw, sy - bh);
-        ctx.closePath();
-        ctx.fill();
+        // Shift every point down by d pixels
+        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
 
-        // ── Turret dome (small darker diamond on top)
-        const ts = bs * 0.45;
-        const tw2 = ts * TW;
-        const td2 = ts * TH;
-        ctx.fillStyle = tank.darkColor;
-        ctx.beginPath();
-        ctx.moveTo(sx,       sy - td2 - bh - 1);
-        ctx.lineTo(sx + tw2, sy - bh - 1);
-        ctx.lineTo(sx,       sy + td2 - bh - 1);
-        ctx.lineTo(sx - tw2, sy - bh - 1);
-        ctx.closePath();
-        ctx.fill();
+        // Draw a 3-D extruded slab: side wall of height h, then top face.
+        // `wallColor` is for the visible side wall, `topColor` for the top.
+        const slab = (topPts, h, topColor, wallColor) => {
+            const bot = drop(topPts, h);
+            // Draw side wall: connect each top edge to its corresponding
+            // bottom edge, but only the segments whose normals face "down"
+            // on screen (i.e. the viewer-facing sides).
+            // Simplified: draw a single polygon from the outline of top + bottom.
+            // For convex shapes, drawing bottom then top is sufficient.
+            fill(bot, wallColor);
+            fill(topPts, topColor);
+        };
 
-        // ── Barrel
-        const cos = Math.cos(tank.angle);
-        const sin = Math.sin(tank.angle);
-        const dir = worldDirToScreen(cos, sin);
-        let barrelLen = CONFIG.TANK_BARREL_LENGTH;
-        // recoil shrink
-        if (tank.recoilTimer > 0) {
-            barrelLen -= (tank.recoilTimer / 0.1) * 0.12;
-        }
+        /* ── local-space dimensions (world units) ─────────
+         *  Scaled up ~60 % from the previous version so the
+         *  tank is clearly visible and has room for detail.  */
+        const THL  = 0.38;   // track half-length
+        const TYO  = 0.30;   // track outer Y
+        const TYI  = 0.21;   // track inner Y
+        const HR   = -0.28;  // hull rear X
+        const HF   = 0.24;   // hull front X
+        const HT   = 0.34;   // hull pointed tip X
+        const HW   = 0.20;   // hull half-width Y
+        const TR   = 0.13;   // turret radius
+        const BHW  = 0.03;   // barrel half-width
+        const BX0  = 0.10;   // barrel start X
+        let   BX1  = 0.52;   // barrel end X
+        const TRACK_H = 4;   // track extrusion height (px)
+        const HULL_H  = 7;   // hull extrusion height (px)
+        const TURR_H  = 5;   // turret extrusion height (px)
+        const BARR_H  = 3;   // barrel extrusion height (px)
 
-        const bx = sx + dir.x * barrelLen;
-        const by = (sy - bh) + dir.y * barrelLen;
+        if (tank.recoilTimer > 0) BX1 -= (tank.recoilTimer / 0.1) * 0.10;
 
+        // ── Vertical offsets (cumulative, lower = further down screen) ──
+        // We draw from ground up.  Each layer's "top" is shifted up by
+        // the sum of all layers below it.
+        const trackTop = -(TRACK_H);                         // tracks sit on ground
+        const hullTop  = -(TRACK_H + HULL_H);               // hull sits on tracks
+        const turrTop  = -(TRACK_H + HULL_H + TURR_H);      // turret on hull
+        const barrTop  = -(TRACK_H + HULL_H + BARR_H);      // barrel on hull
+
+        // Apply a vertical offset to projected points
+        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
+
+        /* ── 1. Shadow ──────────────────────────────────── */
+        fill(drop([
+            P(-THL - 0.04, -TYO - 0.02), P( THL + 0.04, -TYO - 0.02),
+            P( THL + 0.04,  TYO + 0.02), P(-THL - 0.04,  TYO + 0.02),
+        ], 6), 'rgba(0,0,0,0.18)');
+
+        /* ── 2. Tracks ──────────────────────────────────── */
+        // Each track is a 3-D slab sitting on the ground.
+        const lTrackTop = lift(
+            [P(-THL,-TYO), P(THL,-TYO), P(THL,-TYI), P(-THL,-TYI)],
+            trackTop);
+        const rTrackTop = lift(
+            [P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)],
+            trackTop);
+        slab(lTrackTop, TRACK_H, '#2a2a2a', '#111');
+        slab(rTrackTop, TRACK_H, '#2a2a2a', '#111');
+
+        // Tread marks (on the track top faces, scrolling)
+        const TREAD_N = 8;
         ctx.strokeStyle = '#444';
-        ctx.lineWidth   = CONFIG.TANK_BARREL_WIDTH + 1;
-        ctx.lineCap     = 'round';
+        ctx.lineWidth   = 1.5;
         ctx.beginPath();
-        ctx.moveTo(sx, sy - bh);
-        ctx.lineTo(bx, by);
+        for (let i = 0; i < TREAD_N; i++) {
+            const t  = ((i / TREAD_N + tank.treadPhase) % 1);
+            const lx = -THL + t * THL * 2;
+            const a1 = lift([P(lx, -TYO)], trackTop)[0];
+            const a2 = lift([P(lx, -TYI)], trackTop)[0];
+            ctx.moveTo(a1[0], a1[1]); ctx.lineTo(a2[0], a2[1]);
+            const b1 = lift([P(lx,  TYI)], trackTop)[0];
+            const b2 = lift([P(lx,  TYO)], trackTop)[0];
+            ctx.moveTo(b1[0], b1[1]); ctx.lineTo(b2[0], b2[1]);
+        }
         ctx.stroke();
 
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth   = CONFIG.TANK_BARREL_WIDTH;
+        // Track wheel detail (small circles inside tracks)
+        ctx.fillStyle = '#1a1a1a';
+        for (let i = 0; i < 3; i++) {
+            const lx = -THL * 0.6 + i * THL * 0.6;
+            const cL = lift([P(lx, -(TYO + TYI) / 2)], trackTop)[0];
+            const cR = lift([P(lx,  (TYO + TYI) / 2)], trackTop)[0];
+            ctx.beginPath(); ctx.arc(cL[0], cL[1], 2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(cR[0], cR[1], 2, 0, Math.PI * 2); ctx.fill();
+        }
+
+        /* ── 3. Hull ────────────────────────────────────── */
+        const hullPts = lift([
+            P(HR, -HW), P(HF, -HW),
+            P(HT, 0),
+            P(HF,  HW), P(HR,  HW),
+        ], hullTop);
+        slab(hullPts, HULL_H, tank.color, tank.darkColor);
+        outline(hullPts, tank.darkColor, 0.5);
+
+        // Rear panel (darker accent)
+        const rearW = HW - 0.03;
+        fill(lift([P(HR, -rearW), P(HR + 0.05, -rearW),
+                   P(HR + 0.05, rearW), P(HR, rearW)], hullTop), tank.darkColor);
+
+        // Hull centre ridge
+        ctx.strokeStyle = tank.darkColor;
+        ctx.lineWidth = 1;
+        const rg1 = lift([P(HR + 0.08, 0)], hullTop)[0];
+        const rg2 = lift([P(HF - 0.04, 0)], hullTop)[0];
+        ctx.beginPath(); ctx.moveTo(rg1[0], rg1[1]); ctx.lineTo(rg2[0], rg2[1]); ctx.stroke();
+
+        // Side panel lines (give hull more shape)
+        ctx.strokeStyle = tank.darkColor;
+        ctx.lineWidth = 0.5;
+        const sp1a = lift([P(HR + 0.04, -HW)], hullTop)[0];
+        const sp1b = lift([P(HR + 0.04,  HW)], hullTop)[0];
+        ctx.beginPath(); ctx.moveTo(sp1a[0], sp1a[1]); ctx.lineTo(sp1b[0], sp1b[1]); ctx.stroke();
+
+        /* ── 4. Barrel (drawn before turret so turret covers base) ── */
+        const barrPts = lift([
+            P(BX0, -BHW), P(BX1, -BHW),
+            P(BX1,  BHW), P(BX0,  BHW),
+        ], barrTop);
+        slab(barrPts, BARR_H, '#666', '#333');
+
+        // Muzzle brake (wider tip)
+        const MZ = 0.04;
+        const muzzle = lift([
+            P(BX1 - MZ, -BHW - 0.015), P(BX1 + 0.01, -BHW - 0.015),
+            P(BX1 + 0.01,  BHW + 0.015), P(BX1 - MZ,  BHW + 0.015),
+        ], barrTop);
+        slab(muzzle, BARR_H, '#777', '#444');
+
+        /* ── 5. Turret ──────────────────────────────────── */
+        const tPts = [], tHatch = [];
+        const N = 10;
+        for (let i = 0; i < N; i++) {
+            const a = i / N * Math.PI * 2;
+            tPts.push(  lift([P(Math.cos(a) * TR,       Math.sin(a) * TR)],       turrTop)[0]);
+            tHatch.push(lift([P(Math.cos(a) * TR * 0.35, Math.sin(a) * TR * 0.35)], turrTop)[0]);
+        }
+        slab(tPts, TURR_H, tank.color, tank.darkColor);
+        outline(tPts, tank.darkColor, 0.5);
+
+        // Commander hatch
+        fill(tHatch, tank.darkColor);
+
+        // Hatch cross-hair
+        ctx.strokeStyle = tank.color;
+        ctx.lineWidth = 0.5;
+        const hc = lift([P(0, 0)], turrTop)[0];
+        const ht = lift([P(0, -TR * 0.3)], turrTop)[0];
+        const hb = lift([P(0,  TR * 0.3)], turrTop)[0];
+        const hl = lift([P(-TR * 0.3, 0)], turrTop)[0];
+        const hr = lift([P( TR * 0.3, 0)], turrTop)[0];
         ctx.beginPath();
-        ctx.moveTo(sx, sy - bh);
-        ctx.lineTo(bx, by);
+        ctx.moveTo(ht[0], ht[1]); ctx.lineTo(hb[0], hb[1]);
+        ctx.moveTo(hl[0], hl[1]); ctx.lineTo(hr[0], hr[1]);
         ctx.stroke();
     }
 

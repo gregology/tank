@@ -28,6 +28,7 @@ export class Tank {
         // Visual feedback
         this.flashTimer  = 0;    // invulnerability flash after respawn
         this.recoilTimer = 0;    // barrel recoil animation
+        this.treadPhase  = 0;    // 0‒1 tread scroll offset (animated)
     }
 
     /* ── per-frame update ─────────────────────────────────── */
@@ -47,7 +48,10 @@ export class Tank {
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
         if (this.recoilTimer  > 0) this.recoilTimer  -= dt;
 
+        const oldX = this.x, oldY = this.y;
+
         // ── Rotation
+        const rotating = input.isDown(keyMap.left) || input.isDown(keyMap.right);
         if (input.isDown(keyMap.left))  this.angle -= CONFIG.TANK_ROTATION_SPEED * dt;
         if (input.isDown(keyMap.right)) this.angle += CONFIG.TANK_ROTATION_SPEED * dt;
         this.angle = normalizeAngle(this.angle);
@@ -65,6 +69,14 @@ export class Tank {
             // Slide along obstacles – try each axis independently
             if (this._canOccupy(nx, this.y, map)) this.x = nx;
             if (this._canOccupy(this.x, ny, map)) this.y = ny;
+        }
+
+        // ── Tread animation (scrolls when moving or rotating in place)
+        const dx = this.x - oldX, dy = this.y - oldY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0.0001 || rotating) {
+            this.treadPhase = (this.treadPhase
+                + Math.max(dist * 6, rotating ? dt * 2.5 : 0)) % 1;
         }
     }
 
