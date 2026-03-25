@@ -1,0 +1,11 @@
+{
+  "name": "tank-battle",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:ai": "node --test test/ai.test.js",
+    "test:pathfinder": "node --test test/pathfinder.test.js",
+    "test:map": "node --test test/map.test.js",
+    "test:game": "node --test test/game.test.js"
+  }
+}

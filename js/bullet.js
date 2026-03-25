@@ -4,6 +4,9 @@
  * Bullets travel in a straight line, are destroyed on hitting solid
  * terrain (hills / rocks) or after a timeout, and pass freely over
  * water and sand.
+ *
+ * Each bullet carries a `damage` value (1.0 for tank, 0.25 for IFV)
+ * and its own `speed` (IFV bullets travel 1.5× faster).
  */
 
 import { CONFIG } from './config.js';
@@ -14,14 +17,19 @@ export class Bullet {
      * @param {number} y      world Y of the firing tank
      * @param {number} angle  firing angle (radians)
      * @param {number} owner  player number (1 or 2)
+     * @param {number} team   team number (0, 1, or 2)
+     * @param {number} damage damage multiplier (1.0 = tank, 0.25 = IFV)
+     * @param {number} speed  bullet speed (world-units / second)
      */
-    constructor(x, y, angle, owner, team = 0) {
+    constructor(x, y, angle, owner, team = 0, damage = 1.0, speed = CONFIG.BULLET_SPEED) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x     = x + Math.cos(angle) * offset;
         this.y     = y + Math.sin(angle) * offset;
         this.angle = angle;
         this.owner = owner;
         this.team  = team;
+        this.damage = damage;
+        this.speed  = speed;
         this.alive = true;
         this.lifetime = CONFIG.BULLET_LIFETIME;
     }
@@ -29,8 +37,8 @@ export class Bullet {
     update(dt, map) {
         if (!this.alive) return;
 
-        this.x += Math.cos(this.angle) * CONFIG.BULLET_SPEED * dt;
-        this.y += Math.sin(this.angle) * CONFIG.BULLET_SPEED * dt;
+        this.x += Math.cos(this.angle) * this.speed * dt;
+        this.y += Math.sin(this.angle) * this.speed * dt;
         this.lifetime -= dt;
 
         // Destroyed by solid obstacles

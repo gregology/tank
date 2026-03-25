@@ -2,8 +2,6 @@
 
 A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step.
 
-![1-2 players](https://img.shields.io/badge/players-1--2-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-green) ![Procedural sound](https://img.shields.io/badge/sound-procedural-orange)
-
 ## Setup
 
 The game uses ES modules, so it must be served over HTTP (not `file://`).
@@ -31,7 +29,8 @@ Choose from the start menu:
 | Mode | Description |
 |------|-------------|
 | **1v1 Split Screen** | Two human players on one keyboard |
-| **Player vs Bot** | Human (P1, red) vs AI opponent (P2, blue) |
+| **Player vs Bot** | Human (P1, red) vs AI opponent (P2, blue), full screen |
+| **5v5 Team Battle** | Human + 4 AI allies vs 5 AI enemies, tower-based objective |
 
 ## Controls
 
@@ -41,103 +40,89 @@ Choose from the start menu:
 | Backward | S              | ↓               |
 | Rotate left  | A          | ←               |
 | Rotate right | D          | →               |
+| Turret left  | Q          | ,               |
+| Turret right | E          | .               |
 | Fire     | Space          | Enter           |
+
+The turret rotates independently from the hull, slower than hull rotation. This creates a skill gap between positioning and aiming — you can drive in one direction while shooting in another. AI bots track targets with the turret while navigating along their path.
 
 **Menu:** ↑↓ or W/S to select, Enter or Space to start.
 **Game over:** Space/Enter for rematch, R for menu.
 
 ## How to Play
 
-- Each game generates a **random island** with hills and rocks for cover.
+- Each game generates a **random island** with villages, buildings, and road networks.
 - Tanks drive forward/backward in the direction they're facing, and rotate with left/right.
-- **One shot kills.** Dead tanks respawn after 2 seconds.
-- First player to **10 kills** wins.
-- Hills and rocks **block movement and bullets** — use them as cover.
-- Each viewport has a **minimap** in the bottom-right corner showing the full island and both players.
+- The **turret and barrel** rotate independently with Q/E or ,/. — aim while moving.
+- **Directional armour** determines hit effects based on where a shot lands:
+  - **Front hit** — disables turret rotation (can still move and fire forward)
+  - **Side hit** — disables the track on that side (can only pivot, not drive straight)
+  - **Rear hit** — instant kill (one hit from behind)
+  - **Second hit from any direction** — destroyed
+- Damaged tanks trail **smoke** and show visual damage (broken tracks, locked turret with red ✕, darkened hull).
+- In **1v1** and **vs Bot**, first to **10 kills** wins.
+- In **5v5 Team Battle**, each team has a **tower** at their base. Destroy the enemy tower to win (towers take 10 hits). Tanks respawn at their team's base.
+- **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
+- Each viewport has a **minimap** in the corner showing the full island, all players, and towers.
 
-## Project Structure
+## Testing
 
-```
-tank/
-├── index.html               Entry point
-├── css/
-│   └── style.css            Full-screen canvas, pixel-art rendering
-└── js/
-    ├── main.js         (80)  State machine (menu → game → menu)
-    ├── config.js       (60)  All tunable constants
-    ├── utils.js        (58)  Isometric projection & math helpers
-    ├── input.js        (48)  Keyboard input manager
-    ├── camera.js       (23)  Smooth-follow camera
-    ├── map.js         (181)  Procedural island generation (fBm noise)
-    ├── tank.js        (115)  Tank entity (movement, collision, treads)
-    ├── bullet.js       (51)  Projectile entity
-    ├── particles.js   (109)  Particle system (explosions, flash, impacts)
-    ├── game.js        (220)  Game state, collision, event bus, AI wiring
-    ├── renderer.js    (690)  Isometric renderer (split-screen, depth-sorted)
-    ├── ai.js          (165)  AI tank controller (chase, aim, avoid, fire)
-    ├── audio.js       (150)  Procedural sound effects (Web Audio API)
-    └── menu.js        (155)  Start menu with mode selection
+```bash
+npm test              # all 82 tests
+npm run test:ai       # AI navigation + combat
+npm run test:pathfinder  # A* pathfinding
+npm run test:map      # map generation + terrain
+npm run test:game     # tank, bullet, collision, directional armour, IFV
 ```
 
-## Extending the Game
+Uses Node's built-in test runner — no test dependencies.
 
-The codebase is modular and designed to be extended.
+## Vehicle Types
 
-### Tuning gameplay
+In 5v5 Team Battle, each vehicle is **randomly assigned** at spawn and respawn (40% chance of IFV). Duel modes always use tanks.
 
-All constants live in [`js/config.js`](js/config.js) — tank speed, bullet speed, fire cooldown, win score, controls, tile sizes, etc.
+| Stat | Tank | IFV |
+|------|------|---------|
+| Speed | 1× | 1.5× |
+| Armour | 2 hits | 1 hit (destroyed instantly) |
+| Firepower | 1× (full damage) | 0.25× (rapid fire, low damage) |
+| Bullet speed | 1× | 1.5× |
+| Turret | Independent rotation | Fixed (fires forward) |
 
-### Adding new terrain types
+**Tanks** are the default — tough, versatile, with an independently rotating turret. Two hits to destroy (with directional subsystem damage), or one rear shot.
 
-1. Add the tile ID to `TILES` in `config.js`.
-2. Handle generation in `map.js` (`_tileAt` method).
-3. Set passability/projectile rules in `map.js` (`isPassable`, `blocksProjectile`, `tileHeight`).
-4. Add rendering in `renderer.js` (`_drawTile` switch).
-5. Add a colour to the minimap in `renderer.js` (`_drawMinimap`).
+**IFVs** are glass cannons — faster movement, rapid-fire autocannon with 1.5× bullet speed, but destroyed by a single hit from anything. Their gun is fixed forward (no turret rotation), so they must aim by steering. The HUD shows your current vehicle type. On the minimap, IFVs appear as diamonds ◇ while tanks are squares ■.
 
-### Adding new entity types (power-ups, mines, etc.)
+IFV bullets deal 25% damage — four hits equal one tank hit. This creates an asymmetric dynamic: IFVs harass and whittle down tanks, but one return shot ends them.
 
-1. Create a new class (see `bullet.js` or `tank.js` as templates).
-2. Add instances to `game.js` — update in `update()`, add to the renderer's entity list in `_renderViewport`.
-3. Render in `renderer.js` — add a new `kind` constant and drawing method.
+## Roadmap
 
-### Sound system
+### AI bot roles
 
-All sounds are procedurally synthesised via the Web Audio API — no audio files. The `AudioManager` hooks into the game's event bus:
+Replace the single "charge at objective" behaviour with specialised roles randomly assigned at spawn/respawn in 5v5 Team Battle:
 
-```js
-game.on('fire',    () => audio.playShoot());
-game.on('destroy', () => audio.playExplosion());
-game.on('impact',  () => audio.playImpact());
-game.on('win',     () => audio.playWin());
-```
+- **Cavalry** — aggressive rush straight to the enemy tower, engages anything in its path. High risk, high reward — first to arrive but often first to die.
+- **Sniper** — takes an indirect approach, finds a firing position within range of the enemy tower, and bombards it from a distance. Avoids close combat.
+- **Defender** — patrols near the friendly tower and intercepts incoming enemies. Doesn't push forward unless the tower is safe.
+- **Scout** — takes a wide flanking route to reach the enemy tower from an unexpected angle. Engages enemies only when they're close enough to be a threat.
 
-Add new sounds by creating methods on `AudioManager` and wiring them to game events.
-
-### AI system
-
-The `AIController` (`js/ai.js`) implements the same `isDown(code)` interface as `InputManager`, so it's a drop-in replacement. Behaviours:
-
-- **Chase** — rotate toward + advance on the enemy
-- **Fire** — shoot when aimed and has line-of-sight (ray-marched)
-- **Avoid** — steer around obstacles by probing left/right
-- **Unstick** — random evasive manoeuvre after being blocked
-- **Patrol** — gentle weave when enemy is dead
-- **Aim wobble** — slight random offset for human-like imperfection
-
-To add difficulty levels, tune `aimWobble`, `fireDelay`, and the aim threshold in `ai.js`.
-
-### Adding new game modes
-
-1. Add a new entry to `menu.modes` in `menu.js`.
-2. Handle the mode string in `Game` constructor (`game.js`).
-3. Wire up any new input sources in `main.js`.
+The mix of roles creates more dynamic and unpredictable battles instead of two blobs colliding in the middle of the map.
 
 ## Technical Notes
 
-- **Rendering** uses a two-pass approach: flat ground tiles first (can't occlude entities), then elevated tiles + entities depth-sorted together. Elevated tiles use `depth + 1` to ensure their side walls correctly occlude entities behind them.
-- **Map generation** uses seeded value noise (fBm) for organic coastlines, hill clusters, and rock placement. Each game gets a unique island.
-- **Tank graphics** are fully projected — every polygon is defined in local space (+x forward), rotated by the tank's angle, and projected through the isometric transform. Tracks, hull, turret, and barrel are stacked with visible 3D extrusion.
-- **Sound** is 100% procedural: noise buffers through bandpass filters for gunshots, low oscillators for explosions, sine tones for UI.
-- **Collision** is axis-separated — tanks slide along obstacles instead of stopping dead.
 - **No dependencies.** Pure vanilla JS with ES modules. Works in any modern browser.
+- **Rendering** is two-pass: flat ground tiles first (never occlude entities), then elevated tiles + entities depth-sorted. Elevated tiles use `depth + 1` so their side walls correctly occlude entities behind them.
+- **Map generation** uses seeded value noise (fBm) for the island shape, then stamps village clusters with paved road networks and connects them with dirt roads using a cardinal-step algorithm.
+- **Tank graphics** are fully projected — every polygon is defined in local space, rotated by the tank's angle, and projected through the isometric transform. Hull and tracks use hull angle; turret and barrel use independent turret angle. Layers are stacked with visible 3D extrusion. Damage is shown through colour changes (broken tracks, grey locked turret, darkened hull).
+- **Directional armour** uses bearing-based hit detection: the angle from the tank centre to the bullet contact point, relative to the hull facing, determines the hit zone (front ±45°, rear ±45°, sides fill the remainder).
+- **Vehicle types** — tanks and IFVs share the Tank class but differ in speed, armour, fire rate, and turret behaviour. Bullets carry damage and speed values. Partial damage accumulates: four 0.25-damage hits trigger the same directional armour effect as one full hit.
+- **Sound** is 100% procedural: noise buffers through bandpass filters for gunshots, low oscillators for explosions, metallic clangs for subsystem hits, sine tones for UI feedback.
+- **Pathfinding** uses A\* with an octile heuristic and a wall-proximity cost overlay. Binary min-heap open set. Under 1ms per search on 64×64.
+- **Collision** is axis-separated (tanks slide along obstacles) with passability-checked separation to prevent tanks being pushed into walls.
+- **Structured context** (`AGENTS.yaml`) captures architecture decisions and coding conventions for AI agents. See [sctx.dev](https://sctx.dev) for details.
+
+## Structured Context
+
+- This is a split-screen isometric pixel-art tank game running entirely
+in the browser with zero dependencies.  ES modules, vanilla JS, HTML
+Canvas.  Served over HTTP (not file://).

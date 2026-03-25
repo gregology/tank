@@ -88,6 +88,21 @@ export class ParticleSystem {
         }
     }
 
+
+    /** Small green flash for IFV autocannon. */
+    emitIFVFlash(x, y, angle) {
+        const colors = ['#88ff44', '#ccff88', '#ffffff'];
+        for (let i = 0; i < 3; i++) {
+            const spread = randomFloat(-0.25, 0.25);
+            const s = randomFloat(1.5, 3.5);
+            this._add(x, y,
+                Math.cos(angle + spread) * s,
+                Math.sin(angle + spread) * s,
+                colors[randomInt(0, 2)],
+                randomFloat(0.05, 0.12), randomFloat(1, 2));
+        }
+    }
+
     /** Spark when a bullet hits terrain. */
     emitImpact(x, y) {
         const colors = ['#aaaaaa', '#ffcc00', '#ff8800'];
@@ -98,6 +113,30 @@ export class ParticleSystem {
                 colors[randomInt(0, 2)],
                 randomFloat(0.15, 0.4), randomFloat(1, 3));
         }
+    }
+
+
+    /** Tiny spark for absorbed partial damage (IFV bullets). */
+    emitTinyImpact(x, y) {
+        const colors = ['#88cc44', '#aaddaa', '#ccff88'];
+        for (let i = 0; i < 3; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(0.5, 1.5);
+            this._add(x, y, Math.cos(a) * s, Math.sin(a) * s,
+                colors[randomInt(0, 2)],
+                randomFloat(0.08, 0.2), randomFloat(1, 2));
+        }
+    }
+
+    /** Continuous smoke puff from a damaged tank. */
+    emitSmoke(x, y) {
+        const g = randomInt(35, 75);
+        this._add(x, y,
+            randomFloat(-0.3, 0.3),
+            randomFloat(-0.3, 0.3),
+            `rgb(${g},${g},${g})`,
+            randomFloat(0.4, 0.9),
+            randomFloat(2, 5));
     }
 
     /* ── internal ─────────────────────────────────────────── */

@@ -1,0 +1,59 @@
+context:
+  - content: |
+      Tests use Node's built-in test runner: `node --test`.
+      Run all: `npm test`.  Run one suite: `npm run test:ai`.
+      No external test framework — import from 'node:test' and 'node:assert/strict'.
+    match: ["**"]
+    on: read
+    when: before
+
+  - content: |
+      test/helpers.js provides reusable utilities:
+        - customMap(obstacles)     — fully flat grass map (deterministic, no random terrain)
+        - wallH/wallV/wallU/wallL  — parametric obstacle builders
+        - zigzag(...)              — multiple walls with alternating gaps
+        - createBot(x,y,angle,map) — bot tank + AI controller
+        - simulateNavigation(...)  — run N seconds, returns {reachedTarget, finalDist, maxStuck, elapsed}
+        - simulateTeam(...)        — full 5v5 with separation physics
+      Always use customMap() for obstacle course tests so natural terrain doesn't interfere.
+    match: ["helpers.js"]
+    on: read
+    when: before
+
+  - content: |
+      AI navigation tests are inherently slightly nondeterministic due to
+      aim wobble (random offset refreshed every 0.4-1.2s).  Allow ~5%
+      flake rate on tight obstacle courses.  For critical tests, use
+      generous time limits (25-40s) and progress-based assertions instead
+      of exact arrival checks.
+    match: ["ai.test.js"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      Map tests that check for specific tile types should place tiles
+      explicitly (map.setTile) rather than relying on random generation.
+      Random maps may not contain hills/rocks anymore since buildings
+      replaced them as the primary terrain.
+    match: ["map.test.js", "game.test.js"]
+    on: [edit, create]
+    when: before
+
+decisions:
+  - decision: "Node built-in test runner over Jest/Vitest/Mocha"
+    rationale: "Zero dependencies, consistent with the project's no-dependency philosophy, fast startup"
+    alternatives:
+      - option: "Jest"
+        reason_rejected: "Heavy dependency, complex config, slow startup for a small project"
+      - option: "Vitest"
+        reason_rejected: "Requires Vite, adds build tooling we don't otherwise need"
+    date: 2025-03-25
+
+  - decision: "Deterministic flat maps (customMap) for obstacle course tests"
+    rationale: "Random terrain from GameMap caused flaky tests — natural hills/water near test coordinates blocked paths unpredictably"
+    alternatives:
+      - option: "Random maps with generous pass criteria"
+        reason_rejected: "Still flaky, hard to debug failures, can't reproduce specific terrain layouts"
+      - option: "Seeded maps (fixed seed)"
+        reason_rejected: "Seed determines the whole map — any change to generation breaks all seeded tests"
+    date: 2025-03-25

@@ -1,0 +1,100 @@
+context:
+  - content: |
+      The module dependency graph is:
+        main.js → game.js, renderer.js, audio.js, menu.js, input.js
+        game.js → map.js, tank.js, bullet.js, particles.js, camera.js, ai.js
+        ai.js → pathfinder.js
+        renderer.js → config.js, utils.js
+      All modules import config.js and utils.js.  Avoid circular dependencies.
+    match: ["**"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      config.js exports both TILES (tile type enum) and CONFIG (all constants).
+      When adding new tile types, update: TILES enum, CONFIG HP values,
+      map.js (isPassable, blocksProjectile, isSolid, tileHeight, setTile HP init),
+      renderer.js (_drawTile switch, minimap switch, PALETTE), and
+      test/helpers.js if needed.
+    match: ["config.js"]
+    on: edit
+    when: after
+
+  - content: |
+      game.js is the largest module.  It has three code paths:
+        _initDuel / _updateDuel  — pvp and pvb modes
+        _initTeam / _updateTeam  — 5v5 team mode
+        shared helpers           — _handleFiring, _tickBullets, _checkBulletHits,
+                                   _separatePairs, _pushFromTowers, _canStand,
+                                   _updateCamera, _invalidatePathfinders
+      Keep these sections clearly separated.  The allTanks/towers/humanTank
+      getters provide a uniform interface for the renderer across all modes.
+    match: ["game.js"]
+    on: read
+    when: before
+
+  - content: |
+      map.js generation order matters:
+        1. _baseTile() — water/sand/grass for every cell
+        2. _placeVillages() — stamps paved roads, buildings, then dirt roads
+        3. findTowerPositions() called separately by game.js — stamps sand bases,
+           clears radius-10 around bases, clears path between bases
+      Village placement enforces 14-tile minimum separation between centres.
+      Dirt roads use cardinal-step algorithm (no diagonal-only connections).
+    match: ["map.js"]
+    on: read
+    when: before
+
+  - content: |
+      renderer.js _drawTank() projects every polygon from local tank space
+      (+x = forward, +y = right) through rotation + isometric transform.
+      Layers stack with pixel offsets: tracks → hull → barrel → turret.
+      Each layer has a dark "extrusion" slab drawn below its top face for 3D effect.
+    match: ["renderer.js"]
+    on: read
+    when: before
+
+  - content: |
+      The AI controller (ai.js) has the same isDown/wasPressed/endFrame
+      interface as InputManager.  It uses virtual key codes from its keyMap
+      (BOT_KEYS in game.js).  Each AI instance has its own keys object —
+      multiple bots sharing the same key codes don't conflict.
+      To add difficulty levels, tune aimWobble, fireDelay, and the
+      engagement range in the think() method.
+    match: ["ai.js"]
+    on: [read, edit]
+    when: before
+
+  - content: |
+      Sound is procedurally synthesised via Web Audio API — no audio files.
+      AudioManager hooks into the Game event bus:
+        game.on('fire',         () => audio.playShoot())
+        game.on('destroy',      () => audio.playExplosion())
+        game.on('destroy_tile', () => audio.playExplosion())
+        game.on('impact',       () => audio.playImpact())
+        game.on('win',          () => audio.playWin())
+      To add a new sound, create a method on AudioManager and wire it to
+      a game event in hookIntoGame().
+    match: ["audio.js"]
+    on: [edit, create]
+    when: before
+
+decisions:
+  - decision: "Game event bus for cross-cutting concerns (sound, UI)"
+    rationale: "Loose coupling — audio.js subscribes to game events without game.js knowing about audio"
+    alternatives:
+      - option: "Direct function calls from game.js to audio.js"
+        reason_rejected: "Tight coupling, game.js would need to import audio.js"
+    match: ["game.js", "audio.js"]
+    date: 2025-03-24
+
+  - decision: "Pathfinder wall-cost overlay for wider berth around walls"
+    rationale: "Tiles adjacent to impassable terrain get a penalty (0.3 per neighbour) so A* naturally routes through the centre of corridors"
+    alternatives:
+      - option: "Inflate obstacles by 1 tile (mark adjacent tiles as impassable)"
+        reason_rejected: "Closes narrow passages entirely, makes 1-tile gaps unwalkable"
+      - option: "No wall cost — pure shortest path"
+        reason_rejected: "Bots hug walls and clip corners, getting stuck on edges"
+    revisit_when: "Wall-cost computation becomes a performance issue on larger maps"
+    match: ["pathfinder.js"]
+    date: 2025-03-25

@@ -1,0 +1,186 @@
+context:
+  - content: |
+      This is a split-screen isometric pixel-art tank game running entirely
+      in the browser with zero dependencies.  ES modules, vanilla JS, HTML
+      Canvas.  Served over HTTP (not file://).
+    match: ["**"]
+    on: read
+    when: before
+
+  - content: |
+      All tunable constants live in js/config.js.  When adding new gameplay
+      mechanics, expose parameters there rather than hardcoding values in
+      logic files.
+    match: ["js/**"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      To add a new tile type:
+        1. Add the tile ID to TILES in config.js and any HP values to CONFIG
+        2. Update map.js: setTile (HP init switch), isPassable, blocksProjectile,
+           isSolid, tileHeight
+        3. Add generation logic in map.js (e.g. _stampVillage or _baseTile)
+        4. Add rendering in renderer.js: _drawTile switch, minimap switch, PALETTE
+        5. Update test/helpers.js if the tile appears in test maps
+    match: ["js/config.js", "js/map.js", "js/renderer.js"]
+    on: create
+    when: before
+
+  - content: |
+      To add a new entity type (power-ups, mines, etc.):
+        1. Create a new class (see bullet.js or tank.js as templates)
+        2. Add instances to game.js — update in update(), add to the
+           renderer's entity list in _renderViewport
+        3. Render in renderer.js — add a new kind constant and drawing method
+    match: ["js/**"]
+    on: create
+    when: before
+
+  - content: |
+      To add a new game mode:
+        1. Add a new entry to menu.modes in menu.js
+        2. Handle the mode string in Game constructor (game.js) — add
+           _init and _update methods following the duel/team pattern
+        3. Wire up input sources and camera in main.js and renderer.js
+    match: ["js/menu.js", "js/game.js", "js/main.js", "js/renderer.js"]
+    on: create
+    when: before
+
+  - content: |
+      The game has three modes: pvp (split screen), pvb (human vs AI, full
+      screen), and team (5v5 with towers, full screen).  Any new feature
+      must work in all three modes or be explicitly scoped to one.
+    match: ["js/game.js", "js/renderer.js", "js/main.js"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      Rendering uses a two-pass approach.  Pass 1 draws all flat ground
+      tiles (water, sand, grass, dirt, paved).  Pass 2 depth-sorts elevated
+      tiles and entities together.  Elevated tiles use depth gx+gy+1 so
+      their side walls correctly occlude entities behind them.  Never put
+      flat tiles into the depth-sorted pass — it causes flickering when
+      tanks cross tile boundaries.
+    match: ["js/renderer.js"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      The AI uses A* pathfinding (js/pathfinder.js) to plan routes, then
+      follows waypoints.  Reactive obstacle avoidance is a light fallback
+      for dynamic obstacles (other tanks), not the primary navigation.
+      When stuck, the AI shoots destructible terrain to clear a path.
+      Navigation and combat are separated — bots always navigate toward
+      their objective (tower) and fire at enemies they pass, rather than
+      chasing enemies and abandoning the objective.
+    match: ["js/ai.js"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      Tank separation (_separatePairs) and tower push (_pushFromTowers)
+      must check _canStand() before applying displacement.  Pushing a tank
+      into impassable terrain permanently traps it.
+    match: ["js/game.js"]
+    on: edit
+    when: after
+
+  - content: |
+      Buildings must never be placed on road tiles (DIRT or PAVED).  Use
+      map.isRoad(gx, gy) to check before placing.  Village roads are laid
+      first, then buildings are placed alongside them.
+    match: ["js/map.js"]
+    on: edit
+    when: before
+
+  - content: |
+      Sound is 100% procedural via Web Audio API — no audio files.  The
+      AudioManager hooks into the Game event bus.  AudioContext must be
+      created from a user gesture (key press / click).
+    match: ["js/audio.js"]
+    on: [edit, create]
+    when: before
+
+  - content: |
+      Tests use Node's built-in test runner (node --test).  No test
+      framework dependencies.  AI navigation tests use the helpers in
+      test/helpers.js which provide deterministic flat maps (customMap)
+      and simulation utilities.  Tests that involve random maps should
+      use tolerant assertions since AI aim wobble causes ~5% flakiness.
+    match: ["test/**"]
+    on: [edit, create]
+    when: before
+
+decisions:
+  - decision: "Vanilla JS with ES modules, no framework or bundler"
+    rationale: "Zero dependencies, runs directly in any modern browser, simple to understand and extend"
+    alternatives:
+      - option: "React/Vue/Svelte"
+        reason_rejected: "Overkill for a canvas game, adds build step and dependencies"
+      - option: "TypeScript"
+        reason_rejected: "Adds compilation step, project is small enough that JSDoc types suffice"
+    date: 2025-03-24
+
+  - decision: "2:1 isometric projection (tile width 64, height 32)"
+    rationale: "Classic pixel-art look, simple integer math, well-understood rendering order"
+    alternatives:
+      - option: "True 3D (WebGL/Three.js)"
+        reason_rejected: "Massive complexity increase, doesn't match pixel-art aesthetic"
+      - option: "Top-down 2D"
+        reason_rejected: "Less visual interest, no depth/occlusion gameplay"
+    date: 2025-03-24
+
+  - decision: "Procedural sound via Web Audio API instead of audio files"
+    rationale: "Zero assets to load, no hosting concerns, sounds are short enough to synthesise"
+    alternatives:
+      - option: "Pre-recorded WAV/MP3 files"
+        reason_rejected: "Adds asset management, loading, and file size"
+      - option: "No sound"
+        reason_rejected: "Significantly hurts game feel"
+    revisit_when: "Need music or complex sound effects that can't be synthesised"
+    date: 2025-03-24
+
+  - decision: "A* pathfinding for AI navigation instead of reactive steering"
+    rationale: "Reactive-only approach caused bots to get permanently stuck on U-shapes, dead ends, and complex terrain"
+    alternatives:
+      - option: "Pure reactive obstacle avoidance (probe + steer)"
+        reason_rejected: "Cannot solve U-shaped traps, dead ends, or narrow corridors — bots get stuck indefinitely"
+      - option: "Flow fields"
+        reason_rejected: "Good for many agents with same target, but bots have different targets (enemies vs towers)"
+      - option: "Navigation mesh"
+        reason_rejected: "Overkill for a tile-based game, complex to update when terrain is destroyed"
+    revisit_when: "Map exceeds 128x128 and pathfinding becomes a performance bottleneck"
+    date: 2025-03-25
+
+  - decision: "Hills are not traversable — they block movement and bullets"
+    rationale: "Making hills traversable caused bullet trajectory bugs and complex elevation rendering. Simpler to keep them as solid cover."
+    alternatives:
+      - option: "Traversable hills with speed penalty and elevation rendering"
+        reason_rejected: "Bullets went in weird paths when fired from different elevations, rendering was glitchy at tile boundaries"
+    date: 2025-03-24
+
+  - decision: "Buildings replace hills/rocks as the primary terrain obstacle"
+    rationale: "More visually interesting, enables village clusters with road networks, provides varied cover with different HP values"
+    alternatives:
+      - option: "Keep noise-generated hills and rocks"
+        reason_rejected: "Looked generic, no logical grouping, no road network possible"
+    date: 2025-03-25
+
+  - decision: "Two road types: PAVED (village streets) and DIRT (connecting roads)"
+    rationale: "Visual distinction between village interiors and countryside, paved roads laid first prevent buildings from being placed on roads"
+    alternatives:
+      - option: "Single road type"
+        reason_rejected: "No visual distinction between village streets and country paths"
+      - option: "No roads"
+        reason_rejected: "Villages looked like random building clusters without connecting infrastructure"
+    date: 2025-03-25
+
+  - decision: "Cardinal-step road laying algorithm instead of continuous line"
+    rationale: "Continuous line sampling creates diagonal-only tile connections (corners touching). Cardinal steps ensure every road tile shares a full edge with the next."
+    alternatives:
+      - option: "Bresenham line with 8-connectivity"
+        reason_rejected: "Diagonal connections look unnatural — roads should connect side-to-side"
+      - option: "3-tile-wide roads"
+        reason_rejected: "Too wide, dominates the map, wastes space"
+    date: 2025-03-25

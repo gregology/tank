@@ -19,7 +19,7 @@ export class GameMap {
         /** Flat Uint8 array – index with `y * width + x`. */
         this.tiles  = new Uint8Array(this.width * this.height);
         /** Per-tile hit-points (0 = full health / not destructible). */
-        this.hp     = new Uint8Array(this.width * this.height);
+        this.hp     = new Float32Array(this.width * this.height);
         /** Max HP per tile (for damage fraction calculation). */
         this.maxHp  = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions (new island every game). */
@@ -41,33 +41,54 @@ export class GameMap {
             const i = gy * this.width + gx;
             this.tiles[i] = type;
             // Initialise HP for destructible tiles
-            const h = type === T.HILL ? CONFIG.HILL_HP
-                    : type === T.ROCK ? CONFIG.ROCK_HP : 0;
+            let h = 0;
+            switch (type) {
+                case T.HILL:        h = CONFIG.HILL_HP; break;
+                case T.ROCK:        h = CONFIG.ROCK_HP; break;
+                case T.BLDG_SMALL:  h = CONFIG.BLDG_SMALL_HP; break;
+                case T.BLDG_MEDIUM: h = CONFIG.BLDG_MEDIUM_HP; break;
+                case T.BLDG_LARGE:  h = CONFIG.BLDG_LARGE_HP; break;
+            }
             this.hp[i]    = h;
             this.maxHp[i] = h;
         }
     }
 
+    /** Is this tile type a solid obstacle (hill, rock, or building)? */
+    isSolid(tileType) {
+        return tileType === T.HILL || tileType === T.ROCK
+            || tileType === T.BLDG_SMALL || tileType === T.BLDG_MEDIUM
+            || tileType === T.BLDG_LARGE;
+    }
+
     /** Can a tank stand at continuous world position (wx, wy)? */
     isPassable(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
-        return t === T.GRASS || t === T.DARK_GRASS || t === T.SAND;
+        return t === T.GRASS || t === T.DARK_GRASS || t === T.SAND
+            || t === T.DIRT || t === T.PAVED;
     }
 
-    /** Does this tile stop a bullet? (hills and rocks) */
+    /** Is this a road tile? Buildings must not be placed on roads. */
+    isRoad(gx, gy) {
+        const t = this.getTile(gx, gy);
+        return t === T.DIRT || t === T.PAVED;
+    }
+
+    /** Does this tile stop a bullet? */
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
-        return t === T.HILL || t === T.ROCK;
+        return t === T.HILL || t === T.ROCK
+            || t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE;
     }
 
     /**
      * Apply one hit of damage to the tile at (gx, gy).
      * @returns {boolean} true if the tile was destroyed.
      */
-    damageTile(gx, gy) {
+    damageTile(gx, gy, damage = 1.0) {
         const i = gy * this.width + gx;
         if (this.hp[i] <= 0) return false;        // not destructible
-        this.hp[i]--;
+        this.hp[i] -= damage;
         if (this.hp[i] <= 0) {
             // Destroyed → replace with grass
             this.tiles[i] = T.GRASS;
@@ -87,9 +108,14 @@ export class GameMap {
 
     /** Pixel-height of a tile type (for isometric elevation). */
     tileHeight(tileType) {
-        if (tileType === T.HILL) return CONFIG.TILE_DEPTH;
-        if (tileType === T.ROCK) return Math.round(CONFIG.TILE_DEPTH * 0.6);
-        return 0;
+        switch (tileType) {
+            case T.HILL:        return CONFIG.TILE_DEPTH;
+            case T.ROCK:        return Math.round(CONFIG.TILE_DEPTH * 0.6);
+            case T.BLDG_SMALL:  return 14;
+            case T.BLDG_MEDIUM: return 22;
+            case T.BLDG_LARGE:  return 32;
+            default:            return 0;
+        }
     }
 
     /**
@@ -150,7 +176,7 @@ export class GameMap {
                 if (dx * dx + dy * dy > r * r) continue;
                 const tx = gx + dx, ty = gy + dy;
                 const t = this.getTile(tx, ty);
-                if (t === T.HILL || t === T.ROCK) {
+                if (this.isSolid(t)) {
                     this.setTile(tx, ty, T.GRASS);
                 }
             }
@@ -177,7 +203,7 @@ export class GameMap {
                 const gx = Math.floor(cx + px * w);
                 const gy = Math.floor(cy + py * w);
                 const tile = this.getTile(gx, gy);
-                if (tile === T.HILL || tile === T.ROCK) {
+                if (this.isSolid(tile)) {
                     this.setTile(gx, gy, T.GRASS);
                 } else if (tile === T.DEEP_WATER || tile === T.SHALLOW_WATER) {
                     this.setTile(gx, gy, T.SAND);
@@ -221,8 +247,7 @@ export class GameMap {
                 const tx = gx + dx, ty = gy + dy;
                 const t = this.getTile(tx, ty);
                 // Only overwrite land tiles (not water)
-                if (t === T.GRASS || t === T.DARK_GRASS ||
-                    t === T.HILL  || t === T.ROCK || t === T.SAND) {
+                if (t !== T.DEEP_WATER && t !== T.SHALLOW_WATER) {
                     this.setTile(tx, ty, T.SAND);
                 }
             }
@@ -252,60 +277,238 @@ export class GameMap {
         const cx = w / 2, cy = h / 2;
         const maxR = Math.min(w, h) / 2 - 1;
 
+        // Pass 1: lay down water / sand / grass
         for (let gy = 0; gy < h; gy++) {
             for (let gx = 0; gx < w; gx++) {
-                const tile = this._tileAt(gx, gy, cx, cy, maxR);
-                this.setTile(gx, gy, tile);
+                this.setTile(gx, gy, this._baseTile(gx, gy, cx, cy, maxR));
             }
         }
 
-        // Guarantee a few open clearings so players aren't boxed in.
-        this._carveClearings(cx, cy, maxR);
+        // Pass 2: scatter village clusters across the island
+        this._placeVillages(cx, cy, maxR);
     }
 
-    /** Decide the tile type for a single grid cell. */
-    _tileAt(gx, gy, cx, cy, maxR) {
+    /** Water / sand / grass only — no structures. */
+    _baseTile(gx, gy, cx, cy, maxR) {
         const d = distance(gx, gy, cx, cy);
-
-        // ── Island mask (distance + noise wobble) ──
-        const coastNoise = this._fbm(gx * 0.06, gy * 0.06, 3, /* offset */ 0) - 0.5;
+        const coastNoise = this._fbm(gx * 0.06, gy * 0.06, 3, 0) - 0.5;
         const islandEdge = maxR + coastNoise * 8;
 
         if (d > islandEdge)           return T.DEEP_WATER;
         if (d > islandEdge - 1.8)     return T.SHALLOW_WATER;
         if (d > islandEdge - 3.5)     return T.SAND;
 
-        // ── Interior (grass / hills / rocks) ──
-        const interiorDist = islandEdge - d;     // how far inside the island
-
-        // Hill noise – broad, rolling
-        const hillN = this._fbm(gx * 0.07, gy * 0.07, 4, /* offset */ 100);
-        if (interiorDist > 3 && hillN > 0.58)    return T.HILL;
-
-        // Rock noise – tighter, sparser
-        const rockN = this._fbm(gx * 0.14, gy * 0.14, 3, /* offset */ 200);
-        if (interiorDist > 2.5 && rockN > 0.68)  return T.ROCK;
-
-        // Grass variation
-        const grassN = this._fbm(gx * 0.12, gy * 0.12, 2, /* offset */ 300);
+        const grassN = this._fbm(gx * 0.12, gy * 0.12, 2, 300);
         return grassN > 0.52 ? T.DARK_GRASS : T.GRASS;
     }
 
-    /** Carve a few circular clearings of flat grass. */
-    _carveClearings(cx, cy, maxR) {
-        const count = 5 + Math.floor(this._hash(42, 99) * 4);
+    /* ── Village placement ────────────────────────────────── */
+
+    /**
+     * Place village clusters (min 14 tiles apart), connect with dirt
+     * roads, then scatter roadside buildings along the connecting roads.
+     */
+    _placeVillages(cx, cy, maxR) {
+        const MIN_VILLAGE_DIST = 14;
+        const villageCentres = [];
+        const attempts = 20 + Math.floor(this._hash(77, 88) * 10);
+
+        // Step 1: pick village positions, enforcing minimum separation
+        for (let i = 0; i < attempts; i++) {
+            const angle = this._hash(i * 11, 100) * Math.PI * 2;
+            const dist  = 5 + this._hash(i * 17, 200) * (maxR - 12);
+            const vx = Math.round(cx + Math.cos(angle) * dist);
+            const vy = Math.round(cy + Math.sin(angle) * dist);
+
+            if (!this.isPassable(vx + 0.5, vy + 0.5)) continue;
+            if (distance(vx, vy, cx, cy) > maxR - 6) continue;
+
+            // Enforce minimum distance from every existing village
+            let tooClose = false;
+            for (const vc of villageCentres) {
+                if (distance(vx, vy, vc.x, vc.y) < MIN_VILLAGE_DIST) {
+                    tooClose = true; break;
+                }
+            }
+            if (tooClose) continue;
+
+            this._stampVillage(vx, vy, i);
+            villageCentres.push({ x: vx, y: vy });
+        }
+
+        // Step 2: connect villages with dirt roads (nearest-neighbour chain)
+        if (villageCentres.length < 2) return;
+        const connected = [0];
+        const remaining = new Set(villageCentres.keys());
+        remaining.delete(0);
+
+        const roadSegments = [];
+        while (remaining.size > 0) {
+            let bestI = -1, bestJ = -1, bestD = Infinity;
+            for (const ci of connected) {
+                for (const ri of remaining) {
+                    const d = distance(villageCentres[ci].x, villageCentres[ci].y,
+                                       villageCentres[ri].x, villageCentres[ri].y);
+                    if (d < bestD) { bestD = d; bestI = ci; bestJ = ri; }
+                }
+            }
+            if (bestJ < 0) break;
+            const a = villageCentres[bestI], b = villageCentres[bestJ];
+            this._layDirtRoad(a, b);
+            roadSegments.push({ a, b });
+            connected.push(bestJ);
+            remaining.delete(bestJ);
+        }
+
+        // Step 3: scatter a few buildings along the dirt roads between villages
+        for (let seg = 0; seg < roadSegments.length; seg++) {
+            this._scatterRoadsideBuildings(roadSegments[seg].a,
+                roadSegments[seg].b, seg);
+        }
+    }
+
+    /**
+     * Lay a 1-tile-wide dirt road between two points using only
+     * cardinal steps (up/down/left/right).  Every tile shares a
+     * full edge with the next — no diagonal-only connections.
+     */
+    _layDirtRoad(a, b) {
+        let x = Math.floor(a.x), y = Math.floor(a.y);
+        const gx = Math.floor(b.x), gy = Math.floor(b.y);
+
+        while (x !== gx || y !== gy) {
+            const tile = this.getTile(x, y);
+            if (tile === T.GRASS || tile === T.DARK_GRASS) {
+                this.setTile(x, y, T.DIRT);
+            }
+            // Step one tile: pick the axis with the larger remaining gap.
+            // When equal, use a hash for a natural wobble instead of
+            // always favouring the same axis.
+            const dx = gx - x, dy = gy - y;
+            if (Math.abs(dx) > Math.abs(dy)) {
+                x += dx > 0 ? 1 : -1;
+            } else if (Math.abs(dy) > Math.abs(dx)) {
+                y += dy > 0 ? 1 : -1;
+            } else {
+                // Equal — random pick for variety
+                if (this._hash(x * 31 + y * 47, 1050) > 0.5)
+                    x += dx > 0 ? 1 : -1;
+                else
+                    y += dy > 0 ? 1 : -1;
+            }
+        }
+        // Final tile
+        const tile = this.getTile(x, y);
+        if (tile === T.GRASS || tile === T.DARK_GRASS) {
+            this.setTile(x, y, T.DIRT);
+        }
+    }
+
+    /**
+     * Scatter a few isolated buildings alongside a dirt road between
+     * two villages.  Gives the roads a lived-in feel without creating
+     * a full village.
+     */
+    _scatterRoadsideBuildings(a, b, seed) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 8) return;  // too short, skip
+
+        const ux = dx / len, uy = dy / len;     // road direction
+        const px = -uy, py = ux;                 // perpendicular
+
+        const count = 2 + Math.floor(this._hash(seed * 67, 1100) * 4);
         for (let i = 0; i < count; i++) {
-            const angle = this._hash(i * 7, 1234) * Math.PI * 2;
-            const dist  = 4 + this._hash(i * 13, 5678) * (maxR - 10);
-            const r     = 2 + this._hash(i * 19, 9012) * 2.5;
-            const ox = Math.round(cx + Math.cos(angle) * dist);
-            const oy = Math.round(cy + Math.sin(angle) * dist);
-            for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
-                for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
-                    if (dx * dx + dy * dy > r * r) continue;
-                    const t = this.getTile(ox + dx, oy + dy);
-                    if (t === T.HILL || t === T.ROCK) {
-                        this.setTile(ox + dx, oy + dy, T.GRASS);
+            // Position along the road (skip first/last 20% to stay away from villages)
+            const t = 0.2 + this._hash(seed * 13 + i * 47, 1200) * 0.6;
+            const cx = a.x + dx * t;
+            const cy = a.y + dy * t;
+
+            // Offset 1–2 tiles to one side
+            const side = this._hash(seed * 19 + i * 31, 1300) > 0.5 ? 1 : -1;
+            const off  = 1 + Math.floor(this._hash(seed * 23 + i * 37, 1400) * 1.5);
+            const bx = Math.round(cx + px * side * off);
+            const by = Math.round(cy + py * side * off);
+
+            if (this.isRoad(bx, by)) continue;
+            if (!this.isPassable(bx + 0.5, by + 0.5)) continue;
+
+            // Roadside buildings are mostly small
+            const sizeRoll = this._hash(seed * 29 + i * 41, 1500);
+            const bldgType = sizeRoll < 0.6 ? T.BLDG_SMALL : T.BLDG_MEDIUM;
+            this.setTile(bx, by, bldgType);
+        }
+    }
+
+    /**
+     * Stamp a single village at (vx, vy).
+     *
+     * 1. Lay 1–2 paved roads through the village
+     * 2. Place buildings along both sides — NEVER on a road tile
+     */
+    _stampVillage(vx, vy, seed) {
+        const roadCount = this._hash(seed * 31, 400) > 0.4 ? 2 : 1;
+
+        const roads = [];
+        for (let r = 0; r < roadCount; r++) {
+            const dirRoll = this._hash(seed * 11 + r * 71, 410);
+            let dx, dy;
+            if (r === 0) {
+                dx = dirRoll < 0.5 ? 1 : 0;
+                dy = dx === 0 ? 1 : 0;
+            } else {
+                dx = roads[0].dy !== 0 ? 1 : 0;
+                dy = dx === 0 ? 1 : 0;
+            }
+            const halfLen = 3 + Math.floor(this._hash(seed * 17 + r * 43, 420) * 4);
+            roads.push({ dx, dy, halfLen });
+        }
+
+        // Step 1: lay PAVED roads
+        for (const road of roads) {
+            for (let s = -road.halfLen; s <= road.halfLen; s++) {
+                const rx = vx + road.dx * s;
+                const ry = vy + road.dy * s;
+                if (this.isPassable(rx + 0.5, ry + 0.5)) {
+                    this.setTile(rx, ry, T.PAVED);
+                }
+            }
+        }
+
+        // Step 2: place buildings along roads (never ON a road)
+        for (const road of roads) {
+            const px = road.dy !== 0 ? 1 : 0;   // perpendicular
+            const py = road.dx !== 0 ? 1 : 0;
+
+            for (let s = -road.halfLen; s <= road.halfLen; s++) {
+                const rx = vx + road.dx * s;
+                const ry = vy + road.dy * s;
+
+                for (const side of [-1, 1]) {
+                    const skip = this._hash(seed * 7 + s * 13 + side * 37, 500 + side);
+                    if (skip < 0.45) continue;
+
+                    const offset = 1 + Math.floor(this._hash(seed * 3 + s * 19 + side * 41, 550) * 1.5);
+                    const bx = rx + px * side * offset;
+                    const by = ry + py * side * offset;
+
+                    // NEVER place on a road tile
+                    if (this.isRoad(bx, by)) continue;
+                    if (!this.isPassable(bx + 0.5, by + 0.5)) continue;
+
+                    const sizeRoll = this._hash(seed * 23 + s * 37 + side * 53, 600);
+                    let bldgType;
+                    if      (sizeRoll < 0.45) bldgType = T.BLDG_SMALL;
+                    else if (sizeRoll < 0.80) bldgType = T.BLDG_MEDIUM;
+                    else                      bldgType = T.BLDG_LARGE;
+
+                    this.setTile(bx, by, bldgType);
+
+                    // Large buildings extend along the road
+                    if (bldgType === T.BLDG_LARGE) {
+                        const ex = bx + road.dx, ey = by + road.dy;
+                        if (!this.isRoad(ex, ey) && this.isPassable(ex + 0.5, ey + 0.5))
+                            this.setTile(ex, ey, T.BLDG_LARGE);
                     }
                 }
             }

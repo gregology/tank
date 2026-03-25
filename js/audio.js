@@ -29,10 +29,14 @@ export class AudioManager {
 
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
-        game.on('fire',         () => this.playShoot());
+        game.on('fire', (d) => {
+            if (d.tank?.vehicleType === 'ifv') this.playIFVShoot();
+            else this.playShoot();
+        });
         game.on('destroy',      () => this.playExplosion());
         game.on('destroy_tile', () => this.playExplosion());
         game.on('impact',       () => this.playImpact());
+        game.on('hit',          () => this.playHit());
         game.on('win',          () => this.playWin());
     }
 
@@ -59,6 +63,30 @@ export class AudioManager {
         const og = this._env(t, 0.35, 0.1);
         o.connect(og).connect(ctx.destination);
         o.start(t); o.stop(t + 0.15);
+    }
+
+    /** Lighter, snappier autocannon sound for IFV rapid fire. */
+    playIFVShoot() {
+        if (!this._ok()) return;
+        const { ctx } = this, t = ctx.currentTime;
+
+        // Quick high-frequency crack
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = 'bandpass'; nf.Q.value = 3;
+        nf.frequency.setValueAtTime(3500, t);
+        nf.frequency.exponentialRampToValueAtTime(800, t + 0.05);
+        const ng = this._env(t, 0.15, 0.06);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t); n.stop(t + 0.08);
+
+        // Tiny thud (much lighter than tank)
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(220, t);
+        o.frequency.exponentialRampToValueAtTime(80, t + 0.04);
+        const og = this._env(t, 0.12, 0.05);
+        o.connect(og).connect(ctx.destination);
+        o.start(t); o.stop(t + 0.06);
     }
 
     playExplosion() {
@@ -93,6 +121,29 @@ export class AudioManager {
         const g = this._env(t, 0.12, 0.07);
         n.connect(f).connect(g).connect(ctx.destination);
         n.start(t); n.stop(t + 0.1);
+    }
+
+    /** Metallic clang for subsystem damage (hit but not destroyed). */
+    playHit() {
+        if (!this._ok()) return;
+        const { ctx } = this, t = ctx.currentTime;
+
+        // Metallic ping
+        const o = ctx.createOscillator();
+        o.type = 'square';
+        o.frequency.setValueAtTime(800, t);
+        o.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+        const og = this._env(t, 0.3, 0.2);
+        o.connect(og).connect(ctx.destination);
+        o.start(t); o.stop(t + 0.25);
+
+        // Short noise for impact texture
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = 'bandpass'; nf.frequency.value = 2000; nf.Q.value = 4;
+        const ng = this._env(t, 0.2, 0.1);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t); n.stop(t + 0.12);
     }
 
     playSelect() {
