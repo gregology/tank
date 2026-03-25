@@ -32,7 +32,7 @@ export const CONFIG = {
     TANK_SPEED:            3.0, // world-units / second
     TANK_REVERSE_FACTOR:   0.4, // backward speed multiplier
     TANK_ROTATION_SPEED:   3.5, // radians / second (hull)
-    TURRET_ROTATION_SPEED: 2.2, // radians / second (slower than hull)
+    TURRET_ROTATION_SPEED: 1.1, // radians / second (slower than hull)
     TANK_SIZE:             0.45,// collision radius in world-units
     TANK_BARREL_LENGTH:    0.52,// barrel tip distance from centre (world-units)
     CAMERA_LOOK_AHEAD:     3.5, // world-units offset in the facing direction
@@ -85,7 +85,7 @@ export const CONFIG = {
     SNIPER_ENGAGE_RANGE:    6,   // only fights enemies this close
     DEFENDER_PATROL_RADIUS: 8,   // patrol radius around friendly tower
     DEFENDER_ENGAGE_RANGE: 14,   // intercepts enemies this close to tower
-    SCOUT_FLANK_OFFSET:    16,   // perpendicular offset for flanking route
+    SCOUT_FLANK_OFFSET:    20,   // perpendicular offset for flanking route
 
 
     // ── Particles ────────────────────────────────────────────
