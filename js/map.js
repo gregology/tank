@@ -18,6 +18,10 @@ export class GameMap {
         this.height = CONFIG.MAP_HEIGHT;
         /** Flat Uint8 array – index with `y * width + x`. */
         this.tiles  = new Uint8Array(this.width * this.height);
+        /** Per-tile hit-points (0 = full health / not destructible). */
+        this.hp     = new Uint8Array(this.width * this.height);
+        /** Max HP per tile (for damage fraction calculation). */
+        this.maxHp  = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions (new island every game). */
         this.seed   = Math.floor(Math.random() * 2147483647);
         this.generate();
@@ -34,7 +38,13 @@ export class GameMap {
 
     setTile(gx, gy, type) {
         if (gx >= 0 && gx < this.width && gy >= 0 && gy < this.height) {
-            this.tiles[gy * this.width + gx] = type;
+            const i = gy * this.width + gx;
+            this.tiles[i] = type;
+            // Initialise HP for destructible tiles
+            const h = type === T.HILL ? CONFIG.HILL_HP
+                    : type === T.ROCK ? CONFIG.ROCK_HP : 0;
+            this.hp[i]    = h;
+            this.maxHp[i] = h;
         }
     }
 
@@ -48,6 +58,31 @@ export class GameMap {
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
         return t === T.HILL || t === T.ROCK;
+    }
+
+    /**
+     * Apply one hit of damage to the tile at (gx, gy).
+     * @returns {boolean} true if the tile was destroyed.
+     */
+    damageTile(gx, gy) {
+        const i = gy * this.width + gx;
+        if (this.hp[i] <= 0) return false;        // not destructible
+        this.hp[i]--;
+        if (this.hp[i] <= 0) {
+            // Destroyed → replace with grass
+            this.tiles[i] = T.GRASS;
+            this.hp[i]    = 0;
+            this.maxHp[i] = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /** Fraction of HP remaining (1 = full, 0 = about to break). */
+    getDamageFraction(gx, gy) {
+        const i = gy * this.width + gx;
+        if (this.maxHp[i] === 0) return 1;
+        return this.hp[i] / this.maxHp[i];
     }
 
     /** Pixel-height of a tile type (for isometric elevation). */

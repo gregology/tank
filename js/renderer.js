@@ -51,31 +51,39 @@ export class Renderer {
 
     render(game) {
         const ctx = this.ctx;
-        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const cw = this.canvas.width, ch = this.canvas.height;
+        ctx.clearRect(0, 0, cw, ch);
 
-        // Left viewport – player 1
-        this._renderViewport(ctx, game, game.tank1, game.camera1,
-                             0, 0, this.vpW, this.vpH);
+        const fullScreen = game.mode === 'pvb';
 
-        // Right viewport – player 2
-        this._renderViewport(ctx, game, game.tank2, game.camera2,
-                             this.vpW, 0, this.vpW, this.vpH);
+        if (fullScreen) {
+            // ── Single viewport (human player only) ──
+            this._renderViewport(ctx, game, game.tank1, game.camera1,
+                                 0, 0, cw, ch);
+            this._drawHUD(ctx, game, 1, 0, 0, cw, ch);
+        } else {
+            // ── Split screen ──
+            this._renderViewport(ctx, game, game.tank1, game.camera1,
+                                 0, 0, this.vpW, this.vpH);
+            this._renderViewport(ctx, game, game.tank2, game.camera2,
+                                 this.vpW, 0, this.vpW, this.vpH);
 
-        // Divider
-        ctx.save();
-        ctx.strokeStyle = '#556';
-        ctx.lineWidth   = 3;
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur  = 6;
-        ctx.beginPath();
-        ctx.moveTo(this.vpW, 0);
-        ctx.lineTo(this.vpW, this.canvas.height);
-        ctx.stroke();
-        ctx.restore();
+            // Divider
+            ctx.save();
+            ctx.strokeStyle = '#556';
+            ctx.lineWidth   = 3;
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur  = 6;
+            ctx.beginPath();
+            ctx.moveTo(this.vpW, 0);
+            ctx.lineTo(this.vpW, ch);
+            ctx.stroke();
+            ctx.restore();
 
-        // HUD overlays (drawn on top, not clipped)
-        this._drawHUD(ctx, game, 1, 0,       0, this.vpW, this.vpH);
-        this._drawHUD(ctx, game, 2, this.vpW, 0, this.vpW, this.vpH);
+            // HUD per viewport
+            this._drawHUD(ctx, game, 1, 0,       0, this.vpW, this.vpH);
+            this._drawHUD(ctx, game, 2, this.vpW, 0, this.vpW, this.vpH);
+        }
 
         if (game.gameOver) this._drawGameOver(ctx, game);
     }
@@ -234,16 +242,20 @@ export class Renderer {
             }
 
             case T.HILL: {
-                const h = map.tileHeight(T.HILL);
+                const frac = map.getDamageFraction(gx, gy);
+                const h = Math.round(map.tileHeight(T.HILL) * frac);
                 this._elevatedTile(ctx, sx, sy, h,
                     PALETTE.hillTop, PALETTE.hillLeft, PALETTE.hillRight, v);
+                if (frac < 1) this._drawDamageOverlay(ctx, sx, sy, h, frac, time);
                 break;
             }
 
             case T.ROCK: {
-                const h = map.tileHeight(T.ROCK);
+                const frac = map.getDamageFraction(gx, gy);
+                const h = Math.round(map.tileHeight(T.ROCK) * frac);
                 this._elevatedTile(ctx, sx, sy, h,
                     PALETTE.rockTop, PALETTE.rockLeft, PALETTE.rockRight, v);
+                if (frac < 1) this._drawDamageOverlay(ctx, sx, sy, h, frac, time);
                 break;
             }
         }
@@ -292,6 +304,62 @@ export class Renderer {
         ctx.lineTo(sx - TW / 2, sy + TH / 2 - h);
         ctx.closePath();
         ctx.fill();
+    }
+
+    /**
+     * Overlay cracks and darkening on a damaged elevated tile.
+     * `frac` = 1 (undamaged) → 0 (about to break).
+     */
+    _drawDamageOverlay(ctx, sx, sy, h, frac, time) {
+        const dmg = 1 - frac;   // 0 = no damage, 1 = nearly dead
+
+        // Darken the top face proportionally to damage
+        ctx.globalAlpha = dmg * 0.45;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(sx,          sy - h);
+        ctx.lineTo(sx + TW / 2, sy + TH / 2 - h);
+        ctx.lineTo(sx,          sy + TH - h);
+        ctx.lineTo(sx - TW / 2, sy + TH / 2 - h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Crack lines – more cracks at higher damage
+        const crackCount = Math.ceil(dmg * 5);
+        ctx.strokeStyle = `rgba(0,0,0,${0.3 + dmg * 0.4})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // Seed cracks deterministically from tile position
+        const seedX = sx * 7 + sy * 13;
+        for (let i = 0; i < crackCount; i++) {
+            // Pseudo-random offsets within the top diamond
+            const a = Math.sin(seedX + i * 37.7) * 0.35;
+            const b = Math.cos(seedX + i * 53.3) * 0.35;
+            const cx1 = sx + a * TW * 0.4;
+            const cy1 = sy - h + TH / 2 + b * TH * 0.4;
+            const a2 = Math.sin(seedX + i * 71.1) * 0.35;
+            const b2 = Math.cos(seedX + i * 91.9) * 0.35;
+            const cx2 = sx + a2 * TW * 0.4;
+            const cy2 = sy - h + TH / 2 + b2 * TH * 0.4;
+            ctx.moveTo(cx1, cy1);
+            ctx.lineTo(cx2, cy2);
+        }
+        ctx.stroke();
+
+        // Flash white briefly when at critical damage
+        if (frac <= 0.34 && Math.sin(time * 10) > 0.5) {
+            ctx.globalAlpha = 0.12;
+            ctx.fillStyle = '#ff4400';
+            ctx.beginPath();
+            ctx.moveTo(sx,          sy - h);
+            ctx.lineTo(sx + TW / 2, sy + TH / 2 - h);
+            ctx.lineTo(sx,          sy + TH - h);
+            ctx.lineTo(sx - TW / 2, sy + TH / 2 - h);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
     }
 
     /* ── tank drawing ─────────────────────────────────────── */

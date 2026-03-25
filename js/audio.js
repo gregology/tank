@@ -29,10 +29,11 @@ export class AudioManager {
 
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
-        game.on('fire',    () => this.playShoot());
-        game.on('destroy', () => this.playExplosion());
-        game.on('impact',  () => this.playImpact());
-        game.on('win',     () => this.playWin());
+        game.on('fire',         () => this.playShoot());
+        game.on('destroy',      () => this.playExplosion());
+        game.on('destroy_tile', () => this.playExplosion());
+        game.on('impact',       () => this.playImpact());
+        game.on('win',          () => this.playWin());
     }
 
     /* ── sound effects ─────────────────────────────────────── */

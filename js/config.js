@@ -29,7 +29,13 @@ export const CONFIG = {
     TANK_ROTATION_SPEED: 3.5, // radians / second
     TANK_SIZE:           0.45,// collision radius in world-units
     TANK_BARREL_LENGTH:  0.52,// barrel tip distance from centre (world-units)
+    CAMERA_LOOK_AHEAD:   3.5, // world-units offset in the facing direction
+    CAMERA_SMOOTHING:    2.5, // lower = smoother/slower follow
     TANK_RESPAWN_TIME:   2.0, // seconds before respawn
+
+    // ── Terrain ──────────────────────────────────────────────
+    HILL_HP:         3,       // shots to destroy a hill tile
+    ROCK_HP:         7,       // shots to destroy a rock tile
 
     // ── Bullet ───────────────────────────────────────────────
     BULLET_SPEED:    9.0,

@@ -48,6 +48,8 @@ export class Game {
         // ── Cameras (one per viewport)
         this.camera1 = new Camera();
         this.camera2 = new Camera();
+        this.camera1.smoothing = CONFIG.CAMERA_SMOOTHING;
+        this.camera2.smoothing = CONFIG.CAMERA_SMOOTHING;
 
         // ── State
         this.gameTime = 0;
@@ -98,6 +100,13 @@ export class Game {
             if (wasAlive && !b.alive && this.map.blocksProjectile(b.x, b.y)) {
                 this.particles.emitImpact(b.x, b.y);
                 this.emit('impact', { bullet: b });
+                // Damage the terrain tile
+                const gx = Math.floor(b.x), gy = Math.floor(b.y);
+                const destroyed = this.map.damageTile(gx, gy);
+                if (destroyed) {
+                    this.particles.emitExplosion(gx + 0.5, gy + 0.5);
+                    this.emit('destroy_tile', { gx, gy });
+                }
             }
         }
 
@@ -206,7 +215,13 @@ export class Game {
     _updateCamera(cam, tank, dt) {
         if (tank.alive) {
             const s = worldToScreen(tank.x, tank.y);
-            cam.follow(s.x, s.y, dt);
+            // Look-ahead: shift the camera target in the tank's facing direction
+            const la = CONFIG.CAMERA_LOOK_AHEAD;
+            const dx = Math.cos(tank.angle) * la;
+            const dy = Math.sin(tank.angle) * la;
+            const offX = (dx - dy) * (CONFIG.TILE_WIDTH / 2);
+            const offY = (dx + dy) * (CONFIG.TILE_HEIGHT / 2);
+            cam.follow(s.x + offX, s.y + offY, dt);
         }
     }
 

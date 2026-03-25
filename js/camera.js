@@ -5,7 +5,7 @@ export class Camera {
     constructor() {
         this.x = 0;           // screen-space X the camera is centered on
         this.y = 0;           // screen-space Y
-        this.smoothing = 5;   // higher = snappier follow
+        this.smoothing = 2.5;  // overwritten by config in Game
     }
 
     /** Instantly jump to a position. */
