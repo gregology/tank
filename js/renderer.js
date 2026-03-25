@@ -1225,7 +1225,8 @@ export class Renderer {
             }
         }
 
-        // Tank dots (IFVs slightly smaller)
+        // Tank dots (IFVs slightly smaller) + role letters in team mode
+        const roleLetters = { cavalry: 'C', sniper: 'S', defender: 'D', scout: 'F' };
         for (const t of game.allTanks) {
             if (!t.alive) continue;
             ctx.fillStyle = t.team === 1 ? '#ff4444' : '#4488ff';
@@ -1242,6 +1243,17 @@ export class Renderer {
                 ctx.fill();
             } else {
                 ctx.fillRect(dx - 1, dy - 1, 3, 3);
+            }
+            // Show role letter for allied bots in team mode
+            if (game.mode === 'team' && game._bots) {
+                const bot = game._bots.find(b => b.tank === t);
+                if (bot && bot.ai.role) {
+                    const letter = roleLetters[bot.ai.role] || '?';
+                    ctx.font = 'bold 7px monospace';
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(letter, dx, dy - 3);
+                }
             }
         }
 
@@ -1320,6 +1332,28 @@ export class Renderer {
             ctx.fillStyle = game.humanTank.color;
             ctx.textAlign = 'center';
             ctx.fillText(vType, cx, ch - 20);
+        }
+
+        // Allied bot role roster (bottom-left)
+        if (game._bots) {
+            const roleNames = { cavalry: 'CAV', sniper: 'SNP', defender: 'DEF', scout: 'SCT' };
+            const roleColors = { cavalry: '#e55', sniper: '#5ae', defender: '#5c5', scout: '#da5' };
+            const allyBots = game._bots.filter(b => b.tank.team === game.humanTank.team);
+            ctx.textAlign = 'left';
+            ctx.font = 'bold 10px "Courier New", monospace';
+            const rx = 12, ry = ch - 14 - allyBots.length * 13;
+            for (let i = 0; i < allyBots.length; i++) {
+                const b = allyBots[i];
+                const role = b.ai.role || '???';
+                const name = roleNames[role] || '???';
+                const alive = b.tank.alive;
+                ctx.fillStyle = alive ? (roleColors[role] || '#aaa') : '#555';
+                ctx.fillText(`\u2022 ${name}`, rx, ry + i * 13);
+                if (!alive) {
+                    ctx.fillStyle = '#777';
+                    ctx.fillText(' \u2620', rx + 30, ry + i * 13);
+                }
+            }
         }
 
         // Respawn message

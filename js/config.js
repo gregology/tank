@@ -71,6 +71,23 @@ export const CONFIG = {
     IFV_BULLET_COOLDOWN:     0.18, // rapid fire
     IFV_SPAWN_CHANCE:        0.4,  // probability of spawning as IFV in team mode
 
+    // ── AI Roles (team mode) ─────────────────────────────────
+    // Spawn weights — randomly assigned at spawn/respawn.
+    // Values are relative weights (not probabilities).
+    ROLE_WEIGHTS: {
+        cavalry:  3,
+        sniper:   2,
+        defender: 2,
+        scout:    3,
+    },
+    SNIPER_FIRE_RANGE:     12,   // preferred distance from enemy tower
+    SNIPER_MIN_RANGE:       8,   // won't get closer than this
+    SNIPER_ENGAGE_RANGE:    6,   // only fights enemies this close
+    DEFENDER_PATROL_RADIUS: 8,   // patrol radius around friendly tower
+    DEFENDER_ENGAGE_RANGE: 14,   // intercepts enemies this close to tower
+    SCOUT_FLANK_OFFSET:    16,   // perpendicular offset for flanking route
+
+
     // ── Particles ────────────────────────────────────────────
     MAX_PARTICLES: 300,
 

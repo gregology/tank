@@ -15,7 +15,7 @@ import { Tank } from './tank.js';
 import { Bullet } from './bullet.js';
 import { ParticleSystem } from './particles.js';
 import { Camera } from './camera.js';
-import { AIController } from './ai.js';
+import { AIController, pickRole } from './ai.js';
 import { distance, worldToScreen } from './utils.js';
 
 /* ── small bot-only key codes (never collide with real keys) ── */
@@ -189,11 +189,17 @@ export class Game {
         // AI bots — every tank except the human
         this._bots = [];
         for (const t of reds.slice(1)) {
-            this._bots.push({ ai: new AIController(BOT_KEYS, this.map), tank: t,
+            const ai = new AIController(BOT_KEYS, this.map);
+            ai.role = pickRole();
+            ai.friendlyTower = this._towers[0];
+            this._bots.push({ ai, tank: t,
                 enemies: blues, objective: this._towers[1] });
         }
         for (const t of blues) {
-            this._bots.push({ ai: new AIController(BOT_KEYS, this.map), tank: t,
+            const ai = new AIController(BOT_KEYS, this.map);
+            ai.role = pickRole();
+            ai.friendlyTower = this._towers[1];
+            this._bots.push({ ai, tank: t,
                 enemies: reds, objective: this._towers[0] });
         }
 
@@ -268,6 +274,12 @@ export class Game {
                 t.flashTimer = 1;
                 // Re-randomise vehicle type on respawn
                 t.vehicleType = Math.random() < CONFIG.IFV_SPAWN_CHANCE ? 'ifv' : 'tank';
+                // Re-assign AI role and reset per-life state
+                const bot = this._bots.find(b => b.tank === t);
+                if (bot) {
+                    bot.ai.role = pickRole();
+                    bot.ai.resetLife();
+                }
             }
         }
 

@@ -6,11 +6,11 @@ import { CONFIG, TILES as T } from '../js/config.js';
 import { GameMap } from '../js/map.js';
 import { Tank } from '../js/tank.js';
 import { Bullet } from '../js/bullet.js';
-import { AIController } from '../js/ai.js';
+import { AIController, AI_ROLES, pickRole } from '../js/ai.js';
 import { Pathfinder } from '../js/pathfinder.js';
 import { distance } from '../js/utils.js';
 
-export { CONFIG, T, GameMap, Tank, Bullet, AIController, Pathfinder, distance };
+export { CONFIG, T, GameMap, Tank, Bullet, AIController, AI_ROLES, pickRole, Pathfinder, distance };
 
 export const BOT_KEYS = {
     forward: '_bf', backward: '_bb',

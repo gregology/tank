@@ -6,6 +6,7 @@
     "test:ai": "node --test test/ai.test.js",
     "test:pathfinder": "node --test test/pathfinder.test.js",
     "test:map": "node --test test/map.test.js",
-    "test:game": "node --test test/game.test.js"
+    "test:game": "node --test test/game.test.js",
+    "test:roles": "node --test test/roles.test.js"
   }
 }

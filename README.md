@@ -68,11 +68,12 @@ The turret rotates independently from the hull, slower than hull rotation. This 
 ## Testing
 
 ```bash
-npm test              # all 82 tests
+npm test              # all 97 tests
 npm run test:ai       # AI navigation + combat
 npm run test:pathfinder  # A* pathfinding
 npm run test:map      # map generation + terrain
 npm run test:game     # tank, bullet, collision, directional armour, IFV
+npm run test:roles    # AI bot role behaviours
 ```
 
 Uses Node's built-in test runner — no test dependencies.
@@ -95,18 +96,20 @@ In 5v5 Team Battle, each vehicle is **randomly assigned** at spawn and respawn (
 
 IFV bullets deal 25% damage — four hits equal one tank hit. This creates an asymmetric dynamic: IFVs harass and whittle down tanks, but one return shot ends them.
 
-## Roadmap
+## AI Bot Roles
 
-### AI bot roles
+In 5v5 Team Battle, each AI bot is randomly assigned a **role** at spawn and respawn. Roles determine navigation strategy and combat priorities:
 
-Replace the single "charge at objective" behaviour with specialised roles randomly assigned at spawn/respawn in 5v5 Team Battle:
+| Role | Symbol | Behaviour |
+|------|--------|-----------|
+| **Cavalry** | C | Aggressive rush straight to the enemy tower. Engages anything in its path. First to arrive but often first to die. |
+| **Sniper** | S | Finds a firing position at range from the enemy tower and bombards it from a distance. Avoids close combat (self-defence only). |
+| **Defender** | D | Patrols near the friendly tower and intercepts incoming enemies. Switches to cavalry if the tower falls. |
+| **Scout** | F | Takes a wide flanking route to reach the enemy tower from an unexpected angle. Engages enemies only in close range. |
 
-- **Cavalry** — aggressive rush straight to the enemy tower, engages anything in its path. High risk, high reward — first to arrive but often first to die.
-- **Sniper** — takes an indirect approach, finds a firing position within range of the enemy tower, and bombards it from a distance. Avoids close combat.
-- **Defender** — patrols near the friendly tower and intercepts incoming enemies. Doesn't push forward unless the tower is safe.
-- **Scout** — takes a wide flanking route to reach the enemy tower from an unexpected angle. Engages enemies only when they're close enough to be a threat.
+Role letters appear on the minimap next to allied bot dots, and an allied roster is shown in the bottom-left of the HUD.
 
-The mix of roles creates more dynamic and unpredictable battles instead of two blobs colliding in the middle of the map.
+The mix of roles creates more dynamic and unpredictable battles instead of two blobs colliding in the middle of the map. Each respawn re-rolls the role, so team composition shifts throughout the match.
 
 ## Technical Notes
 
@@ -120,9 +123,3 @@ The mix of roles creates more dynamic and unpredictable battles instead of two b
 - **Pathfinding** uses A\* with an octile heuristic and a wall-proximity cost overlay. Binary min-heap open set. Under 1ms per search on 64×64.
 - **Collision** is axis-separated (tanks slide along obstacles) with passability-checked separation to prevent tanks being pushed into walls.
 - **Structured context** (`AGENTS.yaml`) captures architecture decisions and coding conventions for AI agents. See [sctx.dev](https://sctx.dev) for details.
-
-## Structured Context
-
-- This is a split-screen isometric pixel-art tank game running entirely
-in the browser with zero dependencies.  ES modules, vanilla JS, HTML
-Canvas.  Served over HTTP (not file://).
