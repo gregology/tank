@@ -546,7 +546,7 @@ export class Renderer {
 
     _drawHUD(ctx, game, playerNum, vx, vy, vw, vh) {
         const tank  = playerNum === 1 ? game.tank1 : game.tank2;
-        const label = `P${playerNum}`;
+        const label = (playerNum === 2 && game.mode === 'pvb') ? 'BOT' : `P${playerNum}`;
         const score = tank.score;
 
         ctx.save();
@@ -658,16 +658,21 @@ export class Renderer {
         ctx.save();
         ctx.textAlign = 'center';
 
-        // Winner text
+        // Winner label
         const winner = game.winner === 1 ? game.tank1 : game.tank2;
+        const label  = game.winner === 1 ? 'PLAYER 1'
+                     : game.mode === 'pvb' ? 'BOT' : 'PLAYER 2';
+
         ctx.font = 'bold 48px "Courier New", monospace';
         ctx.fillStyle = winner.color;
-        ctx.fillText(`PLAYER ${game.winner} WINS!`, cw / 2, ch / 2 - 20);
+        ctx.fillText(`${label} WINS!`, cw / 2, ch / 2 - 30);
 
-        // Restart prompt
-        ctx.font = '22px "Courier New", monospace';
+        // Prompts
+        ctx.font = '20px "Courier New", monospace';
         ctx.fillStyle = '#aaa';
-        ctx.fillText('Press  R  to restart', cw / 2, ch / 2 + 30);
+        ctx.fillText('Space / Enter   Rematch', cw / 2, ch / 2 + 20);
+        ctx.fillStyle = '#666';
+        ctx.fillText('R   Menu', cw / 2, ch / 2 + 50);
 
         ctx.restore();
     }

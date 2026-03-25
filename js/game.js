@@ -2,13 +2,15 @@
  * Core game state – owns the map, tanks, bullets, particles, cameras,
  * and runs the update loop.
  *
- * Emits events so other systems (sound, UI) can react without tight
- * coupling.  Use `game.on(event, callback)` to subscribe.
+ * Supports two modes:
+ *   • 'pvp' – both tanks driven by keyboard (split-screen)
+ *   • 'pvb' – P1 keyboard, P2 AI bot
  *
- * Events:
+ * Events emitted (subscribe with `game.on(name, fn)`):
  *   'fire'     { tank, bullet }
  *   'hit'      { bullet, victim, killer }
  *   'destroy'  { tank }
+ *   'impact'   { bullet }          – bullet hit terrain
  *   'respawn'  { tank }
  *   'win'      { winner }
  */
@@ -19,11 +21,17 @@ import { Tank } from './tank.js';
 import { Bullet } from './bullet.js';
 import { ParticleSystem } from './particles.js';
 import { Camera } from './camera.js';
+import { AIController } from './ai.js';
 import { distance, worldToScreen } from './utils.js';
 
 export class Game {
-    constructor(input) {
+    /**
+     * @param {import('./input.js').InputManager} input
+     * @param {'pvp'|'pvb'} mode
+     */
+    constructor(input, mode = 'pvp') {
         this.input = input;
+        this.mode  = mode;
         this.map   = new GameMap();
         this.particles = new ParticleSystem();
 
@@ -33,6 +41,9 @@ export class Game {
         // ── Players
         this.tank1 = new Tank(1, '#cc3333', '#882222');
         this.tank2 = new Tank(2, '#3366dd', '#223399');
+
+        // ── AI (only in pvb mode)
+        this.ai = mode === 'pvb' ? new AIController(CONFIG.PLAYER2_KEYS) : null;
 
         // ── Cameras (one per viewport)
         this.camera1 = new Camera();
@@ -62,24 +73,31 @@ export class Game {
         if (this.gameOver) return;
         this.gameTime += dt;
 
+        // AI thinks before tanks update
+        if (this.ai) {
+            this.ai.think(dt, this.tank2, this.tank1, this.map);
+        }
+
+        const input2 = this.ai ?? this.input;
+
         // Tanks
         this.tank1.update(dt, this.input, CONFIG.PLAYER1_KEYS, this.map);
-        this.tank2.update(dt, this.input, CONFIG.PLAYER2_KEYS, this.map);
+        this.tank2.update(dt, input2,     CONFIG.PLAYER2_KEYS, this.map);
 
         // Tank-tank push-apart
         this._separateTanks();
 
         // Firing
-        this._handleFiring(this.tank1, CONFIG.PLAYER1_KEYS);
-        this._handleFiring(this.tank2, CONFIG.PLAYER2_KEYS);
+        this._handleFiring(this.tank1, this.input, CONFIG.PLAYER1_KEYS);
+        this._handleFiring(this.tank2, input2,     CONFIG.PLAYER2_KEYS);
 
         // Bullets
         for (const b of this.bullets) {
             const wasAlive = b.alive;
             b.update(dt, this.map);
-            // emit impact particles when bullet hits terrain
-            if (wasAlive && !b.alive) {
+            if (wasAlive && !b.alive && this.map.blocksProjectile(b.x, b.y)) {
                 this.particles.emitImpact(b.x, b.y);
+                this.emit('impact', { bullet: b });
             }
         }
 
@@ -107,6 +125,7 @@ export class Game {
         this.particles = new ParticleSystem();
         this.gameOver = false;
         this.winner   = null;
+        this.map      = new GameMap();        // fresh random map
         this._initialSpawn();
     }
 
@@ -130,12 +149,11 @@ export class Game {
         this.camera2.setPosition(sc2.x, sc2.y);
     }
 
-    _handleFiring(tank, keys) {
-        if (this.input.isDown(keys.fire) && tank.canFire()) {
+    _handleFiring(tank, input, keys) {
+        if (input.isDown(keys.fire) && tank.canFire()) {
             tank.fire();
             const b = new Bullet(tank.x, tank.y, tank.angle, tank.playerNumber);
             this.bullets.push(b);
-            // muzzle flash
             const tipX = tank.x + Math.cos(tank.angle) * CONFIG.TANK_BARREL_LENGTH;
             const tipY = tank.y + Math.sin(tank.angle) * CONFIG.TANK_BARREL_LENGTH;
             this.particles.emitMuzzleFlash(tipX, tipY, tank.angle);
@@ -145,12 +163,11 @@ export class Game {
 
     _checkBulletHits() {
         const tanks = [this.tank1, this.tank2];
-
         for (const b of this.bullets) {
             if (!b.alive) continue;
             for (const t of tanks) {
                 if (!t.alive) continue;
-                if (b.owner === t.playerNumber) continue;   // no self-hit
+                if (b.owner === t.playerNumber) continue;
                 if (distance(b.x, b.y, t.x, t.y) < CONFIG.TANK_SIZE) {
                     b.alive = false;
                     const killer = b.owner === 1 ? this.tank1 : this.tank2;
@@ -167,8 +184,6 @@ export class Game {
         tank.kill();
         killer.score++;
         this.emit('destroy', { tank });
-
-        // pick a respawn location away from the killer
         const other = tank === this.tank1 ? this.tank2 : this.tank1;
         const sp = this.map.getSpawnPoint(other.x, other.y);
         tank.respawnAt(sp.x, sp.y);
@@ -183,10 +198,8 @@ export class Game {
             const overlap = (minD - d) / 2;
             const nx = (t2.x - t1.x) / d;
             const ny = (t2.y - t1.y) / d;
-            t1.x -= nx * overlap;
-            t1.y -= ny * overlap;
-            t2.x += nx * overlap;
-            t2.y += ny * overlap;
+            t1.x -= nx * overlap;  t1.y -= ny * overlap;
+            t2.x += nx * overlap;  t2.y += ny * overlap;
         }
     }
 
@@ -199,12 +212,10 @@ export class Game {
 
     _checkWin() {
         if (this.tank1.score >= CONFIG.WIN_SCORE) {
-            this.gameOver = true;
-            this.winner = 1;
+            this.gameOver = true; this.winner = 1;
             this.emit('win', { winner: 1 });
         } else if (this.tank2.score >= CONFIG.WIN_SCORE) {
-            this.gameOver = true;
-            this.winner = 2;
+            this.gameOver = true; this.winner = 2;
             this.emit('win', { winner: 2 });
         }
     }

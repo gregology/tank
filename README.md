@@ -1,8 +1,8 @@
 # Tank Battle
 
-A split-screen isometric pixel-art tank game for two players, running entirely in the browser. No dependencies, no build step.
+A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step.
 
-![Two players battle across a procedurally generated island](https://img.shields.io/badge/players-2-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-green)
+![1-2 players](https://img.shields.io/badge/players-1--2-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-green) ![Procedural sound](https://img.shields.io/badge/sound-procedural-orange)
 
 ## Setup
 
@@ -24,6 +24,15 @@ npx serve .
 
 Then open **http://localhost:8000** in your browser.
 
+## Game Modes
+
+Choose from the start menu:
+
+| Mode | Description |
+|------|-------------|
+| **1v1 Split Screen** | Two human players on one keyboard |
+| **Player vs Bot** | Human (P1, red) vs AI opponent (P2, blue) |
+
 ## Controls
 
 | Action   | Player 1 (Red) | Player 2 (Blue) |
@@ -33,7 +42,9 @@ Then open **http://localhost:8000** in your browser.
 | Rotate left  | A          | ←               |
 | Rotate right | D          | →               |
 | Fire     | Space          | Enter           |
-| Restart (after game over) | R | R           |
+
+**Menu:** ↑↓ or W/S to select, Enter or Space to start.
+**Game over:** Space/Enter for rematch, R for menu.
 
 ## How to Play
 
@@ -43,6 +54,30 @@ Then open **http://localhost:8000** in your browser.
 - First player to **10 kills** wins.
 - Hills and rocks **block movement and bullets** — use them as cover.
 - Each viewport has a **minimap** in the bottom-right corner showing the full island and both players.
+
+## Project Structure
+
+```
+tank/
+├── index.html               Entry point
+├── css/
+│   └── style.css            Full-screen canvas, pixel-art rendering
+└── js/
+    ├── main.js         (80)  State machine (menu → game → menu)
+    ├── config.js       (60)  All tunable constants
+    ├── utils.js        (58)  Isometric projection & math helpers
+    ├── input.js        (48)  Keyboard input manager
+    ├── camera.js       (23)  Smooth-follow camera
+    ├── map.js         (181)  Procedural island generation (fBm noise)
+    ├── tank.js        (115)  Tank entity (movement, collision, treads)
+    ├── bullet.js       (51)  Projectile entity
+    ├── particles.js   (109)  Particle system (explosions, flash, impacts)
+    ├── game.js        (220)  Game state, collision, event bus, AI wiring
+    ├── renderer.js    (690)  Isometric renderer (split-screen, depth-sorted)
+    ├── ai.js          (165)  AI tank controller (chase, aim, avoid, fire)
+    ├── audio.js       (150)  Procedural sound effects (Web Audio API)
+    └── menu.js        (155)  Start menu with mode selection
+```
 
 ## Extending the Game
 
@@ -66,34 +101,43 @@ All constants live in [`js/config.js`](js/config.js) — tank speed, bullet spee
 2. Add instances to `game.js` — update in `update()`, add to the renderer's entity list in `_renderViewport`.
 3. Render in `renderer.js` — add a new `kind` constant and drawing method.
 
-### Adding sound
+### Sound system
 
-The game emits events you can hook into without modifying core code:
-
-```js
-game.on('fire',    ({ tank, bullet }) => { /* play fire sound */ });
-game.on('hit',     ({ bullet, victim, killer }) => { /* play hit sound */ });
-game.on('destroy', ({ tank }) => { /* play explosion sound */ });
-game.on('win',     ({ winner }) => { /* play victory sound */ });
-```
-
-### Adding AI
-
-Create a module that reads game state and produces the same interface as `InputManager`:
+All sounds are procedurally synthesised via the Web Audio API — no audio files. The `AudioManager` hooks into the game's event bus:
 
 ```js
-class AIController {
-    isDown(code) { /* return true/false based on AI logic */ }
-    wasPressed(code) { /* ... */ }
-    endFrame() {}
-}
+game.on('fire',    () => audio.playShoot());
+game.on('destroy', () => audio.playExplosion());
+game.on('impact',  () => audio.playImpact());
+game.on('win',     () => audio.playWin());
 ```
 
-Pass it in place of (or alongside) the `InputManager` for a player.
+Add new sounds by creating methods on `AudioManager` and wiring them to game events.
+
+### AI system
+
+The `AIController` (`js/ai.js`) implements the same `isDown(code)` interface as `InputManager`, so it's a drop-in replacement. Behaviours:
+
+- **Chase** — rotate toward + advance on the enemy
+- **Fire** — shoot when aimed and has line-of-sight (ray-marched)
+- **Avoid** — steer around obstacles by probing left/right
+- **Unstick** — random evasive manoeuvre after being blocked
+- **Patrol** — gentle weave when enemy is dead
+- **Aim wobble** — slight random offset for human-like imperfection
+
+To add difficulty levels, tune `aimWobble`, `fireDelay`, and the aim threshold in `ai.js`.
+
+### Adding new game modes
+
+1. Add a new entry to `menu.modes` in `menu.js`.
+2. Handle the mode string in `Game` constructor (`game.js`).
+3. Wire up any new input sources in `main.js`.
 
 ## Technical Notes
 
-- **Rendering** uses a two-pass approach: flat ground tiles are drawn first (they never occlude entities), then elevated tiles and entities are depth-sorted together for correct occlusion.
+- **Rendering** uses a two-pass approach: flat ground tiles first (can't occlude entities), then elevated tiles + entities depth-sorted together. Elevated tiles use `depth + 1` to ensure their side walls correctly occlude entities behind them.
 - **Map generation** uses seeded value noise (fBm) for organic coastlines, hill clusters, and rock placement. Each game gets a unique island.
+- **Tank graphics** are fully projected — every polygon is defined in local space (+x forward), rotated by the tank's angle, and projected through the isometric transform. Tracks, hull, turret, and barrel are stacked with visible 3D extrusion.
+- **Sound** is 100% procedural: noise buffers through bandpass filters for gunshots, low oscillators for explosions, sine tones for UI.
 - **Collision** is axis-separated — tanks slide along obstacles instead of stopping dead.
 - **No dependencies.** Pure vanilla JS with ES modules. Works in any modern browser.
