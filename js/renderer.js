@@ -54,35 +54,25 @@ export class Renderer {
         const cw = this.canvas.width, ch = this.canvas.height;
         ctx.clearRect(0, 0, cw, ch);
 
-        const fullScreen = game.mode === 'pvb';
-
-        if (fullScreen) {
-            // ── Single viewport (human player only) ──
-            this._renderViewport(ctx, game, game.tank1, game.camera1,
-                                 0, 0, cw, ch);
-            this._drawHUD(ctx, game, 1, 0, 0, cw, ch);
-        } else {
+        if (game.mode === 'pvp') {
             // ── Split screen ──
             this._renderViewport(ctx, game, game.tank1, game.camera1,
                                  0, 0, this.vpW, this.vpH);
             this._renderViewport(ctx, game, game.tank2, game.camera2,
                                  this.vpW, 0, this.vpW, this.vpH);
-
-            // Divider
             ctx.save();
-            ctx.strokeStyle = '#556';
-            ctx.lineWidth   = 3;
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur  = 6;
-            ctx.beginPath();
-            ctx.moveTo(this.vpW, 0);
-            ctx.lineTo(this.vpW, ch);
-            ctx.stroke();
-            ctx.restore();
-
-            // HUD per viewport
+            ctx.strokeStyle = '#556'; ctx.lineWidth = 3;
+            ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+            ctx.beginPath(); ctx.moveTo(this.vpW, 0);
+            ctx.lineTo(this.vpW, ch); ctx.stroke(); ctx.restore();
             this._drawHUD(ctx, game, 1, 0,       0, this.vpW, this.vpH);
             this._drawHUD(ctx, game, 2, this.vpW, 0, this.vpW, this.vpH);
+        } else {
+            // ── Full screen (pvb or team) ──
+            this._renderViewport(ctx, game, game.humanTank, game.camera1,
+                                 0, 0, cw, ch);
+            if (game.mode === 'team') this._drawTeamHUD(ctx, game, cw, ch);
+            else                      this._drawHUD(ctx, game, 1, 0, 0, cw, ch);
         }
 
         if (game.gameOver) this._drawGameOver(ctx, game);
@@ -172,8 +162,11 @@ export class Renderer {
             addToBucket(wx + wy, { kind, entity, sx: scr.x, sy: scr.y });
         };
 
-        for (const t of [game.tank1, game.tank2]) {
+        for (const t of game.allTanks) {
             if (t.alive || t.respawnTimer > 0) addEntity(1, t, t.x, t.y);
+        }
+        for (const tw of game.towers) {
+            if (tw.alive) addEntity(4, tw, tw.x, tw.y);
         }
         for (const b of game.bullets) {
             if (b.alive) addEntity(2, b, b.x, b.y);
@@ -192,6 +185,7 @@ export class Renderer {
                     case 1: this._drawTank(ctx, item.entity, item.sx, item.sy); break;
                     case 2: this._drawBullet(ctx, item.entity, item.sx, item.sy, game.gameTime); break;
                     case 3: this._drawParticle(ctx, item.entity, item.sx, item.sy); break;
+                    case 4: this._drawTower(ctx, item.entity, item.sx, item.sy); break;
                 }
             }
         }
@@ -575,6 +569,109 @@ export class Renderer {
         ctx.stroke();
     }
 
+    /* ── tower drawing ────────────────────────────────────── */
+
+    _drawTower(ctx, tower, sx, sy) {
+        const frac = tower.hp / tower.maxHp;
+        const fullH = CONFIG.TOWER_VIS_HEIGHT;
+        const h = Math.round(fullH * frac);        // shrinks with damage
+        if (h <= 0) return;
+
+        const S  = 0.45;   // half-size in world units (isometric block)
+        const bw = S * TW;
+        const bd = S * TH;
+
+        // Darken colours based on damage
+        const dmg = 1 - frac;
+        const darken = (hex, amt) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            const f = 1 - amt * 0.5;
+            return rgb(r * f, g * f, b * f);
+        };
+        const topCol   = darken(tower.color, dmg);
+        const leftCol  = darken(tower.darkColor, dmg);
+        const rightCol = darken(tower.darkColor, dmg * 0.7);
+
+        // ── Left (SW) side wall ──
+        ctx.fillStyle = leftCol;
+        ctx.beginPath();
+        ctx.moveTo(sx - bw, sy - h);
+        ctx.lineTo(sx,      sy + bd - h);
+        ctx.lineTo(sx,      sy + bd);
+        ctx.lineTo(sx - bw, sy);
+        ctx.closePath();
+        ctx.fill();
+
+        // ── Right (SE) side wall ──
+        ctx.fillStyle = rightCol;
+        ctx.beginPath();
+        ctx.moveTo(sx + bw, sy - h);
+        ctx.lineTo(sx,      sy + bd - h);
+        ctx.lineTo(sx,      sy + bd);
+        ctx.lineTo(sx + bw, sy);
+        ctx.closePath();
+        ctx.fill();
+
+        // ── Top face ──
+        ctx.fillStyle = topCol;
+        ctx.beginPath();
+        ctx.moveTo(sx,      sy - bd - h);
+        ctx.lineTo(sx + bw, sy - h);
+        ctx.lineTo(sx,      sy + bd - h);
+        ctx.lineTo(sx - bw, sy - h);
+        ctx.closePath();
+        ctx.fill();
+
+        // ── Damage cracks on top face ──
+        if (dmg > 0) {
+            this._drawDamageOverlay(ctx, sx, sy, h, frac, 0);
+        }
+
+        // ── Battlements (only at high HP) ──
+        if (frac > 0.4) {
+            const mH = 5;
+            const mw = bw * 0.3;
+            ctx.fillStyle = leftCol;
+            // Four small merlon blocks at diamond corners
+            const merlons = [
+                [sx,      sy - bd - h - mH],
+                [sx + bw, sy - h - mH],
+                [sx,      sy + bd - h - mH],
+                [sx - bw, sy - h - mH],
+            ];
+            for (const [mx, my] of merlons) {
+                ctx.fillRect(mx - mw / 2, my, mw, mH);
+            }
+        }
+
+        // ── Flag pole + flag ──
+        const flagX = sx, flagY = sy - bd - h - 18;
+        ctx.strokeStyle = '#aaa';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - bd - h);
+        ctx.lineTo(flagX, flagY);
+        ctx.stroke();
+
+        ctx.fillStyle = tower.color;
+        ctx.beginPath();
+        ctx.moveTo(flagX, flagY);
+        ctx.lineTo(flagX + 10, flagY + 4);
+        ctx.lineTo(flagX, flagY + 8);
+        ctx.closePath();
+        ctx.fill();
+
+        // ── HP bar ──
+        const barW = 34, barH = 5;
+        const barX = sx - barW / 2, barY = flagY - 10;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        ctx.fillStyle = frac > 0.5 ? '#4a4' : frac > 0.25 ? '#da4' : '#d44';
+        ctx.fillRect(barX, barY, barW * frac, barH);
+    }
+
     /* ── bullet drawing ───────────────────────────────────── */
 
     _drawBullet(ctx, bullet, sx, sy, time) {
@@ -696,22 +793,94 @@ export class Renderer {
             }
         }
 
-        // Player dots
-        const drawDot = (tank, color) => {
-            if (!tank.alive) return;
-            ctx.fillStyle = color;
-            const dx = mmX + tank.x * px;
-            const dy = mmY + tank.y * px;
-            ctx.fillRect(dx - 2, dy - 2, 5, 5);
-        };
+        // Tank dots
+        for (const t of game.allTanks) {
+            if (!t.alive) continue;
+            ctx.fillStyle = t.team === 1 ? '#ff4444' : '#4488ff';
+            const dx = mmX + t.x * px;
+            const dy = mmY + t.y * px;
+            ctx.fillRect(dx - 1, dy - 1, 3, 3);
+        }
 
-        drawDot(game.tank1, '#ff4444');
-        drawDot(game.tank2, '#4488ff');
+        // Tower markers (larger)
+        for (const tw of game.towers) {
+            if (!tw.alive) continue;
+            ctx.fillStyle = tw.team === 1 ? '#ff6666' : '#6688ff';
+            const dx = mmX + tw.x * px;
+            const dy = mmY + tw.y * px;
+            ctx.fillRect(dx - 3, dy - 3, 7, 7);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(dx - 3, dy - 3, 7, 7);
+        }
 
         // Border highlight for this player
-        ctx.strokeStyle = playerNum === 1 ? game.tank1.color : game.tank2.color;
+        const borderTank = game.allTanks.find(t => t.team === playerNum) ?? game.allTanks[0];
+        ctx.strokeStyle = borderTank ? borderTank.color : '#888';
         ctx.lineWidth = 1;
         ctx.strokeRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4);
+    }
+
+    /* ── team HUD ─────────────────────────────────────────── */
+
+    _drawTeamHUD(ctx, game, cw, ch) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        const cx = cw / 2;
+
+        // Tower HP for both teams
+        const barW = 150, barH = 14, gap = 20;
+        for (let i = 0; i < game.towers.length; i++) {
+            const tw = game.towers[i];
+            const x = i === 0 ? cx - barW - gap : cx + gap;
+            const y = 14;
+            const frac = tw.alive ? tw.hp / tw.maxHp : 0;
+            const label = tw.team === 1 ? 'RED TOWER' : 'BLUE TOWER';
+
+            // Background
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(x - 2, y - 2, barW + 4, barH + 18);
+
+            // Label
+            ctx.font = 'bold 11px "Courier New", monospace';
+            ctx.fillStyle = tw.color;
+            ctx.textAlign = i === 0 ? 'right' : 'left';
+            ctx.fillText(label, i === 0 ? x + barW : x, y + 10);
+
+            // Bar
+            const barY = y + 14;
+            ctx.fillStyle = '#222';
+            ctx.fillRect(x, barY, barW, barH);
+            ctx.fillStyle = frac > 0.5 ? tw.color : frac > 0.25 ? '#da4' : '#d44';
+            ctx.fillRect(x, barY, barW * frac, barH);
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, barY, barW, barH);
+
+            // HP text
+            ctx.font = 'bold 10px "Courier New", monospace';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${tw.hp}/${tw.maxHp}`, x + barW / 2, barY + 11);
+        }
+
+        // "VS" divider
+        ctx.font = 'bold 14px "Courier New", monospace';
+        ctx.fillStyle = '#555';
+        ctx.textAlign = 'center';
+        ctx.fillText('VS', cx, 36);
+
+        // Respawn message
+        if (!game.humanTank.alive) {
+            ctx.font = 'bold 20px "Courier New", monospace';
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fillText('RESPAWNING...', cx, ch / 2);
+        }
+
+        // Minimap
+        this._drawMinimap(ctx, game, 1, 0, 0, cw, ch);
+
+        ctx.restore();
     }
 
     /* ── game over overlay ────────────────────────────────── */
@@ -727,9 +896,15 @@ export class Renderer {
         ctx.textAlign = 'center';
 
         // Winner label
-        const winner = game.winner === 1 ? game.tank1 : game.tank2;
-        const label  = game.winner === 1 ? 'PLAYER 1'
-                     : game.mode === 'pvb' ? 'BOT' : 'PLAYER 2';
+        let winner, label;
+        if (game.mode === 'team') {
+            winner = { color: game.winner === 1 ? '#cc3333' : '#3366dd' };
+            label  = game.winner === 1 ? 'RED TEAM' : 'BLUE TEAM';
+        } else {
+            winner = game.winner === 1 ? game.tank1 : game.tank2;
+            label  = game.winner === 1 ? 'PLAYER 1'
+                   : game.mode === 'pvb' ? 'BOT' : 'PLAYER 2';
+        }
 
         ctx.font = 'bold 48px "Courier New", monospace';
         ctx.fillStyle = winner.color;

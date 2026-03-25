@@ -15,12 +15,13 @@ export class Bullet {
      * @param {number} angle  firing angle (radians)
      * @param {number} owner  player number (1 or 2)
      */
-    constructor(x, y, angle, owner) {
+    constructor(x, y, angle, owner, team = 0) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x     = x + Math.cos(angle) * offset;
         this.y     = y + Math.sin(angle) * offset;
         this.angle = angle;
         this.owner = owner;
+        this.team  = team;
         this.alive = true;
         this.lifetime = CONFIG.BULLET_LIFETIME;
     }

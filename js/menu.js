@@ -11,6 +11,7 @@ export class Menu {
         this.modes = [
             { label: '1v1 SPLIT SCREEN',  mode: 'pvp' },
             { label: 'PLAYER  vs  BOT',   mode: 'pvb' },
+            { label: '5v5 TEAM BATTLE',   mode: 'team' },
         ];
         this.selectedIndex = 0;
         this.confirmed     = false;

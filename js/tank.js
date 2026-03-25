@@ -18,6 +18,7 @@ export class Tank {
         this.x     = 0;
         this.y     = 0;
         this.angle = 0;          // radians – 0 = east in world space
+        this.team  = 0;          // 1 = red, 2 = blue (set by Game)
 
         // Gameplay
         this.alive        = true;

@@ -92,6 +92,143 @@ export class GameMap {
         return 0;
     }
 
+    /**
+     * Find two tower positions on opposite sides of the island.
+     * Creates a circular sand base (radius 5) around each one,
+     * clearing all terrain features.
+     * @returns {[{x,y},{x,y}]}
+     */
+    findTowerPositions() {
+        const cx = this.width / 2, cy = this.height / 2;
+        const off = Math.min(this.width, this.height) * 0.28;
+        const p1 = this._findClearSpot(Math.round(cx - off), Math.round(cy - off), 3);
+        const p2 = this._findClearSpot(Math.round(cx + off), Math.round(cy + off), 3);
+        // Sand base circles
+        this._createBase(Math.floor(p1.x), Math.floor(p1.y));
+        this._createBase(Math.floor(p2.x), Math.floor(p2.y));
+        // Clear terrain around each base (larger radius, grass not sand)
+        this._clearAroundBase(Math.floor(p1.x), Math.floor(p1.y), 10);
+        this._clearAroundBase(Math.floor(p2.x), Math.floor(p2.y), 10);
+        // Carve a wide path between the two bases
+        this._clearPath(p1, p2, 3);
+        return [p1, p2];
+    }
+
+    /**
+     * Pick a random spawn point inside a tower's sand base.
+     * Checks that the full tank collision box is passable so the
+     * tank can never spawn stuck against water or terrain.
+     */
+    getBaseSpawnPoint(towerX, towerY) {
+        const s = CONFIG.TANK_SIZE * 0.85;          // collision half-extent
+        const minR = CONFIG.TOWER_RADIUS + CONFIG.TANK_SIZE + 0.2; // avoid tower
+        const maxR = 5 - s - 0.3;                  // stay inside sand circle
+
+        for (let attempt = 0; attempt < 100; attempt++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = minR + Math.random() * (maxR - minR);
+            const x = towerX + Math.cos(a) * r;
+            const y = towerY + Math.sin(a) * r;
+            // Check all four corners of the tank's collision box
+            if (this.isPassable(x - s, y - s) &&
+                this.isPassable(x + s, y - s) &&
+                this.isPassable(x - s, y + s) &&
+                this.isPassable(x + s, y + s)) {
+                return { x, y };
+            }
+        }
+        return { x: towerX + 2, y: towerY + 2 };
+    }
+
+    /**
+     * Remove hills/rocks in a large circle around a base, replacing
+     * them with grass.  Keeps the area navigable for bots.
+     */
+    _clearAroundBase(gx, gy, r) {
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (dx * dx + dy * dy > r * r) continue;
+                const tx = gx + dx, ty = gy + dy;
+                const t = this.getTile(tx, ty);
+                if (t === T.HILL || t === T.ROCK) {
+                    this.setTile(tx, ty, T.GRASS);
+                }
+            }
+        }
+    }
+
+    /**
+     * Carve a straight passable corridor of half-width `hw` tiles
+     * between two points.  Removes hills/rocks → grass, and
+     * converts water → sand so the path is always walkable.
+     */
+    _clearPath(p1, p2, hw) {
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1) return;
+        const px = -dy / len, py = dx / len;   // perpendicular
+
+        const steps = Math.ceil(len * 2);       // oversample for no gaps
+        for (let s = 0; s <= steps; s++) {
+            const t = s / steps;
+            const cx = p1.x + dx * t;
+            const cy = p1.y + dy * t;
+            for (let w = -hw; w <= hw; w++) {
+                const gx = Math.floor(cx + px * w);
+                const gy = Math.floor(cy + py * w);
+                const tile = this.getTile(gx, gy);
+                if (tile === T.HILL || tile === T.ROCK) {
+                    this.setTile(gx, gy, T.GRASS);
+                } else if (tile === T.DEEP_WATER || tile === T.SHALLOW_WATER) {
+                    this.setTile(gx, gy, T.SAND);
+                }
+            }
+        }
+    }
+
+    /** Search outward from (tx,ty) for a spot with `r` tiles of clear grass. */
+    _findClearSpot(tx, ty, r) {
+        for (let ring = 0; ring < 12; ring++) {
+            for (let dy = -ring; dy <= ring; dy++) {
+                for (let dx = -ring; dx <= ring; dx++) {
+                    if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
+                    const gx = tx + dx, gy = ty + dy;
+                    if (this._areaPassable(gx, gy, r)) {
+                        return { x: gx + 0.5, y: gy + 0.5 };
+                    }
+                }
+            }
+        }
+        return { x: tx + 0.5, y: ty + 0.5 };
+    }
+
+    _areaPassable(gx, gy, r) {
+        for (let dy = -r; dy <= r; dy++)
+            for (let dx = -r; dx <= r; dx++)
+                if (!this.isPassable(gx + dx + 0.5, gy + dy + 0.5)) return false;
+        return true;
+    }
+
+    /**
+     * Stamp a circular sand base around (gx, gy).
+     * Radius 5: everything inside becomes sand, all terrain removed.
+     */
+    _createBase(gx, gy) {
+        const R = 5;
+        for (let dy = -R; dy <= R; dy++) {
+            for (let dx = -R; dx <= R; dx++) {
+                if (dx * dx + dy * dy > R * R) continue;   // circular
+                const tx = gx + dx, ty = gy + dy;
+                const t = this.getTile(tx, ty);
+                // Only overwrite land tiles (not water)
+                if (t === T.GRASS || t === T.DARK_GRASS ||
+                    t === T.HILL  || t === T.ROCK || t === T.SAND) {
+                    this.setTile(tx, ty, T.SAND);
+                }
+            }
+        }
+    }
+
     /** Find a random passable spawn point, far from (ax, ay). */
     getSpawnPoint(ax, ay, minDist = 10) {
         for (let attempt = 0; attempt < 300; attempt++) {

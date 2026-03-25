@@ -37,6 +37,12 @@ export const CONFIG = {
     HILL_HP:         3,       // shots to destroy a hill tile
     ROCK_HP:         7,       // shots to destroy a rock tile
 
+    // ── Team / Tower ────────────────────────────────────────
+    TEAM_SIZE:       5,       // tanks per team (including human)
+    TOWER_HP:        10,
+    TOWER_RADIUS:    0.8,     // collision / hit radius
+    TOWER_VIS_HEIGHT:35,      // pixel height for rendering
+
     // ── Bullet ───────────────────────────────────────────────
     BULLET_SPEED:    9.0,
     BULLET_RADIUS:   3,       // screen-pixel radius
