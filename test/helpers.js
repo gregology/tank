@@ -2,21 +2,24 @@
  * Shared test utilities: map builders, bot simulation, assertions.
  */
 
-import { CONFIG, TILES as T } from '../js/config.js';
-import { GameMap } from '../js/map.js';
-import { Tank } from '../js/tank.js';
-import { Bullet } from '../js/bullet.js';
-import { AIController, AI_ROLES, pickRole } from '../js/ai.js';
-import { Pathfinder } from '../js/pathfinder.js';
-import { distance } from '../js/utils.js';
+import { AI_ROLES, AIController, pickRole } from "../js/ai.js";
+import { Bullet } from "../js/bullet.js";
+import { CONFIG, TILES as T } from "../js/config.js";
+import { GameMap } from "../js/map.js";
+import { Pathfinder } from "../js/pathfinder.js";
+import { Tank } from "../js/tank.js";
+import { distance } from "../js/utils.js";
 
-export { CONFIG, T, GameMap, Tank, Bullet, AIController, AI_ROLES, pickRole, Pathfinder, distance };
+export { AI_ROLES, AIController, Bullet, CONFIG, distance, GameMap, Pathfinder, pickRole, T, Tank };
 
 export const BOT_KEYS = {
-    forward: '_bf', backward: '_bb',
-    left: '_bl', right: '_br',
-    turretLeft: '_btl', turretRight: '_btr',
-    fire: '_bx',
+    forward: "_bf",
+    backward: "_bb",
+    left: "_bl",
+    right: "_br",
+    turretLeft: "_btl",
+    turretRight: "_btr",
+    fire: "_bx",
 };
 
 /* ── Map builders ─────────────────────────────────────────── */
@@ -36,11 +39,8 @@ export function randomMap() {
 export function customMap(obstacles) {
     const map = new GameMap();
     // Override EVERY tile to grass
-    for (let y = 0; y < map.height; y++)
-        for (let x = 0; x < map.width; x++)
-            map.setTile(x, y, T.GRASS);
-    for (const o of obstacles)
-        map.setTile(o.x, o.y, o.tile ?? T.HILL);
+    for (let y = 0; y < map.height; y++) for (let x = 0; x < map.width; x++) map.setTile(x, y, T.GRASS);
+    for (const o of obstacles) map.setTile(o.x, o.y, o.tile ?? T.HILL);
     return map;
 }
 
@@ -60,10 +60,7 @@ export function wallV(x, y1, y2, tile = T.HILL) {
 
 /** Build an L-shaped wall. */
 export function wallL(cx, cy, armH, armV, tile = T.HILL) {
-    return [
-        ...wallH(cy, cx, cx + armH, tile),
-        ...wallV(cx, cy - armV, cy, tile),
-    ];
+    return [...wallH(cy, cx, cx + armH, tile), ...wallV(cx, cy - armV, cy, tile)];
 }
 
 /** Build a U-shaped wall (open at the top). */
@@ -76,14 +73,14 @@ export function wallU(cx, cy, width, depth, tile = T.HILL) {
 }
 
 /** Build a zigzag: N horizontal walls with alternating gaps. */
-export function zigzag(startY, spacing, count, x1, x2, gapSide = 'alternate') {
+export function zigzag(startY, spacing, count, x1, x2, gapSide = "alternate") {
     const obs = [];
     for (let i = 0; i < count; i++) {
         const y = startY + i * spacing;
-        const gapLeft = gapSide === 'alternate' ? (i % 2 === 0) : gapSide === 'left';
+        const gapLeft = gapSide === "alternate" ? i % 2 === 0 : gapSide === "left";
         for (let x = x1; x <= x2; x++) {
-            if (gapLeft && x <= x1 + 1) continue;   // gap on left
-            if (!gapLeft && x >= x2 - 1) continue;  // gap on right
+            if (gapLeft && x <= x1 + 1) continue; // gap on left
+            if (!gapLeft && x >= x2 - 1) continue; // gap on right
             obs.push({ x, y });
         }
     }
@@ -96,7 +93,7 @@ export function zigzag(startY, spacing, count, x1, x2, gapSide = 'alternate') {
  * Create a bot tank + AI at the given position.
  */
 export function createBot(x, y, angle = 0, map = null) {
-    const tank = new Tank(1, '#cc3333', '#882222');
+    const tank = new Tank(1, "#cc3333", "#882222");
     tank.team = 1;
     tank.alive = true;
     tank.x = x;
@@ -120,12 +117,7 @@ export function createBot(x, y, angle = 0, map = null) {
  * @returns {{ reachedTarget, finalDist, maxStuck, elapsed, positions }}
  */
 export function simulateNavigation(bot, target, map, opts = {}) {
-    const {
-        seconds = 20,
-        enemies = [],
-        objective = null,
-        arrivalDist = 2.0,
-    } = opts;
+    const { seconds = 20, enemies = [], objective = null, arrivalDist = 2.0 } = opts;
 
     const dt = 0.016;
     const frames = Math.ceil(seconds / dt);
@@ -183,7 +175,9 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         const r = createBot(
             redSpawn.x + (Math.random() - 0.5) * 3,
             redSpawn.y + (Math.random() - 0.5) * 3,
-            Math.random() * Math.PI * 2, map);
+            Math.random() * Math.PI * 2,
+            map,
+        );
         r.tank.team = 1;
         r.tank.playerNumber = i + 1;
         r.target = redTarget;
@@ -192,7 +186,9 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         const b = createBot(
             blueSpawn.x + (Math.random() - 0.5) * 3,
             blueSpawn.y + (Math.random() - 0.5) * 3,
-            Math.random() * Math.PI * 2, map);
+            Math.random() * Math.PI * 2,
+            map,
+        );
         b.tank.team = 2;
         b.tank.playerNumber = botsPerTeam + i + 1;
         b.target = blueTarget;
@@ -201,20 +197,23 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
 
     const canStand = (x, y) => {
         const s = CONFIG.TANK_SIZE * 0.85;
-        return map.isPassable(x - s, y - s) && map.isPassable(x + s, y - s)
-            && map.isPassable(x - s, y + s) && map.isPassable(x + s, y + s);
+        return (
+            map.isPassable(x - s, y - s) &&
+            map.isPassable(x + s, y - s) &&
+            map.isPassable(x - s, y + s) &&
+            map.isPassable(x + s, y + s)
+        );
     };
 
     for (let f = 0; f < frames; f++) {
-        const allTanks = bots.map(b => b.tank);
+        const allTanks = bots.map((b) => b.tank);
         for (const b of bots) {
-            const enemies = allTanks.filter(t => t.team !== b.tank.team && t.alive);
-            b.ai.think(dt, b.tank, enemies, map,
-                { x: b.target.x, y: b.target.y, alive: true });
+            const enemies = allTanks.filter((t) => t.team !== b.tank.team && t.alive);
+            b.ai.think(dt, b.tank, enemies, map, { x: b.target.x, y: b.target.y, alive: true });
             b.tank.update(dt, b.ai, BOT_KEYS, map);
         }
         // Separation
-        const alive = allTanks.filter(t => t.alive);
+        const alive = allTanks.filter((t) => t.alive);
         for (let i = 0; i < alive.length; i++) {
             for (let j = i + 1; j < alive.length; j++) {
                 const d = distance(alive[i].x, alive[i].y, alive[j].x, alive[j].y);
@@ -223,16 +222,24 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
                     const o = (min - d) / 2;
                     const nx = (alive[j].x - alive[i].x) / d;
                     const ny = (alive[j].y - alive[i].y) / d;
-                    const ax = alive[i].x - nx * o, ay = alive[i].y - ny * o;
-                    const bx = alive[j].x + nx * o, by = alive[j].y + ny * o;
-                    if (canStand(ax, ay)) { alive[i].x = ax; alive[i].y = ay; }
-                    if (canStand(bx, by)) { alive[j].x = bx; alive[j].y = by; }
+                    const ax = alive[i].x - nx * o,
+                        ay = alive[i].y - ny * o;
+                    const bx = alive[j].x + nx * o,
+                        by = alive[j].y + ny * o;
+                    if (canStand(ax, ay)) {
+                        alive[i].x = ax;
+                        alive[i].y = ay;
+                    }
+                    if (canStand(bx, by)) {
+                        alive[j].x = bx;
+                        alive[j].y = by;
+                    }
                 }
             }
         }
     }
 
-    const results = bots.map(b => {
+    const results = bots.map((b) => {
         const d = Math.hypot(b.target.x - b.tank.x, b.target.y - b.tank.y);
         return { team: b.tank.team, finalDist: +d.toFixed(1), stuck: +b.ai.stuckTime.toFixed(1) };
     });

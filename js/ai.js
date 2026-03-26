@@ -29,16 +29,16 @@
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
-import { CONFIG } from './config.js';
-import { Pathfinder } from './pathfinder.js';
+import { CONFIG } from "./config.js";
+import { Pathfinder } from "./pathfinder.js";
 
 /* ── Role names ───────────────────────────────────────────── */
 
 export const AI_ROLES = {
-    CAVALRY:  'cavalry',
-    SNIPER:   'sniper',
-    DEFENDER: 'defender',
-    SCOUT:    'scout',
+    CAVALRY: "cavalry",
+    SNIPER: "sniper",
+    DEFENDER: "defender",
+    SCOUT: "scout",
 };
 
 /**
@@ -59,7 +59,7 @@ export function pickRole() {
 export class AIController {
     constructor(keyMap, map) {
         this.keyMap = keyMap;
-        this.keys   = {};
+        this.keys = {};
 
         // Role (set externally for team mode, null for duel modes)
         this.role = null;
@@ -79,47 +79,51 @@ export class AIController {
         this._patrolTimer = 0;
 
         // Pathfinding
-        this._pf         = map ? new Pathfinder(map) : null;
-        this._path        = [];       // [{x,y}] waypoints
-        this._pathTimer   = Math.random() * 0.3;
-        this._pathGoal    = null;
+        this._pf = map ? new Pathfinder(map) : null;
+        this._path = []; // [{x,y}] waypoints
+        this._pathTimer = Math.random() * 0.3;
+        this._pathGoal = null;
 
         // Firing
         this.fireDelay = 0;
 
         // Stuck detection
-        this._posHistory  = [];
+        this._posHistory = [];
         this._sampleTimer = 0;
-        this.stuckTime    = 0;
+        this.stuckTime = 0;
 
         // Evade (last resort)
-        this.evading    = false;
-        this.evadeDir   = 1;
+        this.evading = false;
+        this.evadeDir = 1;
         this.evadeTimer = 0;
 
         // Wobble
-        this.aimWobble   = 0;
+        this.aimWobble = 0;
         this.wobbleTimer = 0;
     }
 
-    isDown(code)  { return !!this.keys[code]; }
-    wasPressed(_) { return false; }
-    endFrame()    {}
+    isDown(code) {
+        return !!this.keys[code];
+    }
+    wasPressed(_) {
+        return false;
+    }
+    endFrame() {}
 
     /**
      * Reset per-life cached state (called on respawn).
      */
     resetLife() {
-        this._flankPoint  = null;
+        this._flankPoint = null;
         this._flankReached = false;
-        this._sniperPos   = null;
+        this._sniperPos = null;
         this._patrolAngle = Math.random() * Math.PI * 2;
         this._patrolTimer = 0;
-        this._path        = [];
-        this._pathTimer   = 0;
-        this._posHistory  = [];
-        this.stuckTime    = 0;
-        this.evading      = false;
+        this._path = [];
+        this._pathTimer = 0;
+        this._posHistory = [];
+        this.stuckTime = 0;
+        this.evading = false;
     }
 
     /* ════════════════════════════════════════════════════════ *
@@ -146,13 +150,18 @@ export class AIController {
             this._handleStuck(me, map);
             return;
         }
-        if (this.evading) { this._evade(dt, me, map); return; }
+        if (this.evading) {
+            this._evade(dt, me, map);
+            return;
+        }
 
         // ── Choose navigation goal and combat target ──
-        const { navGoal, fireTarget } = this._chooseGoalAndTarget(
-            dt, me, enemies, map, objective);
+        const { navGoal, fireTarget } = this._chooseGoalAndTarget(dt, me, enemies, map, objective);
 
-        if (!navGoal) { this._patrol(); return; }
+        if (!navGoal) {
+            this._patrol();
+            return;
+        }
 
         // ── Update path ──
         this._updatePath(dt, me, navGoal, map);
@@ -164,7 +173,7 @@ export class AIController {
         const wpDist = Math.hypot(wp.x - me.x, wp.y - me.y);
         const driveAngle = Math.atan2(wp.y - me.y, wp.x - me.x);
         let driveDiff = driveAngle - me.angle;
-        while (driveDiff >  Math.PI) driveDiff -= Math.PI * 2;
+        while (driveDiff > Math.PI) driveDiff -= Math.PI * 2;
         while (driveDiff < -Math.PI) driveDiff += Math.PI * 2;
 
         const hasPath = this._path.length > 0;
@@ -180,8 +189,8 @@ export class AIController {
             this.keys[this.keyMap.forward] = true;
         }
 
-        if (driveDiff >  0.08) this.keys[this.keyMap.right] = true;
-        if (driveDiff < -0.08) this.keys[this.keyMap.left]  = true;
+        if (driveDiff > 0.08) this.keys[this.keyMap.right] = true;
+        if (driveDiff < -0.08) this.keys[this.keyMap.left] = true;
 
         if (this.keys[this.keyMap.forward]) {
             this._nudge(me, map);
@@ -227,7 +236,7 @@ export class AIController {
 
     _defaultGoal(me, enemies, objective) {
         const nearEnemy = this._nearestAlive(me, enemies);
-        let navGoal    = null;
+        let navGoal = null;
         let fireTarget = null;
 
         if (objective) {
@@ -239,8 +248,7 @@ export class AIController {
         }
 
         if (nearEnemy && nearEnemy.dist < 10) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                           dist: nearEnemy.dist };
+            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
             if (!objective && nearEnemy.dist < 8) {
                 navGoal = { x: nearEnemy.tank.x, y: nearEnemy.tank.y };
             }
@@ -248,8 +256,7 @@ export class AIController {
 
         if (!navGoal && nearEnemy) {
             navGoal = { x: nearEnemy.tank.x, y: nearEnemy.tank.y };
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                           dist: nearEnemy.dist };
+            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -262,7 +269,7 @@ export class AIController {
      * (closer than 10 tiles).  Always fire at tower when in range.
      */
     _cavalryGoal(me, enemies, objective) {
-        let navGoal = { x: objective.x, y: objective.y };
+        const navGoal = { x: objective.x, y: objective.y };
         let fireTarget = null;
 
         const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
@@ -273,8 +280,7 @@ export class AIController {
         // Engage nearby enemies (don't detour to chase — just shoot)
         const nearEnemy = this._nearestAlive(me, enemies);
         if (nearEnemy && nearEnemy.dist < 10) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                           dist: nearEnemy.dist };
+            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -287,21 +293,20 @@ export class AIController {
      * and bombard it.  Avoids getting closer than SNIPER_MIN_RANGE.
      * Only engages enemies within SNIPER_ENGAGE_RANGE (self-defence).
      */
-    _sniperGoal(dt, me, enemies, map, objective) {
-        let navGoal    = null;
+    _sniperGoal(_dt, me, enemies, map, objective) {
+        let navGoal = null;
         let fireTarget = null;
 
         const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
         const fireRange = CONFIG.SNIPER_FIRE_RANGE;
-        const minRange  = CONFIG.SNIPER_MIN_RANGE;
+        const minRange = CONFIG.SNIPER_MIN_RANGE;
 
         // Compute a firing position once (and cache it for this life)
         if (!this._sniperPos) {
             this._sniperPos = this._findSniperPosition(me, objective, map);
         }
 
-        const posReached = this._sniperPos &&
-            Math.hypot(this._sniperPos.x - me.x, this._sniperPos.y - me.y) < 2;
+        const posReached = this._sniperPos && Math.hypot(this._sniperPos.x - me.x, this._sniperPos.y - me.y) < 2;
 
         if (posReached) {
             // Hold position — fire at tower
@@ -330,8 +335,7 @@ export class AIController {
         // Self-defence: engage enemies only when very close
         const nearEnemy = this._nearestAlive(me, enemies);
         if (nearEnemy && nearEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                           dist: nearEnemy.dist };
+            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -366,18 +370,19 @@ export class AIController {
      * Only pushes forward when no threats are near.
      */
     _defenderGoal(dt, me, enemies, objective) {
-        let navGoal    = null;
+        let navGoal = null;
         let fireTarget = null;
 
         const ft = this.friendlyTower;
-        if (!ft || !ft.alive) {
+        if (!ft?.alive) {
             // Friendly tower destroyed — fall back to cavalry rush
             return this._cavalryGoal(me, enemies, objective);
         }
 
         // Check for enemies near the friendly tower
         const engageRange = CONFIG.DEFENDER_ENGAGE_RANGE;
-        let closestThreat = null, closestDist = Infinity;
+        let closestThreat = null,
+            closestDist = Infinity;
         for (const e of enemies) {
             if (!e.alive) continue;
             const d = Math.hypot(e.x - ft.x, e.y - ft.y);
@@ -391,7 +396,8 @@ export class AIController {
             // Intercept the closest threat to our tower
             navGoal = { x: closestThreat.x, y: closestThreat.y };
             fireTarget = {
-                x: closestThreat.x, y: closestThreat.y,
+                x: closestThreat.x,
+                y: closestThreat.y,
                 dist: Math.hypot(closestThreat.x - me.x, closestThreat.y - me.y),
             };
         } else {
@@ -410,8 +416,7 @@ export class AIController {
             // Fire at any enemy within personal range
             const nearEnemy = this._nearestAlive(me, enemies);
             if (nearEnemy && nearEnemy.dist < 10) {
-                fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                               dist: nearEnemy.dist };
+                fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
             }
         }
 
@@ -425,7 +430,7 @@ export class AIController {
      * from an unexpected angle.  Only engages enemies within 6 tiles.
      */
     _scoutGoal(me, enemies, map, objective) {
-        let navGoal    = null;
+        let navGoal = null;
         let fireTarget = null;
 
         // Compute flank waypoint once per life
@@ -433,9 +438,8 @@ export class AIController {
             this._flankPoint = this._computeFlankPoint(me, objective, map);
         }
 
-        const flankDist = Math.hypot(this._flankPoint.x - me.x,
-                                     this._flankPoint.y - me.y);
-        const objDist   = Math.hypot(objective.x - me.x, objective.y - me.y);
+        const flankDist = Math.hypot(this._flankPoint.x - me.x, this._flankPoint.y - me.y);
+        const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
 
         // Once we reach the flank point, lock into phase 2 permanently
         if (!this._flankReached && flankDist < 3) {
@@ -458,8 +462,7 @@ export class AIController {
         // Only engage enemies that are very close (self-defence)
         const nearEnemy = this._nearestAlive(me, enemies);
         if (nearEnemy && nearEnemy.dist < 6) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y,
-                           dist: nearEnemy.dist };
+            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -481,7 +484,7 @@ export class AIController {
 
         // Perpendicular direction
         const px = -dy / dist;
-        const py =  dx / dist;
+        const py = dx / dist;
 
         // Pick a random side (left or right of the direct line)
         const side = Math.random() > 0.5 ? 1 : -1;
@@ -518,7 +521,7 @@ export class AIController {
      * Behaviour when tracks are disabled: can't move, only pivot.
      * Rotate hull toward nearest threat and fire.
      */
-    _thinkImmobilised(dt, me, enemies, map, objective) {
+    _thinkImmobilised(_dt, me, enemies, map, objective) {
         const nearEnemy = this._nearestAlive(me, enemies);
         let target = null;
 
@@ -536,11 +539,11 @@ export class AIController {
         // Rotate hull toward target (since we can't drive)
         const desired = Math.atan2(target.y - me.y, target.x - me.x);
         let diff = desired - me.angle;
-        while (diff >  Math.PI) diff -= Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff >  0.08) this.keys[this.keyMap.right] = true;
-        if (diff < -0.08) this.keys[this.keyMap.left]  = true;
+        if (diff > 0.08) this.keys[this.keyMap.right] = true;
+        if (diff < -0.08) this.keys[this.keyMap.left] = true;
 
         // Also aim turret if it's functional
         this._aimAndFire(me, target, map);
@@ -550,15 +553,13 @@ export class AIController {
      *  Pathfinding                                             *
      * ════════════════════════════════════════════════════════ */
 
-    _updatePath(dt, me, goal, map) {
+    _updatePath(dt, me, goal, _map) {
         this._pathTimer -= dt;
-        const stale = this._pathGoal &&
-            Math.hypot(goal.x - this._pathGoal.x,
-                       goal.y - this._pathGoal.y) > 3;
+        const stale = this._pathGoal && Math.hypot(goal.x - this._pathGoal.x, goal.y - this._pathGoal.y) > 3;
 
         if (this._pathTimer <= 0 || this._path.length === 0 || stale) {
             this._pathTimer = 1.2 + Math.random() * 0.6;
-            this._pathGoal  = { x: goal.x, y: goal.y };
+            this._pathGoal = { x: goal.x, y: goal.y };
             this._path = this._pf.findPath(me.x, me.y, goal.x, goal.y) ?? [];
         }
     }
@@ -569,8 +570,7 @@ export class AIController {
         }
 
         while (this._path.length > 1) {
-            const d = Math.hypot(this._path[0].x - me.x,
-                                 this._path[0].y - me.y);
+            const d = Math.hypot(this._path[0].x - me.x, this._path[0].y - me.y);
             if (d > 0.9) break;
             this._path.shift();
         }
@@ -578,8 +578,7 @@ export class AIController {
         let best = 0;
         const limit = Math.min(this._path.length - 1, 8);
         for (let i = limit; i > 0; i--) {
-            if (this._walkable(me.x, me.y,
-                    this._path[i].x, this._path[i].y, map)) {
+            if (this._walkable(me.x, me.y, this._path[i].x, this._path[i].y, map)) {
                 best = i;
                 break;
             }
@@ -602,10 +601,10 @@ export class AIController {
         // ── IFV: fire opportunistically without overriding navigation ──
         // The hull is already being steered toward the nav goal, so don't
         // fight it — just fire when the forward gun happens to aim near a target.
-        if (me.vehicleType === 'ifv') {
+        if (me.vehicleType === "ifv") {
             const turretWorld = me.turretWorld;
             let diff = desiredWorld - turretWorld;
-            while (diff >  Math.PI) diff -= Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
             if (Math.abs(diff) > 0.4) return;
@@ -613,7 +612,7 @@ export class AIController {
 
             if (this._los(me.x, me.y, target.x, target.y, map)) {
                 this.keys[this.keyMap.fire] = true;
-                this.fireDelay = 0.10 + Math.random() * 0.08;
+                this.fireDelay = 0.1 + Math.random() * 0.08;
             }
             return;
         }
@@ -621,11 +620,11 @@ export class AIController {
         // ── Tank with disabled turret: aim by rotating hull ──
         if (me.turretDisabled) {
             let diff = desiredWorld - me.angle;
-            while (diff >  Math.PI) diff -= Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            if (diff >  0.08) this.keys[this.keyMap.right] = true;
-            if (diff < -0.08) this.keys[this.keyMap.left]  = true;
+            if (diff > 0.08) this.keys[this.keyMap.right] = true;
+            if (diff < -0.08) this.keys[this.keyMap.left] = true;
 
             if (Math.abs(diff) > 0.3) return;
         } else {
@@ -634,7 +633,7 @@ export class AIController {
 
             const turretWorld = me.turretWorld;
             let diff = desiredWorld - turretWorld;
-            while (diff >  Math.PI) diff -= Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
             if (Math.abs(diff) > 0.3) return;
@@ -656,19 +655,19 @@ export class AIController {
      */
     _steerTurretTo(me, desiredWorld) {
         let desiredOffset = desiredWorld - me.angle;
-        while (desiredOffset >  Math.PI) desiredOffset -= Math.PI * 2;
+        while (desiredOffset > Math.PI) desiredOffset -= Math.PI * 2;
         while (desiredOffset < -Math.PI) desiredOffset += Math.PI * 2;
 
         let currentOffset = me.turretAngle;
-        while (currentOffset >  Math.PI) currentOffset -= Math.PI * 2;
+        while (currentOffset > Math.PI) currentOffset -= Math.PI * 2;
         while (currentOffset < -Math.PI) currentOffset += Math.PI * 2;
 
         let diff = desiredOffset - currentOffset;
-        while (diff >  Math.PI) diff -= Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff >  0.05) this.keys[this.keyMap.turretRight] = true;
-        if (diff < -0.05) this.keys[this.keyMap.turretLeft]  = true;
+        if (diff > 0.05) this.keys[this.keyMap.turretRight] = true;
+        if (diff < -0.05) this.keys[this.keyMap.turretLeft] = true;
     }
 
     /* ════════════════════════════════════════════════════════ *
@@ -683,9 +682,9 @@ export class AIController {
             if (!me.fixedGun) this._aimTurretForward(me);
             this._tryShootWall(me, map);
         } else if (this.stuckTime < 2.5) {
-            this.evading    = true;
+            this.evading = true;
             this.evadeTimer = 0.6 + Math.random() * 0.8;
-            this.evadeDir   = Math.random() > 0.5 ? 1 : -1;
+            this.evadeDir = Math.random() > 0.5 ? 1 : -1;
         } else {
             this._blastNearestWall(me, map);
         }
@@ -730,7 +729,8 @@ export class AIController {
 
     _blastNearestWall(me, map) {
         const k = this.keyMap;
-        let bestD = Infinity, bestA = me.turretWorld;
+        let bestD = Infinity,
+            bestA = me.turretWorld;
         for (let dy = -3; dy <= 3; dy++) {
             for (let dx = -3; dx <= 3; dx++) {
                 const gx = Math.floor(me.x) + dx;
@@ -749,15 +749,15 @@ export class AIController {
         } else {
             // IFV / fixed gun: rotate hull to face wall
             let diff = bestA - me.angle;
-            while (diff >  Math.PI) diff -= Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
-            if (diff >  0.08) this.keys[k.right] = true;
-            if (diff < -0.08) this.keys[k.left]  = true;
+            if (diff > 0.08) this.keys[k.right] = true;
+            if (diff < -0.08) this.keys[k.left] = true;
         }
 
         const tw = me.turretWorld;
         let diff = bestA - tw;
-        while (diff >  Math.PI) diff -= Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
         if (Math.abs(diff) < 0.2 && this.fireDelay <= 0) {
             this.keys[k.fire] = true;
@@ -776,11 +776,15 @@ export class AIController {
      * ════════════════════════════════════════════════════════ */
 
     _nearestAlive(me, enemies) {
-        let best = null, bestD = Infinity;
+        let best = null,
+            bestD = Infinity;
         for (const e of enemies) {
             if (!e.alive) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
-            if (d < bestD) { best = e; bestD = d; }
+            if (d < bestD) {
+                best = e;
+                bestD = d;
+            }
         }
         return best ? { tank: best, dist: bestD } : null;
     }
@@ -788,7 +792,7 @@ export class AIController {
     _updateWobble(dt) {
         this.wobbleTimer -= dt;
         if (this.wobbleTimer <= 0) {
-            this.aimWobble   = (Math.random() - 0.5) * 0.15;
+            this.aimWobble = (Math.random() - 0.5) * 0.15;
             this.wobbleTimer = 0.5 + Math.random() * 1.0;
         }
     }
@@ -807,30 +811,28 @@ export class AIController {
             if (aDiff > Math.PI) aDiff = Math.PI * 2 - aDiff;
             const rotating = aDiff > 0.3;
 
-            this.stuckTime = (drift < 0.4 && !rotating)
-                ? this.stuckTime + dt
-                : Math.max(0, this.stuckTime - dt * 4);
+            this.stuckTime = drift < 0.4 && !rotating ? this.stuckTime + dt : Math.max(0, this.stuckTime - dt * 4);
         }
     }
 
     _patrol() {
         this.keys[this.keyMap.forward] = true;
-        if (Math.sin(performance.now() / 700) > 0.3)
-            this.keys[this.keyMap.right] = true;
+        if (Math.sin(performance.now() / 700) > 0.3) this.keys[this.keyMap.right] = true;
     }
 
     _nudge(me, map) {
-        const k = this.keyMap, a = me.angle;
-        const bk = (ang, d) => !map.isPassable(
-            me.x + Math.cos(ang) * d, me.y + Math.sin(ang) * d);
+        const k = this.keyMap,
+            a = me.angle;
+        const bk = (ang, d) => !map.isPassable(me.x + Math.cos(ang) * d, me.y + Math.sin(ang) * d);
         if (!bk(a, 0.6)) return;
-        if (!bk(a - 0.5, 0.8))      this.keys[k.left] = true;
+        if (!bk(a - 0.5, 0.8)) this.keys[k.left] = true;
         else if (!bk(a + 0.5, 0.8)) this.keys[k.right] = true;
         else this.keys[k.forward] = false;
     }
 
     _walkable(x1, y1, x2, y2, map) {
-        const dx = x2 - x1, dy = y2 - y1;
+        const dx = x2 - x1,
+            dy = y2 - y1;
         const d = Math.hypot(dx, dy);
         const n = Math.ceil(d * 3);
         for (let i = 1; i <= n; i++) {
@@ -841,7 +843,8 @@ export class AIController {
     }
 
     _los(x1, y1, x2, y2, map) {
-        const dx = x2 - x1, dy = y2 - y1;
+        const dx = x2 - x1,
+            dy = y2 - y1;
         const d = Math.hypot(dx, dy);
         const n = Math.ceil(d * 3);
         for (let i = 1; i < n; i++) {

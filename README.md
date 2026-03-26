@@ -65,18 +65,30 @@ The turret rotates independently from the hull, slower than hull rotation. This 
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
 - Each viewport has a **minimap** in the corner showing the full island, all players, and towers.
 
-## Testing
+## Development
+
+### Setup
 
 ```bash
-npm test              # all 97 tests
-npm run test:ai       # AI navigation + combat
-npm run test:pathfinder  # A* pathfinding
-npm run test:map      # map generation + terrain
-npm run test:game     # tank, bullet, collision, directional armour, IFV
-npm run test:roles    # AI bot role behaviours
+npm install
+npx lefthook install
 ```
 
-Uses Node's built-in test runner — no test dependencies.
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `npm test` | Run all tests |
+| `npm run test:coverage` | Tests + coverage thresholds |
+| `npm run lint` | Biome lint check |
+| `npm run lint:fix` | Auto-fix lint + format |
+| `npm run check` | Lint + test + coverage + architecture (full local CI) |
+| `npm run graph:validate` | Check architectural boundaries |
+| `npm run mutation` | Mutation testing (slow, run periodically) |
+
+Individual test suites: `npm run test:ai`, `test:pathfinder`, `test:map`, `test:game`, `test:roles`.
+
+Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
 ## Vehicle Types
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker/master/packages/core/schema/stryker-schema.json",
+  "mutate": [
+    "js/ai.js",
+    "js/tank.js",
+    "js/bullet.js",
+    "js/map.js",
+    "js/pathfinder.js",
+    "js/utils.js",
+    "js/config.js",
+    "js/game.js",
+    "js/particles.js"
+  ],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "node --test test/*.test.js"
+  },
+  "reporters": ["clear-text", "progress"],
+  "timeoutMS": 30000,
+  "concurrency": 4,
+  "coverageAnalysis": "off"
+}

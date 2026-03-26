@@ -12,34 +12,35 @@ export class InputManager {
         /** @type {Record<string,boolean>} pressed this frame */
         this.justPressed = {};
 
-        window.addEventListener('keydown', (e) => {
+        window.addEventListener("keydown", (e) => {
             if (!this.keys[e.code]) {
                 this.justPressed[e.code] = true;
             }
             this.keys[e.code] = true;
 
             // Prevent browser scrolling for game keys
-            if ([
-                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-                'Space', 'Enter',
-            ].includes(e.code)) {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Enter"].includes(e.code)) {
                 e.preventDefault();
             }
         });
 
-        window.addEventListener('keyup', (e) => {
+        window.addEventListener("keyup", (e) => {
             this.keys[e.code] = false;
         });
 
         // Clear state if the window loses focus
-        window.addEventListener('blur', () => {
+        window.addEventListener("blur", () => {
             this.keys = {};
             this.justPressed = {};
         });
     }
 
-    isDown(code)    { return !!this.keys[code]; }
-    wasPressed(code){ return !!this.justPressed[code]; }
+    isDown(code) {
+        return !!this.keys[code];
+    }
+    wasPressed(code) {
+        return !!this.justPressed[code];
+    }
 
     /** Call once at the end of each frame. */
     endFrame() {
