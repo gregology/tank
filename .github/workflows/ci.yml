@@ -10,26 +10,38 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  lint:
+    name: Lint (Biome)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
+      - run: npx biome ci .
 
-      - name: Install dev dependencies
-        run: npm ci
+  test:
+    name: Tests + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
 
-      - name: Lint (Biome)
-        run: npx biome ci .
-
-      - name: Run tests with coverage
-        run: npm run test:coverage
-
-      - name: Validate architecture
-        run: npm run graph:validate
+  architecture:
+    name: Architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run graph:validate
