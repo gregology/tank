@@ -48,12 +48,12 @@ export const AI_ROLES = {
  *
  * @param {string} vehicleType  'tank', 'ifv', or 'drone'
  */
-export function pickRoleForVehicle(vehicleType = "tank") {
+export function pickRoleForVehicle(vehicleType = "tank", rng = Math.random) {
     const w = VEHICLES[vehicleType]?.roleWeights ?? VEHICLES.tank.roleWeights;
     const entries = Object.entries(w).filter(([, v]) => v > 0);
     if (entries.length === 0) return "cavalry"; // fallback
     const total = entries.reduce((s, [, v]) => s + v, 0);
-    let r = Math.random() * total;
+    let r = rng() * total;
     for (const [role, weight] of entries) {
         r -= weight;
         if (r <= 0) return role;
@@ -62,9 +62,10 @@ export function pickRoleForVehicle(vehicleType = "tank") {
 }
 
 export class AIController {
-    constructor(keyMap, map) {
+    constructor(keyMap, map, rng = Math.random) {
         this.keyMap = keyMap;
         this.keys = {};
+        this._rng = rng;
 
         // Role (set externally for team mode, null for duel modes)
         this.role = null;
@@ -80,13 +81,13 @@ export class AIController {
         this._sniperPos = null;
 
         // Defender patrol target (rotates around friendly tower)
-        this._patrolAngle = Math.random() * Math.PI * 2;
+        this._patrolAngle = this._rng() * Math.PI * 2;
         this._patrolTimer = 0;
 
         // Pathfinding
         this._pf = map ? new Pathfinder(map) : null;
         this._path = []; // [{x,y}] waypoints
-        this._pathTimer = Math.random() * 0.3;
+        this._pathTimer = this._rng() * 0.3;
         this._pathGoal = null;
 
         // Firing
@@ -122,7 +123,7 @@ export class AIController {
         this._flankPoint = null;
         this._flankReached = false;
         this._sniperPos = null;
-        this._patrolAngle = Math.random() * Math.PI * 2;
+        this._patrolAngle = this._rng() * Math.PI * 2;
         this._patrolTimer = 0;
         this._path = [];
         this._pathTimer = 0;
@@ -415,8 +416,8 @@ export class AIController {
             // Patrol around friendly tower
             this._patrolTimer -= dt;
             if (this._patrolTimer <= 0) {
-                this._patrolAngle += 0.8 + Math.random() * 1.0;
-                this._patrolTimer = 3.0 + Math.random() * 2.0;
+                this._patrolAngle += 0.8 + this._rng() * 1.0;
+                this._patrolTimer = 3.0 + this._rng() * 2.0;
             }
             const r = CONFIG.DEFENDER_PATROL_RADIUS;
             navGoal = {
@@ -498,7 +499,7 @@ export class AIController {
         const py = dx / dist;
 
         // Pick a random side (left or right of the direct line)
-        const side = Math.random() > 0.5 ? 1 : -1;
+        const side = this._rng() > 0.5 ? 1 : -1;
         const offset = CONFIG.SCOUT_FLANK_OFFSET;
 
         // Try the ideal offset, then shrink if it's off the map or impassable
@@ -629,7 +630,7 @@ export class AIController {
         const stale = this._pathGoal && Math.hypot(goal.x - this._pathGoal.x, goal.y - this._pathGoal.y) > 3;
 
         if (this._pathTimer <= 0 || this._path.length === 0 || stale) {
-            this._pathTimer = 1.2 + Math.random() * 0.6;
+            this._pathTimer = 1.2 + this._rng() * 0.6;
             this._pathGoal = { x: goal.x, y: goal.y };
             this._path = this._pf.findPath(me.x, me.y, goal.x, goal.y) ?? [];
         }
@@ -710,7 +711,7 @@ export class AIController {
 
             if (this._los(me.x, me.y, target.x, target.y, map)) {
                 this.keys[this.keyMap.fire] = true;
-                this.fireDelay = 0.1 + Math.random() * 0.08;
+                this.fireDelay = 0.1 + this._rng() * 0.08;
             }
             return;
         }
@@ -741,7 +742,7 @@ export class AIController {
 
         if (this._los(me.x, me.y, target.x, target.y, map)) {
             this.keys[this.keyMap.fire] = true;
-            this.fireDelay = 0.25 + Math.random() * 0.35;
+            this.fireDelay = 0.25 + this._rng() * 0.35;
             return;
         }
 
@@ -776,13 +777,13 @@ export class AIController {
         const k = this.keyMap;
         if (this.stuckTime < 1.2) {
             this.keys[k.backward] = true;
-            this.keys[Math.random() > 0.5 ? k.right : k.left] = true;
+            this.keys[this._rng() > 0.5 ? k.right : k.left] = true;
             if (!me.fixedGun) this._aimTurretForward(me);
             this._tryShootWall(me, map);
         } else if (this.stuckTime < 2.5) {
             this.evading = true;
-            this.evadeTimer = 0.6 + Math.random() * 0.8;
-            this.evadeDir = Math.random() > 0.5 ? 1 : -1;
+            this.evadeTimer = 0.6 + this._rng() * 0.8;
+            this.evadeDir = this._rng() > 0.5 ? 1 : -1;
         } else {
             this._blastNearestWall(me, map);
         }
@@ -890,8 +891,8 @@ export class AIController {
     _updateWobble(dt) {
         this.wobbleTimer -= dt;
         if (this.wobbleTimer <= 0) {
-            this.aimWobble = (Math.random() - 0.5) * 0.15;
-            this.wobbleTimer = 0.5 + Math.random() * 1.0;
+            this.aimWobble = (this._rng() - 0.5) * 0.15;
+            this.wobbleTimer = 0.5 + this._rng() * 1.0;
         }
     }
 
@@ -915,7 +916,8 @@ export class AIController {
 
     _patrol() {
         this.keys[this.keyMap.forward] = true;
-        if (Math.sin(performance.now() / 700) > 0.3) this.keys[this.keyMap.right] = true;
+        this._patrolStep = (this._patrolStep || 0) + 1;
+        if (Math.sin(this._patrolStep * 0.023) > 0.3) this.keys[this.keyMap.right] = true;
     }
 
     _nudge(me, map) {

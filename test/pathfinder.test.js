@@ -93,11 +93,8 @@ describe("Pathfinder", () => {
     });
 
     it("prefers tiles away from walls (wall-cost weighting)", () => {
-        const map = new GameMap();
-        // Clear the area then stamp a 6-tile-wide corridor
-        for (let y = 26; y <= 36; y++)
-            for (let x = 18; x <= 42; x++)
-                if (map.getTile(x, y) === T.HILL || map.getTile(x, y) === T.ROCK) map.setTile(x, y, T.GRASS);
+        // Use a fully deterministic flat map so random terrain cannot interfere
+        const map = customMap([]);
         for (let x = 18; x <= 42; x++) {
             map.setTile(x, 28, T.HILL);
             map.setTile(x, 34, T.HILL);
