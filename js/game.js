@@ -9,10 +9,10 @@
  * Events: fire, hit, destroy, impact, destroy_tile, win
  */
 
-import { AIController, pickRole } from "./ai.js";
+import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { CONFIG } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
 import { GameMap } from "./map.js";
 import { ParticleSystem } from "./particles.js";
 import { Tank } from "./tank.js";
@@ -28,6 +28,20 @@ const BOT_KEYS = {
     turretRight: "_btr",
     fire: "_bx",
 };
+
+/* ── Vehicle type selection ─────────────────────────────── */
+
+/** Pick a random vehicle type using spawn weights from VEHICLES. */
+function pickVehicleType() {
+    const entries = Object.entries(VEHICLES);
+    const total = entries.reduce((s, [, v]) => s + v.spawnWeight, 0);
+    let r = Math.random() * total;
+    for (const [type, v] of entries) {
+        r -= v.spawnWeight;
+        if (r <= 0) return type;
+    }
+    return entries[entries.length - 1][0];
+}
 
 /* ── Tower data class ─────────────────────────────────────── */
 
@@ -210,13 +224,13 @@ export class Game {
         this._bots = [];
         for (const t of reds.slice(1)) {
             const ai = new AIController(BOT_KEYS, this.map);
-            ai.role = pickRole();
+            ai.role = pickRoleForVehicle(t.vehicleType);
             ai.friendlyTower = this._towers[0];
             this._bots.push({ ai, tank: t, enemies: blues, objective: this._towers[1] });
         }
         for (const t of blues) {
             const ai = new AIController(BOT_KEYS, this.map);
-            ai.role = pickRole();
+            ai.role = pickRoleForVehicle(t.vehicleType);
             ai.friendlyTower = this._towers[1];
             this._bots.push({ ai, tank: t, enemies: reds, objective: this._towers[0] });
         }
@@ -237,14 +251,14 @@ export class Game {
             t.alive = true;
             t.angle = Math.atan2(t2.y - t1.y, t2.x - t1.x) + (Math.random() - 0.5) * 0.5;
             // Randomly assign vehicle type in team mode
-            t.vehicleType = Math.random() < CONFIG.IFV_SPAWN_CHANCE ? "ifv" : "tank";
+            t.vehicleType = pickVehicleType();
         }
         for (const t of this._blueTeam) {
             const sp = this.map.getBaseSpawnPoint(t2.x, t2.y);
             t.respawnAt(sp.x, sp.y);
             t.alive = true;
             t.angle = Math.atan2(t1.y - t2.y, t1.x - t2.x) + (Math.random() - 0.5) * 0.5;
-            t.vehicleType = Math.random() < CONFIG.IFV_SPAWN_CHANCE ? "ifv" : "tank";
+            t.vehicleType = pickVehicleType();
         }
         const sc = worldToScreen(this._humanTank.x, this._humanTank.y);
         this.camera1.setPosition(sc.x, sc.y);
@@ -289,11 +303,11 @@ export class Game {
                 t.alive = true;
                 t.flashTimer = 1;
                 // Re-randomise vehicle type on respawn
-                t.vehicleType = Math.random() < CONFIG.IFV_SPAWN_CHANCE ? "ifv" : "tank";
+                t.vehicleType = pickVehicleType();
                 // Re-assign AI role and reset per-life state
                 const bot = this._bots.find((b) => b.tank === t);
                 if (bot) {
-                    bot.ai.role = pickRole();
+                    bot.ai.role = pickRoleForVehicle(t.vehicleType);
                     bot.ai.resetLife();
                 }
             }
@@ -325,11 +339,11 @@ export class Game {
 
     _pushFromTowers() {
         for (const t of this._allTanks) {
-            if (!t.alive) continue;
+            if (!t.alive || t.vehicleType === "drone") continue;
             for (const tw of this._towers) {
                 if (!tw.alive) continue;
                 const d = distance(t.x, t.y, tw.x, tw.y);
-                const min = CONFIG.TANK_SIZE + CONFIG.TOWER_RADIUS;
+                const min = VEHICLES[t.vehicleType].size + CONFIG.TOWER_RADIUS;
                 if (d < min && d > 0.001) {
                     const nx = (t.x - tw.x) / d;
                     const ny = (t.y - tw.y) / d;
@@ -360,20 +374,109 @@ export class Game {
      * ═══════════════════════════════════════════════════════ */
 
     _handleFiring(tank, input, keys) {
+        // Drones don't fire bullets — they detonate on contact
+        if (tank.vehicleType === "drone") {
+            this._handleDroneAttack(tank, input, keys);
+            return;
+        }
         if (input.isDown(keys.fire) && tank.canFire()) {
             tank.fire();
             const fireAngle = tank.turretWorld;
-            const isIFV = tank.vehicleType === "ifv";
-            const damage = isIFV ? CONFIG.IFV_BULLET_DAMAGE : 1.0;
-            const speed = isIFV ? CONFIG.BULLET_SPEED * CONFIG.IFV_BULLET_SPEED_FACTOR : CONFIG.BULLET_SPEED;
-            const b = new Bullet(tank.x, tank.y, fireAngle, tank.playerNumber, tank.team, damage, speed);
+            const vStats = VEHICLES[tank.vehicleType];
+            const b = new Bullet(
+                tank.x,
+                tank.y,
+                fireAngle,
+                tank.playerNumber,
+                tank.team,
+                vStats.bulletDamage,
+                vStats.bulletSpeed,
+            );
             this.bullets.push(b);
             const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
             const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            if (isIFV) this.particles.emitIFVFlash(tipX, tipY, fireAngle);
+            if (tank.vehicleType === "ifv") this.particles.emitIFVFlash(tipX, tipY, fireAngle);
             else this.particles.emitMuzzleFlash(tipX, tipY, fireAngle);
             this.emit("fire", { tank, bullet: b });
         }
+    }
+
+    /**
+     * Handle drone kamikaze detonation.  Pressing fire ALWAYS
+     * detonates the drone (even with no enemies nearby — wasted).
+     *
+     * Damage falls off linearly with distance:
+     *   damage = DRONE_ATTACK_DAMAGE × max(0, 1 − dist / DRONE_BLAST_RADIUS)
+     *
+     * Point-blank (dist ≈ 0) = 1.0 damage (equivalent to a tank shell).
+     * At the edge of the blast radius = 0 damage.
+     *
+     * ALL enemies within the blast radius are hit (area of effect).
+     * Directional armour applies based on the drone's position
+     * relative to each target.
+     */
+    _handleDroneAttack(drone, input, keys) {
+        if (!input.isDown(keys.fire) || !drone.alive) return;
+
+        const vStats = VEHICLES.drone;
+        const blastR = vStats.blastRadius;
+        const maxDmg = vStats.blastDamage;
+
+        // ── Damage all enemy tanks in blast radius ──
+        for (const t of this.allTanks) {
+            if (!t.alive || t.team === drone.team) continue;
+            const d = distance(drone.x, drone.y, t.x, t.y);
+            if (d >= blastR) continue;
+
+            const dmg = maxDmg * Math.max(0, 1 - d / blastR);
+            if (dmg <= 0) continue;
+
+            const zone = t.getHitZone(drone.x, drone.y);
+            const result = t.applyHit(zone, dmg);
+
+            if (result === "destroyed") {
+                this.particles.emitExplosion(t.x, t.y);
+                this.emit("destroy", { tank: t });
+
+                if (this.mode !== "team") {
+                    drone.score++;
+                    const other = t === this.tank1 ? this.tank2 : this.tank1;
+                    const sp = this.map.getSpawnPoint(other.x, other.y);
+                    t.respawnAt(sp.x, sp.y);
+                }
+            } else if (result === "damaged") {
+                this.particles.emitImpact(drone.x, drone.y);
+                this.emit("hit", { tank: t, zone });
+            } else if (result === "absorbed") {
+                this.particles.emitTinyImpact(drone.x, drone.y);
+            }
+        }
+
+        // ── Damage enemy towers in blast radius ──
+        for (const tw of this.towers) {
+            if (!tw.alive || tw.team === drone.team) continue;
+            const d = distance(drone.x, drone.y, tw.x, tw.y);
+            if (d >= blastR + CONFIG.TOWER_RADIUS) continue;
+
+            // Use distance from drone to tower edge for damage calc
+            const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+            const dmg = maxDmg * Math.max(0, 1 - edgeDist / blastR);
+            if (dmg <= 0) continue;
+
+            tw.hp -= dmg;
+            this.particles.emitImpact(drone.x, drone.y);
+            this.emit("impact", {});
+            if (tw.hp <= 0) {
+                tw.alive = false;
+                this.particles.emitExplosion(tw.x, tw.y);
+                this.emit("destroy", { tower: tw });
+            }
+        }
+
+        // Drone always self-destructs when fire is pressed
+        this.particles.emitDroneExplosion(drone.x, drone.y);
+        this.emit("drone_strike", { drone });
+        drone.kill();
     }
 
     _tickBullets(dt) {
@@ -399,7 +502,7 @@ export class Game {
             if (!b.alive) continue;
             for (const t of this.allTanks) {
                 if (!t.alive || b.team === t.team) continue;
-                if (distance(b.x, b.y, t.x, t.y) < CONFIG.TANK_SIZE) {
+                if (distance(b.x, b.y, t.x, t.y) < t.size) {
                     b.alive = false;
 
                     // Directional hit detection
@@ -452,8 +555,12 @@ export class Game {
             for (let j = i + 1; j < alive.length; j++) {
                 const a = alive[i],
                     b = alive[j];
+                // Drones fly above ground vehicles — no collision
+                const aDrone = a.vehicleType === "drone";
+                const bDrone = b.vehicleType === "drone";
+                if (aDrone !== bDrone) continue;
                 const d = distance(a.x, a.y, b.x, b.y);
-                const min = CONFIG.TANK_SIZE * 2;
+                const min = VEHICLES[a.vehicleType].size + VEHICLES[b.vehicleType].size;
                 if (d < min && d > 0.001) {
                     const o = (min - d) / 2;
                     const nx = (b.x - a.x) / d,
@@ -462,11 +569,11 @@ export class Game {
                         ay = a.y - ny * o;
                     const bx = b.x + nx * o,
                         by = b.y + ny * o;
-                    if (this._canStand(ax, ay)) {
+                    if (this._canStand(ax, ay, VEHICLES[a.vehicleType].size)) {
                         a.x = ax;
                         a.y = ay;
                     }
-                    if (this._canStand(bx, by)) {
+                    if (this._canStand(bx, by, VEHICLES[b.vehicleType].size)) {
                         b.x = bx;
                         b.y = by;
                     }
@@ -482,8 +589,8 @@ export class Game {
         }
     }
 
-    _canStand(x, y) {
-        const s = CONFIG.TANK_SIZE * 0.85;
+    _canStand(x, y, vehicleSize = VEHICLES.tank.size) {
+        const s = vehicleSize * 0.85;
         return (
             this.map.isPassable(x - s, y - s) &&
             this.map.isPassable(x + s, y - s) &&

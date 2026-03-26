@@ -92,21 +92,24 @@ Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
 ## Vehicle Types
 
-In 5v5 Team Battle, each vehicle is **randomly assigned** at spawn and respawn (40% chance of IFV). Duel modes always use tanks.
+In 5v5 Team Battle, each vehicle is **randomly assigned** at spawn and respawn (50% tank, 30% IFV, 20% drone). Duel modes always use tanks.
 
-| Stat | Tank | IFV |
-|------|------|---------|
-| Speed | 1× | 1.5× |
-| Armour | 2 hits | 1 hit (destroyed instantly) |
-| Firepower | 1× (full damage) | 0.25× (rapid fire, low damage) |
-| Bullet speed | 1× | 1.5× |
-| Turret | Independent rotation | Fixed (fires forward) |
+| Stat | Tank | IFV | Drone |
+|------|------|---------|-------|
+| Speed | 1× | 1.5× | 2× |
+| Armour | 2 hits | 1 hit | 1 hit |
+| Firepower | 1× (full damage) | 0.25× (rapid fire) | Kamikaze (1× at point blank) |
+| Bullet speed | 1× | 1.5× | N/A |
+| Turret | Independent rotation | Fixed (fires forward) | N/A |
+| Movement | Ground only | Ground only | **Flies over everything** |
 
 **Tanks** are the default — tough, versatile, with an independently rotating turret. Two hits to destroy (with directional subsystem damage), or one rear shot.
 
 **IFVs** are glass cannons — faster movement, rapid-fire autocannon with 1.5× bullet speed, but destroyed by a single hit from anything. Their gun is fixed forward (no turret rotation), so they must aim by steering. The HUD shows your current vehicle type. On the minimap, IFVs appear as diamonds ◇ while tanks are squares ■.
 
 IFV bullets deal 25% damage — four hits equal one tank hit. This creates an asymmetric dynamic: IFVs harass and whittle down tanks, but one return shot ends them.
+
+**Drones** are FPV kamikaze quadcopters inspired by modern warfare. They fly over all terrain — buildings, hills, rocks, and water — at 2× speed. They carry no gun; instead, the pilot flies into a target and presses fire to **detonate**. Damage falls off with distance: point-blank deals 1.0 (equivalent to a tank shell), dropping linearly to 0 at the blast radius edge (2.5 tiles). Directional armour applies based on the drone's approach angle — diving into a tank's rear is an instant kill, while a sloppy approach from the front only disables the turret. The drone is always destroyed on detonation, even if it misses. On the minimap, drones appear as crosses ✕.
 
 ## AI Bot Roles
 
@@ -130,7 +133,7 @@ The mix of roles creates more dynamic and unpredictable battles instead of two b
 - **Map generation** uses seeded value noise (fBm) for the island shape, then stamps village clusters with paved road networks and connects them with dirt roads using a cardinal-step algorithm.
 - **Tank graphics** are fully projected — every polygon is defined in local space, rotated by the tank's angle, and projected through the isometric transform. Hull and tracks use hull angle; turret and barrel use independent turret angle. Layers are stacked with visible 3D extrusion. Damage is shown through colour changes (broken tracks, grey locked turret, darkened hull).
 - **Directional armour** uses bearing-based hit detection: the angle from the tank centre to the bullet contact point, relative to the hull facing, determines the hit zone (front ±45°, rear ±45°, sides fill the remainder).
-- **Vehicle types** — tanks and IFVs share the Tank class but differ in speed, armour, fire rate, and turret behaviour. Bullets carry damage and speed values. Partial damage accumulates: four 0.25-damage hits trigger the same directional armour effect as one full hit.
+- **Vehicle types** — tanks, IFVs, and drones share the Tank class but differ in speed, armour, and attack behaviour. Bullets carry damage and speed values. Partial damage accumulates: four 0.25-damage hits trigger the same directional armour effect as one full hit. Drones use `_canFly()` instead of `_canOccupy()` for movement, bypassing terrain collision. Drone detonation is area-of-effect with linear distance falloff.
 - **Sound** is 100% procedural: noise buffers through bandpass filters for gunshots, low oscillators for explosions, metallic clangs for subsystem hits, sine tones for UI feedback.
 - **Pathfinding** uses A\* with an octile heuristic and a wall-proximity cost overlay. Binary min-heap open set. Under 1ms per search on 64×64.
 - **Collision** is axis-separated (tanks slide along obstacles) with passability-checked separation to prevent tanks being pushed into walls.

@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AI_ROLES, BOT_KEYS, CONFIG, createBot, customMap, GameMap, pickRole, Tank } from "./helpers.js";
+import {
+    AI_ROLES,
+    BOT_KEYS,
+    CONFIG,
+    createBot,
+    customMap,
+    GameMap,
+    pickRoleForVehicle,
+    Tank,
+    VEHICLES,
+} from "./helpers.js";
 
 /* ── Helper: create a bot with a specific role ────────────── */
 
@@ -39,21 +49,42 @@ function simulateRole(bot, target, map, opts = {}) {
 
 /* ════════════════════════════════════════════════════════════ */
 
-describe("AI Roles – pickRole", () => {
-    it("returns one of the four valid roles", () => {
+describe("AI Roles – pickRoleForVehicle", () => {
+    it("returns a valid role for each vehicle type", () => {
         const valid = new Set(Object.values(AI_ROLES));
-        for (let i = 0; i < 50; i++) {
-            const role = pickRole();
-            assert.ok(valid.has(role), `unexpected role: ${role}`);
+        for (const vType of Object.keys(VEHICLES)) {
+            for (let i = 0; i < 50; i++) {
+                const role = pickRoleForVehicle(vType);
+                assert.ok(valid.has(role), `unexpected role: ${role} for ${vType}`);
+            }
         }
     });
 
-    it("returns all four roles given enough samples", () => {
+    it("tank returns all four roles given enough samples", () => {
         const seen = new Set();
-        for (let i = 0; i < 200; i++) seen.add(pickRole());
+        for (let i = 0; i < 200; i++) seen.add(pickRoleForVehicle("tank"));
         for (const role of Object.values(AI_ROLES)) {
-            assert.ok(seen.has(role), `role "${role}" never picked in 200 samples`);
+            assert.ok(seen.has(role), `role "${role}" never picked for tank`);
         }
+    });
+
+    it("drone always returns cavalry (only non-zero weight)", () => {
+        for (let i = 0; i < 50; i++) {
+            const role = pickRoleForVehicle("drone");
+            assert.equal(role, "cavalry", `drone got ${role} instead of cavalry`);
+        }
+    });
+
+    it("IFV favours scout role", () => {
+        const counts = {};
+        for (let i = 0; i < 500; i++) {
+            const role = pickRoleForVehicle("ifv");
+            counts[role] = (counts[role] || 0) + 1;
+        }
+        assert.ok(
+            counts.scout > counts.cavalry,
+            `scout (${counts.scout}) should be more common than cavalry (${counts.cavalry}) for IFV`,
+        );
     });
 });
 

@@ -6,8 +6,8 @@
  * correctly occludes entities behind it.
  */
 
-import { CONFIG, TILES as T } from "./config.js";
-import { clamp, worldToScreen } from "./utils.js";
+import { CONFIG, TILES as T, VEHICLES } from "./config.js";
+import { clamp, distance, worldToScreen } from "./utils.js";
 
 const TW = CONFIG.TILE_WIDTH;
 const TH = CONFIG.TILE_HEIGHT;
@@ -165,14 +165,18 @@ export class Renderer {
         }
 
         // Entities (tanks, bullets, particles)
-        const addEntity = (kind, entity, wx, wy) => {
+        const addEntity = (kind, entity, wx, wy, depthBonus = 0) => {
             const scr = worldToScreen(wx, wy);
             if (scr.x < visLeft - 40 || scr.x > visRight + 40 || scr.y < visTop - 40 || scr.y > visBottom + 40) return;
-            addToBucket(wx + wy, { kind, entity, sx: scr.x, sy: scr.y });
+            addToBucket(wx + wy + depthBonus, { kind, entity, sx: scr.x, sy: scr.y });
         };
 
         for (const t of game.allTanks) {
-            if (t.alive || t.respawnTimer > 0) addEntity(1, t, t.x, t.y);
+            if (t.alive || t.respawnTimer > 0) {
+                // Drones fly above buildings — render them later (higher depth)
+                const depthBonus = t.vehicleType === "drone" ? 2 : 0;
+                addEntity(1, t, t.x, t.y, depthBonus);
+            }
         }
         for (const tw of game.towers) {
             if (tw.alive) addEntity(4, tw, tw.x, tw.y);
@@ -509,7 +513,9 @@ export class Renderer {
     /* ── vehicle drawing (dispatch) ───────────────────────── */
 
     _drawVehicle(ctx, tank, sx, sy) {
-        if (tank.vehicleType === "ifv") {
+        if (tank.vehicleType === "drone") {
+            this._drawDrone(ctx, tank, sx, sy);
+        } else if (tank.vehicleType === "ifv") {
             this._drawIFV(ctx, tank, sx, sy);
         } else {
             this._drawTank(ctx, tank, sx, sy);
@@ -1033,6 +1039,132 @@ export class Renderer {
         ctx.stroke();
     }
 
+    /* ── drone drawing ────────────────────────────────────── */
+
+    /**
+     * Draw an FPV kamikaze quadcopter drone from isometric perspective.
+     *
+     * Drones hover above the ground, so the entire sprite is drawn
+     * with a vertical offset.  A shadow ellipse sits at ground level.
+     *
+     * Visual elements:
+     *   - Shadow on ground
+     *   - 4 arms extending diagonally from centre
+     *   - 4 spinning rotor discs at arm tips
+     *   - Small team-coloured central body
+     *   - White LED indicator on the front
+     */
+    _drawDrone(ctx, tank, sx, sy) {
+        if (!tank.alive) return;
+        if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
+
+        const ca = Math.cos(tank.angle),
+            sa = Math.sin(tank.angle);
+        const HTW = TW / 2,
+            HTH = TH / 2;
+
+        // Project local point → screen using hull angle
+        const P = (lx, ly) => {
+            const wx = lx * ca - ly * sa;
+            const wy = lx * sa + ly * ca;
+            return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
+        };
+        const fill = (pts, color) => {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.fill();
+        };
+        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
+
+        // Hover height (bobbing)
+        const hoverH = 20 + Math.sin(performance.now() / 300) * 2;
+
+        // ── 1. Shadow on ground ──
+        ctx.fillStyle = "rgba(0,0,0,0.15)";
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + TH / 4, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ── 2. Arms ──
+        const armLen = 0.2;
+        const arms = [
+            { lx: armLen, ly: armLen },
+            { lx: armLen, ly: -armLen },
+            { lx: -armLen, ly: armLen },
+            { lx: -armLen, ly: -armLen },
+        ];
+
+        const centre = lift([P(0, 0)], -hoverH)[0];
+
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 2;
+        for (const arm of arms) {
+            const tip = lift([P(arm.lx, arm.ly)], -hoverH)[0];
+            ctx.beginPath();
+            ctx.moveTo(centre[0], centre[1]);
+            ctx.lineTo(tip[0], tip[1]);
+            ctx.stroke();
+        }
+
+        // ── 3. Rotor discs (fast-spinning blur) ──
+        const rotorPhase = performance.now() / 40;
+        for (let ai = 0; ai < arms.length; ai++) {
+            const arm = arms[ai];
+            const tip = lift([P(arm.lx, arm.ly)], -hoverH)[0];
+
+            // Motion-blur disc
+            ctx.fillStyle = "rgba(180,180,180,0.2)";
+            ctx.beginPath();
+            ctx.arc(tip[0], tip[1], 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Blade lines (2 per rotor, rotating)
+            const bladeAngle = rotorPhase + ai * 0.7;
+            ctx.strokeStyle = "rgba(80,80,80,0.5)";
+            ctx.lineWidth = 1.5;
+            const r = 5;
+            ctx.beginPath();
+            for (let b = 0; b < 2; b++) {
+                const a = bladeAngle + (b * Math.PI) / 2;
+                const dx = Math.cos(a) * r;
+                const dy = Math.sin(a) * r * 0.5; // isometric squish
+                ctx.moveTo(tip[0] - dx, tip[1] - dy);
+                ctx.lineTo(tip[0] + dx, tip[1] + dy);
+            }
+            ctx.stroke();
+        }
+
+        // ── 4. Central body ──
+        const bw = 0.09,
+            bh = 0.06;
+        const body = lift([P(-bw, -bh), P(bw, -bh), P(bw, bh), P(-bw, bh)], -hoverH);
+        fill(body, tank.color);
+        ctx.strokeStyle = tank.darkColor;
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(body[0][0], body[0][1]);
+        for (let i = 1; i < body.length; i++) ctx.lineTo(body[i][0], body[i][1]);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Dark underside indicator (payload)
+        const payload = lift([P(-0.04, -0.03), P(0.04, -0.03), P(0.04, 0.03), P(-0.04, 0.03)], -hoverH + 2);
+        fill(payload, tank.darkColor);
+
+        // ── 5. Front LED (white dot, blinks) ──
+        const ledOn = Math.sin(performance.now() / 200) > 0;
+        if (ledOn) {
+            const nose = lift([P(bw + 0.03, 0)], -hoverH)[0];
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(nose[0], nose[1], 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
     /* ── tower drawing ────────────────────────────────────── */
 
     _drawTower(ctx, tower, sx, sy) {
@@ -1336,7 +1468,11 @@ export class Renderer {
             ctx.fillStyle = t.team === 1 ? "#ff4444" : "#4488ff";
             const dx = mmX + t.x * px;
             const dy = mmY + t.y * px;
-            if (t.vehicleType === "ifv") {
+            if (t.vehicleType === "drone") {
+                // Cross shape for drones
+                ctx.fillRect(dx - 0.5, dy - 2, 1.5, 4.5);
+                ctx.fillRect(dx - 2, dy - 0.5, 4.5, 1.5);
+            } else if (t.vehicleType === "ifv") {
                 // Diamond shape for IFVs
                 ctx.beginPath();
                 ctx.moveTo(dx, dy - 1.5);
@@ -1433,11 +1569,55 @@ export class Renderer {
 
         // Vehicle type indicator
         if (game.humanTank.alive) {
-            const vType = game.humanTank.vehicleType === "ifv" ? "\u25C7 IFV" : "\u25C6 TANK";
+            const vType =
+                game.humanTank.vehicleType === "drone"
+                    ? "\u2716 DRONE"
+                    : game.humanTank.vehicleType === "ifv"
+                      ? "\u25C7 IFV"
+                      : "\u25C6 TANK";
             ctx.font = 'bold 13px "Courier New", monospace';
             ctx.fillStyle = game.humanTank.color;
             ctx.textAlign = "center";
             ctx.fillText(vType, cx, ch - 20);
+
+            // Drone proximity damage indicator
+            if (game.humanTank.vehicleType === "drone") {
+                const blastR = VEHICLES.drone.blastRadius;
+                let bestDmg = 0;
+                for (const t of game.allTanks) {
+                    if (!t.alive || t.team === game.humanTank.team) continue;
+                    const d = distance(game.humanTank.x, game.humanTank.y, t.x, t.y);
+                    const dmg = Math.max(0, 1 - d / blastR);
+                    if (dmg > bestDmg) bestDmg = dmg;
+                }
+                for (const tw of game.towers) {
+                    if (!tw.alive || tw.team === game.humanTank.team) continue;
+                    const d = distance(game.humanTank.x, game.humanTank.y, tw.x, tw.y);
+                    const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+                    const dmg = Math.max(0, 1 - edgeDist / blastR);
+                    if (dmg > bestDmg) bestDmg = dmg;
+                }
+
+                if (bestDmg > 0) {
+                    const pct = Math.round(bestDmg * 100);
+                    const barW = 80,
+                        barH = 8;
+                    const barX = cx - barW / 2,
+                        barY = ch - 38;
+                    ctx.fillStyle = "rgba(0,0,0,0.5)";
+                    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+                    const col = bestDmg > 0.7 ? "#ff4444" : bestDmg > 0.4 ? "#ffaa22" : "#888";
+                    ctx.fillStyle = col;
+                    ctx.fillRect(barX, barY, barW * bestDmg, barH);
+                    ctx.font = 'bold 9px "Courier New", monospace';
+                    ctx.fillStyle = "#fff";
+                    ctx.fillText(`DMG ${pct}%`, cx, barY + 7);
+                } else {
+                    ctx.font = '10px "Courier New", monospace';
+                    ctx.fillStyle = "#666";
+                    ctx.fillText("FIRE to detonate", cx, ch - 34);
+                }
+            }
         }
 
         // Allied bot role roster (bottom-left)

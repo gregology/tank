@@ -161,6 +161,30 @@ export class ParticleSystem {
         }
     }
 
+    /** Drone detonation — sharp directional blast with sparks. */
+    emitDroneExplosion(x, y) {
+        const fireColors = ["#ff4400", "#ff8800", "#ffcc00", "#ffffff"];
+        for (let i = 0; i < 18; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(1.5, 5.0);
+            this._add(
+                x,
+                y,
+                Math.cos(a) * s,
+                Math.sin(a) * s,
+                fireColors[randomInt(0, fireColors.length - 1)],
+                randomFloat(0.2, 0.6),
+                randomFloat(1, 4),
+            );
+        }
+        // Dark smoke from electronics
+        for (let i = 0; i < 6; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(0.3, 1.5);
+            this._add(x, y, Math.cos(a) * s, Math.sin(a) * s, "#222", randomFloat(0.5, 1.2), randomFloat(2, 5));
+        }
+    }
+
     /** Continuous smoke puff from a damaged tank. */
     emitSmoke(x, y) {
         const g = randomInt(35, 75);

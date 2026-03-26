@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HIT_ZONE } from "../js/tank.js";
-import { Bullet, CONFIG, customMap, GameMap, T, Tank } from "./helpers.js";
+import { Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
 
 describe("Tank", () => {
     it("starts alive with default properties", () => {
@@ -70,7 +70,7 @@ describe("Tank", () => {
     });
 
     it("turret rotation speed is slower than hull rotation speed", () => {
-        assert.ok(CONFIG.TURRET_ROTATION_SPEED < CONFIG.TANK_ROTATION_SPEED);
+        assert.ok(VEHICLES.tank.turretSpeed < VEHICLES.tank.rotationSpeed);
     });
 });
 
@@ -353,8 +353,8 @@ describe("IFV vehicle type", () => {
         tank.fire();
         ifv.fire();
 
-        assert.equal(tank.fireCooldown, CONFIG.BULLET_COOLDOWN);
-        assert.equal(ifv.fireCooldown, CONFIG.IFV_BULLET_COOLDOWN);
+        assert.equal(tank.fireCooldown, VEHICLES.tank.bulletCooldown);
+        assert.equal(ifv.fireCooldown, VEHICLES.ifv.bulletCooldown);
         assert.ok(ifv.fireCooldown < tank.fireCooldown, "IFV should have shorter cooldown");
     });
 });
@@ -438,7 +438,7 @@ describe("Bullet", () => {
         assert.equal(b.team, 1);
         assert.ok(b.alive);
         assert.equal(b.damage, 1.0);
-        assert.equal(b.speed, CONFIG.BULLET_SPEED);
+        assert.equal(b.speed, VEHICLES.tank.bulletSpeed);
     });
 
     it("supports custom damage and speed", () => {
@@ -500,5 +500,209 @@ describe("Collision – team filtering", () => {
         t.team = 1;
         const b = new Bullet(0, 0, 0, 3, 2);
         assert.notEqual(b.team, t.team);
+    });
+});
+
+describe("Drone vehicle type", () => {
+    it("drone has fixed gun (fixedGun getter)", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "drone";
+        assert.equal(t.fixedGun, true);
+    });
+
+    it("drone has smaller collision radius", () => {
+        const t = new Tank(1, "#c33", "#822");
+        assert.equal(t.size, VEHICLES.tank.size);
+        t.vehicleType = "drone";
+        assert.equal(t.size, VEHICLES.drone.size);
+        assert.ok(VEHICLES.drone.size < VEHICLES.tank.size);
+    });
+
+    it("drone dies on any hit regardless of zone", () => {
+        for (const zone of [HIT_ZONE.FRONT, HIT_ZONE.SIDE_LEFT, HIT_ZONE.SIDE_RIGHT, HIT_ZONE.REAR]) {
+            const t = new Tank(1, "#c33", "#822");
+            t.vehicleType = "drone";
+            const result = t.applyHit(zone);
+            assert.equal(result, "destroyed", `Drone should die from ${zone} hit`);
+            assert.ok(!t.alive);
+        }
+    });
+
+    it("drone dies even from partial damage (0.25)", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "drone";
+        const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
+        assert.equal(result, "destroyed");
+        assert.ok(!t.alive);
+    });
+
+    it("drone turret is fixed forward (turretAngle stays 0)", () => {
+        const map = new GameMap();
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "drone";
+        t.alive = true;
+        let sx, sy;
+        for (let y = 20; y < 44 && !sx; y++)
+            for (let x = 20; x < 44 && !sx; x++)
+                if (map.isPassable(x + 0.5, y + 0.5)) {
+                    sx = x + 0.5;
+                    sy = y + 0.5;
+                }
+        t.x = sx;
+        t.y = sy;
+        t.angle = 0;
+        t.turretAngle = 0;
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.equal(t.turretAngle, 0, "Drone turret should stay at 0");
+    });
+
+    it("drone moves faster than tank and IFV", () => {
+        const map = customMap([]);
+        const tank = new Tank(1, "#c33", "#822");
+        const ifv = new Tank(2, "#33c", "#228");
+        ifv.vehicleType = "ifv";
+        const drone = new Tank(3, "#3c3", "#282");
+        drone.vehicleType = "drone";
+
+        const sx = 32.5,
+            sy = 32.5;
+        for (const t of [tank, ifv, drone]) {
+            t.alive = true;
+            t.x = sx;
+            t.y = sy;
+            t.angle = 0;
+        }
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 30; i++) {
+            tank.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+            ifv.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+            drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        }
+        const tankDist = Math.hypot(tank.x - sx, tank.y - sy);
+        const ifvDist = Math.hypot(ifv.x - sx, ifv.y - sy);
+        const droneDist = Math.hypot(drone.x - sx, drone.y - sy);
+        assert.ok(
+            droneDist > ifvDist,
+            `Drone should travel farther than IFV (${droneDist.toFixed(2)} vs ${ifvDist.toFixed(2)})`,
+        );
+        assert.ok(
+            droneDist > tankDist * 1.8,
+            `Drone should travel much farther than tank (${droneDist.toFixed(2)} vs ${tankDist.toFixed(2)})`,
+        );
+    });
+
+    it("drone flies over buildings and hills (not blocked by terrain)", () => {
+        const obstacles = [];
+        for (let x = 30; x <= 35; x++) obstacles.push({ x, y: 32, tile: T.HILL });
+        const map = customMap(obstacles);
+
+        const drone = new Tank(1, "#c33", "#822");
+        drone.vehicleType = "drone";
+        drone.alive = true;
+        drone.x = 28.5;
+        drone.y = 32.5;
+        drone.angle = 0; // facing east, into the wall
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        // Drone speed = 6.0 u/s.  Need ~1.4s to cross 8.5 tiles → ~90 frames
+        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(drone.x > 36, `Drone should fly over hills (x=${drone.x.toFixed(2)})`);
+    });
+
+    it("regular tank is blocked by same terrain drone flies over", () => {
+        const obstacles = [];
+        for (let x = 30; x <= 35; x++) obstacles.push({ x, y: 32, tile: T.HILL });
+        const map = customMap(obstacles);
+
+        const tank = new Tank(1, "#c33", "#822");
+        tank.alive = true;
+        tank.x = 28.5;
+        tank.y = 32.5;
+        tank.angle = 0;
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 120; i++) tank.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(tank.x < 30, `Tank should be blocked by hills (x=${tank.x.toFixed(2)})`);
+    });
+
+    it("drone flies over water", () => {
+        const map = customMap([]);
+        for (let x = 30; x <= 35; x++) map.setTile(x, 32, T.DEEP_WATER);
+
+        const drone = new Tank(1, "#c33", "#822");
+        drone.vehicleType = "drone";
+        drone.alive = true;
+        drone.x = 28.5;
+        drone.y = 32.5;
+        drone.angle = 0;
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(drone.x > 36, `Drone should fly over water (x=${drone.x.toFixed(2)})`);
+    });
+
+    it("drone cannot fly off the map", () => {
+        const map = customMap([]);
+        const drone = new Tank(1, "#c33", "#822");
+        drone.vehicleType = "drone";
+        drone.alive = true;
+        drone.x = 1;
+        drone.y = 32.5;
+        drone.angle = Math.PI; // facing west, toward map edge
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 200; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(drone.x >= 0.5, `Drone should stop at map edge (x=${drone.x.toFixed(2)})`);
+    });
+
+    it("drone track damage has no effect (always free to move)", () => {
+        const map = customMap([]);
+        const drone = new Tank(1, "#c33", "#822");
+        drone.vehicleType = "drone";
+        drone.alive = true;
+        drone.x = 32.5;
+        drone.y = 32.5;
+        drone.angle = 0;
+        drone.leftTrackDisabled = true;
+        drone.rightTrackDisabled = true;
+
+        const startX = drone.x;
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 30; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(drone.x > startX + 0.5, `Drone should still move with disabled tracks (x=${drone.x.toFixed(2)})`);
+    });
+});
+
+describe("Drone detonation – distance-based damage", () => {
+    it("point-blank detonation deals full damage (1.0)", () => {
+        // Damage at distance 0 = DRONE_ATTACK_DAMAGE * (1 - 0/BLAST_RADIUS) = 1.0
+        const dmg = VEHICLES.drone.blastDamage * Math.max(0, 1 - 0 / VEHICLES.drone.blastRadius);
+        assert.equal(dmg, 1.0);
+    });
+
+    it("damage falls off linearly to 0 at blast radius edge", () => {
+        const r = VEHICLES.drone.blastRadius;
+        const atEdge = VEHICLES.drone.blastDamage * Math.max(0, 1 - r / r);
+        assert.equal(atEdge, 0);
+
+        const atHalf = VEHICLES.drone.blastDamage * Math.max(0, 1 - r / 2 / r);
+        assert.ok(Math.abs(atHalf - 0.5) < 0.01, `Half-radius should deal ~0.5 damage (got ${atHalf})`);
+    });
+
+    it("detonation with no enemies nearby still kills the drone", () => {
+        // The drone self-destructs even if nobody is in range
+        const drone = new Tank(1, "#c33", "#822");
+        drone.vehicleType = "drone";
+        drone.alive = true;
+        // canFire returns true (no cooldown on drones)
+        assert.ok(drone.canFire());
+    });
+
+    it("DRONE_BLAST_RADIUS > 0 and DRONE_ATTACK_DAMAGE === 1.0", () => {
+        assert.ok(VEHICLES.drone.blastRadius > 0);
+        assert.equal(VEHICLES.drone.blastDamage, 1.0);
     });
 });

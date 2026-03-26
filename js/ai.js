@@ -29,7 +29,7 @@
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
-import { CONFIG } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 
 /* ── Role names ───────────────────────────────────────────── */
@@ -42,11 +42,16 @@ export const AI_ROLES = {
 };
 
 /**
- * Pick a random role using weighted selection from CONFIG.ROLE_WEIGHTS.
+ * Pick a random role using per-vehicle weighted selection.
+ * Each vehicle type in VEHICLES has its own roleWeights map.
+ * A weight of 0 means that role is never assigned.
+ *
+ * @param {string} vehicleType  'tank', 'ifv', or 'drone'
  */
-export function pickRole() {
-    const w = CONFIG.ROLE_WEIGHTS;
-    const entries = Object.entries(w);
+export function pickRoleForVehicle(vehicleType = "tank") {
+    const w = VEHICLES[vehicleType]?.roleWeights ?? VEHICLES.tank.roleWeights;
+    const entries = Object.entries(w).filter(([, v]) => v > 0);
+    if (entries.length === 0) return "cavalry"; // fallback
     const total = entries.reduce((s, [, v]) => s + v, 0);
     let r = Math.random() * total;
     for (const [role, weight] of entries) {
@@ -138,6 +143,12 @@ export class AIController {
         this.fireDelay -= dt;
         this._updateWobble(dt);
         this._updateStuck(dt, me);
+
+        // ── Drones: simplified AI (fly direct, no pathfinding) ──
+        if (me.vehicleType === "drone") {
+            this._thinkDrone(dt, me, enemies, map, objective);
+            return;
+        }
 
         // ── Tracks disabled: can only pivot and shoot ──
         if (me.trackDamaged) {
@@ -511,6 +522,66 @@ export class AIController {
 
         // Last resort: head straight for objective
         return { x: objective.x, y: objective.y };
+    }
+
+    /* ════════════════════════════════════════════════════════ *
+     *  Drone behaviour (FPV kamikaze)                          *
+     * ════════════════════════════════════════════════════════ */
+
+    /**
+     * Drone AI: use role-based goal selection for navigation target,
+     * then fly directly (no pathfinding — drones fly over terrain).
+     *
+     * Detonation is manual — the bot presses fire when close enough
+     * for significant damage.  Damage falls off with distance, so
+     * the bot tries to get nearly on top of the target before firing.
+     */
+    _thinkDrone(dt, me, enemies, _map, objective) {
+        const { navGoal, fireTarget } = this._chooseGoalAndTarget(dt, me, enemies, _map, objective);
+
+        // If we have a fire target nearby, prioritise diving at it
+        let target = navGoal;
+        if (fireTarget && fireTarget.dist < 20) {
+            target = { x: fireTarget.x, y: fireTarget.y };
+        }
+
+        if (!target) {
+            this._patrol();
+            return;
+        }
+
+        // ── Navigate directly (drones fly over everything) ──
+        const desired = Math.atan2(target.y - me.y, target.x - me.x);
+        let diff = desired - me.angle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+
+        if (diff > 0.08) this.keys[this.keyMap.right] = true;
+        if (diff < -0.08) this.keys[this.keyMap.left] = true;
+
+        const dist = Math.hypot(target.x - me.x, target.y - me.y);
+        if (Math.abs(diff) < Math.PI * 0.7 && dist > 0.5) {
+            this.keys[this.keyMap.forward] = true;
+        }
+
+        // ── Detonate when nearly on top of an enemy ──
+        // AI wants point-blank for max damage (≥ 0.7× at this range)
+        const detonateRange = VEHICLES.drone.blastRadius * 0.3 + VEHICLES.tank.size;
+        for (const e of enemies) {
+            if (!e.alive) continue;
+            const d = Math.hypot(e.x - me.x, e.y - me.y);
+            if (d < detonateRange) {
+                this.keys[this.keyMap.fire] = true;
+                return;
+            }
+        }
+        // Check objective (tower)
+        if (objective?.alive) {
+            const d = Math.hypot(objective.x - me.x, objective.y - me.y);
+            if (d < detonateRange + CONFIG.TOWER_RADIUS) {
+                this.keys[this.keyMap.fire] = true;
+            }
+        }
     }
 
     /* ════════════════════════════════════════════════════════ *
