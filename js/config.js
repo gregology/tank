@@ -166,10 +166,18 @@ export const MODE_DEFS = {
  * vehicle types lives here.  The game reads VEHICLES[tank.vehicleType]
  * at runtime — adding a new vehicle is just a new entry in this table.
  *
- * roleWeights: per-vehicle role distribution for team mode AI.
- *              Higher weight = more likely.  0 = never assigned.
- *              Drones are always cavalry; IFVs lean toward scout.
- *              SPGs lean toward sniper (long-range indirect fire).
+ * roleWeights:    per-vehicle role distribution for team mode AI.
+ *                 Higher weight = more likely.  0 = never assigned.
+ *                 Drones are always cavalry; IFVs lean toward scout.
+ *                 SPGs lean toward sniper (long-range indirect fire).
+ *
+ * targetPriority: per-vehicle preference for engaging different target
+ *                 types.  Higher = more desirable.  0 = never engage.
+ *                 Keys are vehicle type names + 'base' for towers.
+ *                 AI uses  weight / distance  to score candidates, so
+ *                 a nearby low-priority target can still beat a distant
+ *                 high-priority one.  Adding a new vehicle type only
+ *                 requires a new entry here with its own targetPriority.
  */
 export const VEHICLES = {
     tank: {
@@ -183,6 +191,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
+        targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, base: 10 },
     },
     ifv: {
         speed: 4.5,
@@ -195,6 +204,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
+        targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, base: 2 },
     },
     drone: {
         speed: 6.0,
@@ -209,6 +219,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
+        targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, base: 10 },
     },
     spg: {
         speed: 2.0,
@@ -226,5 +237,6 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 10.0,
         roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
+        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, base: 10 },
     },
 };

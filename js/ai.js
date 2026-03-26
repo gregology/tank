@@ -26,6 +26,13 @@
  *   - defender: patrol near friendly tower, intercept incoming enemies
  *   - scout:    wide flanking route to enemy tower, engage only close threats
  *
+ * Target priority:
+ *   Each vehicle type has a targetPriority table in VEHICLES (config.js)
+ *   that maps target vehicle types → desirability weights.  The AI scores
+ *   candidates as  weight / distance  and picks the highest-scoring one.
+ *   A weight of 0 means "never engage" — the AI won't fire at, navigate
+ *   toward, or (for drones) detonate on that target type.
+ *
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
@@ -247,7 +254,7 @@ export class AIController {
     /* ── Default (original behaviour) ─────────────────────── */
 
     _defaultGoal(me, enemies, objective) {
-        const nearEnemy = this._nearestAlive(me, enemies);
+        const bestEnemy = this._bestTarget(me, enemies);
         let navGoal = null;
         let fireTarget = null;
 
@@ -259,16 +266,16 @@ export class AIController {
             }
         }
 
-        if (nearEnemy && nearEnemy.dist < 10) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
-            if (!objective && nearEnemy.dist < 8) {
-                navGoal = { x: nearEnemy.tank.x, y: nearEnemy.tank.y };
+        if (bestEnemy && bestEnemy.dist < 10) {
+            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            if (!objective && bestEnemy.dist < 8) {
+                navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
             }
         }
 
-        if (!navGoal && nearEnemy) {
-            navGoal = { x: nearEnemy.tank.x, y: nearEnemy.tank.y };
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        if (!navGoal && bestEnemy) {
+            navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
+            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -290,9 +297,9 @@ export class AIController {
         }
 
         // Engage nearby enemies (don't detour to chase — just shoot)
-        const nearEnemy = this._nearestAlive(me, enemies);
-        if (nearEnemy && nearEnemy.dist < 10) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        const bestEnemy = this._bestTarget(me, enemies);
+        if (bestEnemy && bestEnemy.dist < 10) {
+            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -345,9 +352,9 @@ export class AIController {
         }
 
         // Self-defence: engage enemies only when very close
-        const nearEnemy = this._nearestAlive(me, enemies);
-        if (nearEnemy && nearEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        const bestEnemy = this._bestTarget(me, enemies);
+        if (bestEnemy && bestEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
+            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -391,12 +398,14 @@ export class AIController {
             return this._cavalryGoal(me, enemies, objective);
         }
 
-        // Check for enemies near the friendly tower
+        // Check for enemies near the friendly tower (filtered by priority)
         const engageRange = CONFIG.DEFENDER_ENGAGE_RANGE;
+        const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
         let closestThreat = null,
             closestDist = Infinity;
         for (const e of enemies) {
             if (!e.alive) continue;
+            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - ft.x, e.y - ft.y);
             if (d < engageRange && d < closestDist) {
                 closestThreat = e;
@@ -426,9 +435,9 @@ export class AIController {
             };
 
             // Fire at any enemy within personal range
-            const nearEnemy = this._nearestAlive(me, enemies);
-            if (nearEnemy && nearEnemy.dist < 10) {
-                fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+            const bestEnemy = this._bestTarget(me, enemies);
+            if (bestEnemy && bestEnemy.dist < 10) {
+                fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
             }
         }
 
@@ -472,9 +481,9 @@ export class AIController {
         }
 
         // Only engage enemies that are very close (self-defence)
-        const nearEnemy = this._nearestAlive(me, enemies);
-        if (nearEnemy && nearEnemy.dist < 6) {
-            fireTarget = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        const bestEnemy = this._bestTarget(me, enemies);
+        if (bestEnemy && bestEnemy.dist < 6) {
+            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -536,6 +545,9 @@ export class AIController {
      * Detonation is manual — the bot presses fire when close enough
      * for significant damage.  Damage falls off with distance, so
      * the bot tries to get nearly on top of the target before firing.
+     *
+     * Detonation respects targetPriority: the drone won't waste its
+     * one-shot explosion on a target with priority 0 (e.g. other drones).
      */
     _thinkDrone(dt, me, enemies, _map, objective) {
         const { navGoal, fireTarget } = this._chooseGoalAndTarget(dt, me, enemies, _map, objective);
@@ -565,11 +577,14 @@ export class AIController {
             this.keys[this.keyMap.forward] = true;
         }
 
-        // ── Detonate when nearly on top of an enemy ──
-        // AI wants point-blank for max damage (≥ 0.7× at this range)
+        // ── Detonate when nearly on top of a valid target ──
+        // AI wants point-blank for max damage (≥ 0.7× at this range).
+        // Skip targets with priority 0 — don't waste the explosion.
         const detonateRange = VEHICLES.drone.blastRadius * 0.3 + VEHICLES.tank.size;
+        const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
         for (const e of enemies) {
             if (!e.alive) continue;
+            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             if (d < detonateRange) {
                 this.keys[this.keyMap.fire] = true;
@@ -594,16 +609,16 @@ export class AIController {
      * Rotate hull toward nearest threat and fire.
      */
     _thinkImmobilised(_dt, me, enemies, map, objective) {
-        const nearEnemy = this._nearestAlive(me, enemies);
+        const bestEnemy = this._bestTarget(me, enemies);
         let target = null;
 
-        if (nearEnemy && nearEnemy.dist < 15) {
-            target = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        if (bestEnemy && bestEnemy.dist < 15) {
+            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         } else if (objective) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
             target = { x: objective.x, y: objective.y, dist: d };
-        } else if (nearEnemy) {
-            target = { x: nearEnemy.tank.x, y: nearEnemy.tank.y, dist: nearEnemy.dist };
+        } else if (bestEnemy) {
+            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
         }
 
         if (!target) return;
@@ -874,18 +889,37 @@ export class AIController {
      *  Helpers                                                 *
      * ════════════════════════════════════════════════════════ */
 
-    _nearestAlive(me, enemies) {
-        let best = null,
-            bestD = Infinity;
+    /**
+     * Pick the best enemy target using priority-weighted scoring.
+     *
+     * Each vehicle type has a targetPriority map in VEHICLES (config.js)
+     * that assigns a desirability weight to each target vehicle type.
+     * Candidates are scored as  weight / distance  — nearby low-priority
+     * targets can still beat distant high-priority ones.
+     *
+     * A weight of 0 means "never engage" — the target is excluded.
+     * Unknown vehicle types default to weight 1.
+     *
+     * @param {object} me        the bot's own tank
+     * @param {object[]} enemies array of enemy Tank objects
+     * @returns {{ tank: object, dist: number } | null}
+     */
+    _bestTarget(me, enemies) {
+        const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
+        let best = null;
+        let bestScore = -1;
         for (const e of enemies) {
             if (!e.alive) continue;
+            const w = priorities[e.vehicleType] ?? 1;
+            if (w <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
-            if (d < bestD) {
+            const score = w / Math.max(d, 0.5);
+            if (score > bestScore) {
                 best = e;
-                bestD = d;
+                bestScore = score;
             }
         }
-        return best ? { tank: best, dist: bestD } : null;
+        return best ? { tank: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
     }
 
     _updateWobble(dt) {
