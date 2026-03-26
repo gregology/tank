@@ -166,8 +166,8 @@ export class Game {
         this.tank1.update(dt, this.input, CONFIG.PLAYER1_KEYS, this.map);
         this.tank2.update(dt, input2, CONFIG.PLAYER2_KEYS, this.map);
         this._separatePairs(this._allTanks);
-        this._handleFiring(this.tank1, this.input, CONFIG.PLAYER1_KEYS);
-        this._handleFiring(this.tank2, input2, CONFIG.PLAYER2_KEYS);
+        this._handleFiring(this.tank1, this.input, CONFIG.PLAYER1_KEYS, dt);
+        this._handleFiring(this.tank2, input2, CONFIG.PLAYER2_KEYS, dt);
         this._tickBullets(dt);
         this._checkBulletHits();
         this.bullets = this.bullets.filter((b) => b.alive);
@@ -279,9 +279,9 @@ export class Game {
         this._pushFromTowers();
 
         // Firing
-        this._handleFiring(this._humanTank, this.input, CONFIG.PLAYER1_KEYS);
+        this._handleFiring(this._humanTank, this.input, CONFIG.PLAYER1_KEYS, dt);
         for (const { ai, tank } of this._bots) {
-            if (tank.alive) this._handleFiring(tank, ai, BOT_KEYS);
+            if (tank.alive) this._handleFiring(tank, ai, BOT_KEYS, dt);
         }
 
         this._tickBullets(dt);
@@ -318,7 +318,7 @@ export class Game {
 
     _checkBulletTowers() {
         for (const b of this.bullets) {
-            if (!b.alive) continue;
+            if (!b.alive || b.arcing) continue; // arcing shells use splash on landing
             for (const tw of this._towers) {
                 if (!tw.alive || b.team === tw.team) continue;
                 if (distance(b.x, b.y, tw.x, tw.y) < CONFIG.TOWER_RADIUS) {
@@ -373,10 +373,15 @@ export class Game {
      *  SHARED helpers                                         *
      * ═══════════════════════════════════════════════════════ */
 
-    _handleFiring(tank, input, keys) {
+    _handleFiring(tank, input, keys, dt = 0.016) {
         // Drones don't fire bullets — they detonate on contact
         if (tank.vehicleType === "drone") {
             this._handleDroneAttack(tank, input, keys);
+            return;
+        }
+        // SPGs use hold-to-charge mechanic
+        if (tank.vehicleType === "spg") {
+            this._handleSPGFiring(tank, input, keys, dt);
             return;
         }
         if (input.isDown(keys.fire) && tank.canFire()) {
@@ -399,6 +404,123 @@ export class Game {
             else this.particles.emitMuzzleFlash(tipX, tipY, fireAngle);
             this.emit("fire", { tank, bullet: b });
         }
+    }
+
+    /**
+     * Handle SPG hold-to-charge firing.
+     *
+     * Hold fire → chargeTime increases → projected range grows.
+     * Release fire → lob an arcing shell to that range.
+     * The shell arcs over all terrain and deals splash damage on landing.
+     */
+    _handleSPGFiring(tank, input, keys, dt) {
+        if (!tank.alive) return;
+
+        const fireHeld = input.isDown(keys.fire);
+        const vStats = VEHICLES.spg;
+
+        if (fireHeld && tank.fireCooldown <= 0) {
+            // Charging
+            tank.isCharging = true;
+            tank.chargeTime += dt;
+            // Cap charge time so range doesn't exceed maxRange
+            const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
+            if (tank.chargeTime > maxCharge) tank.chargeTime = maxCharge;
+        } else if (tank.isCharging && !fireHeld) {
+            // Released! Fire the arcing shell
+            const range = Math.min(vStats.minRange + tank.chargeTime * vStats.chargeRate, vStats.maxRange);
+            tank.isCharging = false;
+            tank.chargeTime = 0;
+            tank.fire(); // sets cooldown
+
+            const fireAngle = tank.turretWorld;
+            const b = new Bullet(
+                tank.x,
+                tank.y,
+                fireAngle,
+                tank.playerNumber,
+                tank.team,
+                vStats.bulletDamage,
+                vStats.bulletSpeed,
+                true, // arcing
+                range,
+            );
+            this.bullets.push(b);
+
+            const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
+            const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
+            this.particles.emitSPGFlash(tipX, tipY, fireAngle);
+            this.emit("fire", { tank, bullet: b });
+        } else {
+            // Not holding fire and not charging — ensure state is clean
+            tank.isCharging = false;
+            tank.chargeTime = 0;
+        }
+    }
+
+    /**
+     * Handle an arcing artillery shell landing.
+     * Deals splash damage to all enemies in the blast radius,
+     * with linear falloff from centre.  Also damages terrain.
+     */
+    _handleArtilleryImpact(b) {
+        const splashR = VEHICLES.spg.splashRadius;
+
+        // ── Damage enemy tanks in splash radius ──
+        for (const t of this.allTanks) {
+            if (!t.alive || b.team === t.team) continue;
+            const d = distance(b.x, b.y, t.x, t.y);
+            if (d >= splashR + t.size) continue;
+
+            const effectiveDist = Math.max(0, d - t.size);
+            const dmg = b.damage * Math.max(0, 1 - effectiveDist / splashR);
+            if (dmg <= 0) continue;
+
+            const zone = t.getHitZone(b.x, b.y);
+            const result = t.applyHit(zone, dmg);
+
+            if (result === "destroyed") {
+                this.particles.emitExplosion(t.x, t.y);
+                this.emit("destroy", { tank: t });
+            } else if (result === "damaged") {
+                this.particles.emitImpact(b.x, b.y);
+                this.emit("hit", { tank: t, zone });
+            } else if (result === "absorbed") {
+                this.particles.emitTinyImpact(b.x, b.y);
+            }
+        }
+
+        // ── Damage enemy towers in splash radius ──
+        for (const tw of this.towers) {
+            if (!tw.alive || b.team === tw.team) continue;
+            const d = distance(b.x, b.y, tw.x, tw.y);
+            if (d >= splashR + CONFIG.TOWER_RADIUS) continue;
+
+            const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+            const dmg = b.damage * Math.max(0, 1 - edgeDist / splashR);
+            if (dmg <= 0) continue;
+
+            tw.hp -= dmg;
+            this.emit("impact", {});
+            if (tw.hp <= 0) {
+                tw.alive = false;
+                this.particles.emitExplosion(tw.x, tw.y);
+                this.emit("destroy", { tower: tw });
+            }
+        }
+
+        // ── Damage terrain at impact point ──
+        const gx = Math.floor(b.x),
+            gy = Math.floor(b.y);
+        if (this.map.damageTile(gx, gy, b.damage)) {
+            this.particles.emitExplosion(gx + 0.5, gy + 0.5);
+            this.emit("destroy_tile", { gx, gy });
+            this._invalidatePathfinders();
+        }
+
+        // Big landing explosion
+        this.particles.emitArtilleryImpact(b.x, b.y);
+        this.emit("artillery_impact", { bullet: b });
     }
 
     /**
@@ -483,15 +605,20 @@ export class Game {
         for (const b of this.bullets) {
             const wasAlive = b.alive;
             b.update(dt, this.map);
-            if (wasAlive && !b.alive && this.map.blocksProjectile(b.x, b.y)) {
-                this.particles.emitImpact(b.x, b.y);
-                this.emit("impact", { bullet: b });
-                const gx = Math.floor(b.x),
-                    gy = Math.floor(b.y);
-                if (this.map.damageTile(gx, gy, b.damage)) {
-                    this.particles.emitExplosion(gx + 0.5, gy + 0.5);
-                    this.emit("destroy_tile", { gx, gy });
-                    this._invalidatePathfinders();
+            if (wasAlive && !b.alive) {
+                if (b.arcing && b.landed) {
+                    // Arcing shell landed — splash damage at impact
+                    this._handleArtilleryImpact(b);
+                } else if (!b.arcing && this.map.blocksProjectile(b.x, b.y)) {
+                    this.particles.emitImpact(b.x, b.y);
+                    this.emit("impact", { bullet: b });
+                    const gx = Math.floor(b.x),
+                        gy = Math.floor(b.y);
+                    if (this.map.damageTile(gx, gy, b.damage)) {
+                        this.particles.emitExplosion(gx + 0.5, gy + 0.5);
+                        this.emit("destroy_tile", { gx, gy });
+                        this._invalidatePathfinders();
+                    }
                 }
             }
         }
@@ -499,7 +626,7 @@ export class Game {
 
     _checkBulletHits() {
         for (const b of this.bullets) {
-            if (!b.alive) continue;
+            if (!b.alive || b.arcing) continue; // arcing shells use splash on landing
             for (const t of this.allTanks) {
                 if (!t.alive || b.team === t.team) continue;
                 if (distance(b.x, b.y, t.x, t.y) < t.size) {
@@ -602,9 +729,13 @@ export class Game {
     _updateCamera(cam, tank, dt) {
         if (tank.alive) {
             const s = worldToScreen(tank.x, tank.y);
-            const la = CONFIG.CAMERA_LOOK_AHEAD;
-            const dx = Math.cos(tank.angle) * la;
-            const dy = Math.sin(tank.angle) * la;
+            const la = VEHICLES[tank.vehicleType]?.cameraLookAhead ?? CONFIG.CAMERA_LOOK_AHEAD;
+            // Look ahead in the turret/barrel direction so the player
+            // can see where they're aiming (especially useful for SPG).
+            // For fixed-gun vehicles turretWorld === angle, so no change.
+            const aim = tank.turretWorld;
+            const dx = Math.cos(aim) * la;
+            const dy = Math.sin(aim) * la;
             cam.follow(s.x + (dx - dy) * (CONFIG.TILE_WIDTH / 2), s.y + (dx + dy) * (CONFIG.TILE_HEIGHT / 2), dt);
         }
     }

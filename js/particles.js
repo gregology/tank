@@ -185,6 +185,87 @@ export class ParticleSystem {
         }
     }
 
+    /** Big artillery muzzle flash (SPG firing). */
+    emitSPGFlash(x, y, angle) {
+        const colors = ["#ffaa00", "#ffdd44", "#ffffff", "#ff6600"];
+        for (let i = 0; i < 12; i++) {
+            const spread = randomFloat(-0.5, 0.5);
+            const s = randomFloat(2, 6);
+            this._add(
+                x,
+                y,
+                Math.cos(angle + spread) * s,
+                Math.sin(angle + spread) * s,
+                colors[randomInt(0, colors.length - 1)],
+                randomFloat(0.1, 0.4),
+                randomFloat(2, 5),
+            );
+        }
+        // Smoke ring
+        for (let i = 0; i < 6; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(0.5, 2.0);
+            const g = randomInt(50, 90);
+            this._add(
+                x,
+                y,
+                Math.cos(a) * s,
+                Math.sin(a) * s,
+                `rgb(${g},${g},${g})`,
+                randomFloat(0.3, 0.8),
+                randomFloat(3, 6),
+            );
+        }
+    }
+
+    /** Artillery shell landing explosion (larger than normal). */
+    emitArtilleryImpact(x, y) {
+        const fireColors = ["#ff3300", "#ff7700", "#ffbb00", "#ffee66", "#ffffff"];
+        for (let i = 0; i < 22; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(1.5, 5.0);
+            this._add(
+                x,
+                y,
+                Math.cos(a) * s,
+                Math.sin(a) * s,
+                fireColors[randomInt(0, fireColors.length - 1)],
+                randomFloat(0.3, 0.9),
+                randomFloat(2, 6),
+            );
+        }
+        // Dirt/debris
+        for (let i = 0; i < 8; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(0.8, 3.0);
+            const g = randomInt(60, 100);
+            this._add(
+                x,
+                y,
+                Math.cos(a) * s,
+                Math.sin(a) * s,
+                `rgb(${g + 20},${g},${g - 20})`,
+                randomFloat(0.4, 1.0),
+                randomFloat(2, 5),
+            );
+        }
+        // Dark smoke
+        for (let i = 0; i < 8; i++) {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(0.3, 1.5);
+            const g = randomInt(25, 55);
+            this._add(
+                x,
+                y,
+                Math.cos(a) * s,
+                Math.sin(a) * s,
+                `rgb(${g},${g},${g})`,
+                randomFloat(0.6, 1.5),
+                randomFloat(3, 7),
+            );
+        }
+    }
+
     /** Continuous smoke puff from a damaged tank. */
     emitSmoke(x, y) {
         const g = randomInt(35, 75);

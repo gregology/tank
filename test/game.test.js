@@ -706,3 +706,189 @@ describe("Drone detonation – distance-based damage", () => {
         assert.equal(VEHICLES.drone.blastDamage, 1.0);
     });
 });
+
+describe("SPG vehicle type", () => {
+    it("SPG has independent turret (not fixedGun)", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        assert.equal(t.fixedGun, false);
+    });
+
+    it("SPG dies on any hit regardless of zone (1-hit armour)", () => {
+        for (const zone of [HIT_ZONE.FRONT, HIT_ZONE.SIDE_LEFT, HIT_ZONE.SIDE_RIGHT, HIT_ZONE.REAR]) {
+            const t = new Tank(1, "#c33", "#822");
+            t.vehicleType = "spg";
+            const result = t.applyHit(zone);
+            assert.equal(result, "destroyed", `SPG should die from ${zone} hit`);
+            assert.ok(!t.alive);
+        }
+    });
+
+    it("SPG has larger collision radius than tank", () => {
+        assert.ok(VEHICLES.spg.size > VEHICLES.tank.size);
+    });
+
+    it("SPG moves slower than tank", () => {
+        assert.ok(VEHICLES.spg.speed < VEHICLES.tank.speed);
+    });
+
+    it("SPG has longer cooldown than tank", () => {
+        assert.ok(VEHICLES.spg.bulletCooldown > VEHICLES.tank.bulletCooldown);
+    });
+
+    it("SPG has higher bullet damage than tank", () => {
+        assert.ok(VEHICLES.spg.bulletDamage > VEHICLES.tank.bulletDamage);
+    });
+
+    it("SPG turret rotates (not fixed like IFV)", () => {
+        const map = customMap([]);
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        t.alive = true;
+        t.x = 32.5;
+        t.y = 32.5;
+        t.angle = 0;
+        t.turretAngle = 0;
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
+        for (let i = 0; i < 20; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(t.turretAngle > 0, "SPG turret should rotate");
+    });
+
+    it("SPG turret rotates slower than tank turret", () => {
+        assert.ok(VEHICLES.spg.turretSpeed < VEHICLES.tank.turretSpeed);
+    });
+
+    it("kill() resets charge state", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        t.isCharging = true;
+        t.chargeTime = 2.0;
+        t.kill();
+        assert.equal(t.chargeTime, 0);
+        assert.equal(t.isCharging, false);
+    });
+
+    it("respawnAt() resets charge state", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        t.isCharging = true;
+        t.chargeTime = 1.5;
+        t.respawnAt(10, 10);
+        assert.equal(t.chargeTime, 0);
+        assert.equal(t.isCharging, false);
+    });
+
+    it("SPG cannot drive while charging (isCharging blocks movement)", () => {
+        const map = customMap([]);
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        t.alive = true;
+        t.x = 32.5;
+        t.y = 32.5;
+        t.angle = 0;
+        t.isCharging = true;
+
+        const startX = t.x;
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        for (let i = 0; i < 30; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.equal(t.x, startX, "SPG should not move forward while charging");
+    });
+
+    it("SPG can still rotate hull while charging", () => {
+        const map = customMap([]);
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        t.alive = true;
+        t.x = 32.5;
+        t.y = 32.5;
+        t.angle = 1.0;
+        t.isCharging = true;
+
+        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.right };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        assert.ok(t.angle !== 1.0, "SPG should still rotate hull while charging");
+    });
+});
+
+describe("SPG arcing bullets", () => {
+    it("arcing bullet has correct properties", () => {
+        const b = new Bullet(10, 20, 0, 1, 1, 1.5, 7.0, true, 15.0);
+        assert.equal(b.arcing, true);
+        assert.equal(b.targetDistance, 15.0);
+        assert.equal(b.distanceTraveled, 0);
+        assert.equal(b.landed, false);
+        assert.equal(b.damage, 1.5);
+        assert.equal(b.speed, 7.0);
+    });
+
+    it("arcing bullet flies over blocking terrain", () => {
+        const map = customMap([]);
+        // Place a wall of hills directly in path
+        for (let x = 12; x <= 16; x++) map.setTile(x, 20, T.HILL);
+
+        const b = new Bullet(10, 20.5, 0, 1, 1, 1.5, 7.0, true, 20.0);
+        // Run for enough frames to pass through the wall
+        for (let i = 0; i < 100; i++) {
+            b.update(0.016, map);
+            if (!b.alive) break;
+        }
+        // Bullet should have traveled past the wall (x > 16)
+        assert.ok(b.x > 16 || b.landed, "Arcing bullet should fly over terrain");
+    });
+
+    it("arcing bullet dies when reaching target distance", () => {
+        const map = customMap([]);
+        const b = new Bullet(32, 32, 0, 1, 1, 1.5, 7.0, true, 3.0);
+        for (let i = 0; i < 200; i++) {
+            b.update(0.016, map);
+            if (!b.alive) break;
+        }
+        assert.ok(!b.alive, "Arcing bullet should die after reaching target distance");
+        assert.ok(b.landed, "Arcing bullet should set landed=true");
+    });
+
+    it("arcProgress goes from 0 to 1", () => {
+        const map = customMap([]);
+        const b = new Bullet(32, 32, 0, 1, 1, 1.5, 7.0, true, 10.0);
+        assert.ok(b.arcProgress < 0.1, "Should start near 0");
+        // Run until about halfway
+        for (let i = 0; i < 50; i++) b.update(0.016, map);
+        assert.ok(b.arcProgress > 0.2 && b.arcProgress < 0.8, `Mid-flight progress: ${b.arcProgress}`);
+    });
+
+    it("normal bullet is NOT arcing", () => {
+        const b = new Bullet(10, 20, 0, 1, 1, 1.0, 9.0);
+        assert.equal(b.arcing, false);
+        assert.equal(b.targetDistance, 0);
+        assert.equal(b.arcProgress, 0);
+    });
+
+    it("normal bullet is still blocked by terrain", () => {
+        const map = customMap([]);
+        map.setTile(12, 20, T.HILL);
+        const b = new Bullet(10, 20.5, 0, 1, 1);
+        for (let i = 0; i < 100; i++) {
+            b.update(0.016, map);
+            if (!b.alive) break;
+        }
+        assert.ok(!b.alive);
+        assert.ok(b.x < 14, "Normal bullet should be stopped by terrain");
+    });
+});
+
+describe("SPG splash damage", () => {
+    it("SPG splash has non-zero radius", () => {
+        assert.ok(VEHICLES.spg.splashRadius > 0);
+    });
+
+    it("SPG bullet damage is 1.5 (kills IFV/drone/SPG on splash hit)", () => {
+        assert.equal(VEHICLES.spg.bulletDamage, 1.5);
+    });
+
+    it("SPG charge rate and range are configured", () => {
+        assert.ok(VEHICLES.spg.chargeRate > 0);
+        assert.ok(VEHICLES.spg.minRange > 0);
+        assert.ok(VEHICLES.spg.maxRange > VEHICLES.spg.minRange);
+    });
+});

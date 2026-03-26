@@ -216,6 +216,17 @@ export class Renderer {
             }
         }
 
+        // ── SPG targeting indicator (drawn in camera space) ──
+        if (_tank.alive && _tank.vehicleType === "spg" && _tank.isCharging) {
+            const vStats = VEHICLES.spg;
+            const range = Math.min(vStats.minRange + _tank.chargeTime * vStats.chargeRate, vStats.maxRange);
+            const tAngle = _tank.turretWorld;
+            const targetWX = _tank.x + Math.cos(tAngle) * range;
+            const targetWY = _tank.y + Math.sin(tAngle) * range;
+            const tScr = worldToScreen(targetWX, targetWY);
+            this._drawTargetIndicator(ctx, tScr.x, tScr.y, range, vStats.maxRange, game.gameTime);
+        }
+
         ctx.restore();
     }
 
@@ -517,6 +528,8 @@ export class Renderer {
             this._drawDrone(ctx, tank, sx, sy);
         } else if (tank.vehicleType === "ifv") {
             this._drawIFV(ctx, tank, sx, sy);
+        } else if (tank.vehicleType === "spg") {
+            this._drawSPG(ctx, tank, sx, sy);
         } else {
             this._drawTank(ctx, tank, sx, sy);
         }
@@ -1039,6 +1052,435 @@ export class Renderer {
         ctx.stroke();
     }
 
+    /* ── SPG drawing ──────────────────────────────────────── */
+
+    /**
+     * Draw a Self-Propelled Gun (artillery).
+     *
+     * Visually similar to a tank but:
+     *   - Longer, boxier hull
+     *   - Rectangular turret (not circular)
+     *   - Very long, thick barrel
+     *   - Darker, heavier appearance
+     */
+    /**
+     * Draw a Self-Propelled Gun (artillery).
+     *
+     * Visually very different from a tank:
+     *   - Much longer chassis with rear-mounted turret
+     *   - Massive boxy turret (tallest vehicle in the game)
+     *   - Very long barrel with visible upward elevation
+     *   - Rear hydraulic spade/stabiliser
+     *   - Stowage bins and camo netting on hull
+     *   - Olive-tinted hull colour mixed with team colour
+     */
+    _drawSPG(ctx, tank, sx, sy) {
+        if (!tank.alive) return;
+        if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
+
+        const ca = Math.cos(tank.angle),
+            sa = Math.sin(tank.angle);
+        const tWorld = tank.turretWorld;
+        const ta = Math.cos(tWorld),
+            tb = Math.sin(tWorld);
+        const HTW = TW / 2,
+            HTH = TH / 2;
+
+        const P = (lx, ly) => {
+            const wx = lx * ca - ly * sa;
+            const wy = lx * sa + ly * ca;
+            return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
+        };
+        const PT = (lx, ly) => {
+            const wx = lx * ta - ly * tb;
+            const wy = lx * tb + ly * ta;
+            return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
+        };
+        const fill = (pts, color) => {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.fill();
+        };
+        const outline = (pts, color, width) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.stroke();
+        };
+        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
+        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
+        const slab = (topPts, h, topColor, wallColor) => {
+            fill(drop(topPts, h), wallColor);
+            fill(topPts, topColor);
+        };
+
+        // Olive drab tint: mix team colour with military green
+        // Parse the team hex colour and blend toward olive
+        const parseHex = (hex) => [
+            parseInt(hex.slice(1, 3), 16),
+            parseInt(hex.slice(3, 5), 16),
+            parseInt(hex.slice(5, 7), 16),
+        ];
+        const teamRGB = parseHex(tank.color);
+        const teamDarkRGB = parseHex(tank.darkColor);
+        const olive = [85, 95, 55];
+        const oliveDark = [50, 58, 32];
+        const mix = (a, b, t) =>
+            `rgb(${(a[0] * (1 - t) + b[0] * t) | 0},${(a[1] * (1 - t) + b[1] * t) | 0},${(a[2] * (1 - t) + b[2] * t) | 0})`;
+        const hullColor = mix(teamRGB, olive, 0.45);
+        const hullDark = mix(teamDarkRGB, oliveDark, 0.45);
+        const hullAccent = mix(teamRGB, olive, 0.6);
+
+        /* ── SPG dimensions — MUCH longer chassis, rear turret ── */
+        const THL = 0.5; // track half-length (much longer than tank 0.38)
+        const TYO = 0.32; // track outer Y (wider)
+        const TYI = 0.22; // track inner Y
+        const HR = -0.46; // hull rear X (extends far back)
+        const HF = 0.36; // hull front X
+        const HW = 0.24; // hull half-width (wider)
+
+        // Turret is rear-mounted: centred at -0.08 (behind hull centre)
+        const TURR_CX = -0.08;
+        const TRX = 0.22; // turret half-length X (big)
+        const TRY = 0.18; // turret half-width Y (big)
+
+        // Barrel — very long, with upward elevation (screen-Y offset)
+        const BHW = 0.04; // barrel half-width (thick)
+        const BX0 = TURR_CX + TRX - 0.02; // starts at turret front
+        let BX1 = 0.72; // barrel end X (very long)
+        const BARR_ELEV = 6; // pixels the barrel tip is raised above base
+
+        const TRACK_H = 5; // taller tracks (heavier feel)
+        const HULL_H = 6;
+        const TURR_H = 9; // very tall turret (tallest vehicle)
+        const BARR_H = 3;
+
+        if (tank.recoilTimer > 0) BX1 -= (tank.recoilTimer / 0.1) * 0.14;
+
+        const trackTop = -TRACK_H;
+        const hullTop = -(TRACK_H + HULL_H);
+        const turrTop = -(TRACK_H + HULL_H + TURR_H);
+        const barrBase = -(TRACK_H + HULL_H + BARR_H + 2); // barrel sits high
+
+        /* ── 1. Shadow (longer) ── */
+        fill(
+            drop(
+                [
+                    P(-THL - 0.06, -TYO - 0.03),
+                    P(THL + 0.06, -TYO - 0.03),
+                    P(THL + 0.06, TYO + 0.03),
+                    P(-THL - 0.06, TYO + 0.03),
+                ],
+                7,
+            ),
+            "rgba(0,0,0,0.2)",
+        );
+
+        /* ── 2. Tracks (wider, heavier) ── */
+        const lTrack = lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop);
+        slab(lTrack, TRACK_H, "#282828", "#0e0e0e");
+        const rTrack = lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop);
+        slab(rTrack, TRACK_H, "#282828", "#0e0e0e");
+
+        // Tread marks (more treads = heavier vehicle)
+        const TREAD_N = 14;
+        ctx.strokeStyle = "#3e3e3e";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < TREAD_N; i++) {
+            const t = (i / TREAD_N + tank.treadPhase) % 1;
+            const lx = -THL + t * THL * 2;
+            const a1 = lift([P(lx, -TYO)], trackTop)[0];
+            const a2 = lift([P(lx, -TYI)], trackTop)[0];
+            ctx.moveTo(a1[0], a1[1]);
+            ctx.lineTo(a2[0], a2[1]);
+            const b1 = lift([P(lx, TYI)], trackTop)[0];
+            const b2 = lift([P(lx, TYO)], trackTop)[0];
+            ctx.moveTo(b1[0], b1[1]);
+            ctx.lineTo(b2[0], b2[1]);
+        }
+        ctx.stroke();
+
+        // Track wheels (5 road wheels — heavier)
+        ctx.fillStyle = "#181818";
+        for (let i = 0; i < 5; i++) {
+            const lx = -THL * 0.8 + i * THL * 0.4;
+            for (const side of [-1, 1]) {
+                const cy = side > 0 ? (TYO + TYI) / 2 : -(TYO + TYI) / 2;
+                const c = lift([P(lx, cy)], trackTop)[0];
+                ctx.beginPath();
+                ctx.arc(c[0], c[1], 2.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        /* ── 3. Hull — long flat bed with sloped front ── */
+        // Sloped glacis plate at front (angled, not flat like IFV)
+        const hullPts = lift(
+            [
+                P(HR, -HW), // rear left
+                P(HF - 0.08, -HW), // front left
+                P(HF, -HW + 0.06), // glacis left
+                P(HF, HW - 0.06), // glacis right
+                P(HF - 0.08, HW), // front right
+                P(HR, HW), // rear right
+            ],
+            hullTop,
+        );
+        slab(hullPts, HULL_H, hullColor, hullDark);
+        outline(hullPts, hullDark, 0.6);
+
+        // ── Rear spade / stabiliser (distinctive SPG feature) ──
+        // Two angled arms extending down and back from the rear hull
+        const spadeW = 0.06;
+        const spadeL = 0.14;
+        for (const side of [-1, 1]) {
+            const sy2 = HW * 0.5 * side;
+            const spadePts = lift(
+                [
+                    P(HR, sy2 - spadeW),
+                    P(HR - spadeL, sy2 - spadeW * 1.5),
+                    P(HR - spadeL, sy2 + spadeW * 1.5),
+                    P(HR, sy2 + spadeW),
+                ],
+                hullTop,
+            );
+            slab(spadePts, HULL_H + 3, "#4a4a4a", "#2a2a2a");
+            // Spade blade (flat plate at end)
+            const bladePts = lift(
+                [
+                    P(HR - spadeL, sy2 - spadeW * 2),
+                    P(HR - spadeL - 0.03, sy2 - spadeW * 2),
+                    P(HR - spadeL - 0.03, sy2 + spadeW * 2),
+                    P(HR - spadeL, sy2 + spadeW * 2),
+                ],
+                hullTop + 2,
+            );
+            fill(bladePts, "#3a3a3a");
+        }
+
+        // ── Hull rear panel ──
+        fill(
+            lift([P(HR, -HW + 0.03), P(HR + 0.04, -HW + 0.03), P(HR + 0.04, HW - 0.03), P(HR, HW - 0.03)], hullTop),
+            hullDark,
+        );
+
+        // ── Engine deck at front (ahead of turret, lower profile) ──
+        const deckPts = lift(
+            [
+                P(TURR_CX + TRX + 0.04, -HW + 0.03),
+                P(HF - 0.1, -HW + 0.03),
+                P(HF - 0.1, HW - 0.03),
+                P(TURR_CX + TRX + 0.04, HW - 0.03),
+            ],
+            hullTop,
+        );
+        slab(deckPts, 2, hullAccent, hullDark);
+
+        // Engine grille lines on deck
+        ctx.strokeStyle = hullDark;
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 4; i++) {
+            const fx = TURR_CX + TRX + 0.06 + i * 0.04;
+            const g1 = lift([P(fx, -HW + 0.06)], hullTop)[0];
+            const g2 = lift([P(fx, HW - 0.06)], hullTop)[0];
+            ctx.beginPath();
+            ctx.moveTo(g1[0], g1[1]);
+            ctx.lineTo(g2[0], g2[1]);
+            ctx.stroke();
+        }
+
+        // ── Stowage bins on hull sides (olive boxes) ──
+        for (const side of [-1, 1]) {
+            const binY = HW * side;
+            const bin = lift(
+                [P(-0.3, binY - 0.04 * side), P(0.0, binY - 0.04 * side), P(0.0, binY), P(-0.3, binY)],
+                hullTop,
+            );
+            slab(bin, 3, "#5a6340", "#3a4228");
+            // Bin latch
+            ctx.fillStyle = "#777";
+            const latch = lift([P(-0.15, binY - 0.01 * side)], hullTop - 1)[0];
+            ctx.fillRect(latch[0] - 1, latch[1], 2, 1.5);
+        }
+
+        // ── Camo netting draped over rear hull ──
+        ctx.strokeStyle = "rgba(70,80,50,0.4)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+            const nx = HR + 0.08 + i * 0.06;
+            const n1 = lift([P(nx, -HW * 0.8)], hullTop - 1)[0];
+            const n2 = lift([P(nx + 0.04, HW * 0.3)], hullTop)[0];
+            const n3 = lift([P(nx - 0.02, HW * 0.7)], hullTop - 1)[0];
+            ctx.beginPath();
+            ctx.moveTo(n1[0], n1[1]);
+            ctx.quadraticCurveTo(n2[0], n2[1], n3[0], n3[1]);
+            ctx.stroke();
+        }
+
+        /* ── 4. Barrel — very long, with upward elevation ── */
+        // The barrel is drawn with the tip raised higher on screen to
+        // simulate the howitzer's upward angle.  We interpolate the
+        // vertical offset along the barrel length.
+        const barrLen = BX1 - BX0;
+        const barrSegs = 6; // draw as segmented trapezoid for elevation
+        for (let i = 0; i < barrSegs; i++) {
+            const t0 = i / barrSegs;
+            const t1 = (i + 1) / barrSegs;
+            const x0 = BX0 + barrLen * t0;
+            const x1 = BX0 + barrLen * t1;
+            const elev0 = barrBase - BARR_ELEV * t0;
+            const elev1 = barrBase - BARR_ELEV * t1;
+            const seg = [
+                [PT(x0, -BHW)[0], PT(x0, -BHW)[1] + elev0],
+                [PT(x1, -BHW)[0], PT(x1, -BHW)[1] + elev1],
+                [PT(x1, BHW)[0], PT(x1, BHW)[1] + elev1],
+                [PT(x0, BHW)[0], PT(x0, BHW)[1] + elev0],
+            ];
+            const shade = i % 2 === 0 ? "#5a5a5a" : "#606060";
+            slab(seg, BARR_H, shade, "#333");
+        }
+
+        // Muzzle brake (wide, distinctive)
+        const mx = BX1;
+        const mElev = barrBase - BARR_ELEV;
+        const muzzle = [
+            [PT(mx - 0.04, -BHW - 0.025)[0], PT(mx - 0.04, -BHW - 0.025)[1] + mElev],
+            [PT(mx + 0.02, -BHW - 0.025)[0], PT(mx + 0.02, -BHW - 0.025)[1] + mElev],
+            [PT(mx + 0.02, BHW + 0.025)[0], PT(mx + 0.02, BHW + 0.025)[1] + mElev],
+            [PT(mx - 0.04, BHW + 0.025)[0], PT(mx - 0.04, BHW + 0.025)[1] + mElev],
+        ];
+        slab(muzzle, BARR_H, "#707070", "#404040");
+
+        // Fume extractor (bulge mid-barrel)
+        const fmX = BX0 + barrLen * 0.35;
+        const fmElev = barrBase - BARR_ELEV * 0.35;
+        const fume = [
+            [PT(fmX - 0.025, -BHW - 0.015)[0], PT(fmX - 0.025, -BHW - 0.015)[1] + fmElev],
+            [PT(fmX + 0.025, -BHW - 0.015)[0], PT(fmX + 0.025, -BHW - 0.015)[1] + fmElev],
+            [PT(fmX + 0.025, BHW + 0.015)[0], PT(fmX + 0.025, BHW + 0.015)[1] + fmElev],
+            [PT(fmX - 0.025, BHW + 0.015)[0], PT(fmX - 0.025, BHW + 0.015)[1] + fmElev],
+        ];
+        slab(fume, BARR_H + 1, "#686868", "#3a3a3a");
+
+        /* ── 5. Turret — massive rear-mounted box (tallest vehicle) ── */
+        const tPts = lift(
+            [
+                PT(TURR_CX - TRX, -TRY),
+                PT(TURR_CX + TRX - 0.04, -TRY), // slight bevel
+                PT(TURR_CX + TRX, -TRY + 0.04),
+                PT(TURR_CX + TRX, TRY - 0.04),
+                PT(TURR_CX + TRX - 0.04, TRY),
+                PT(TURR_CX - TRX, TRY),
+            ],
+            turrTop,
+        );
+        slab(tPts, TURR_H, mix(teamRGB, olive, 0.3), hullDark);
+        outline(tPts, hullDark, 0.7);
+
+        // Turret side armour plates (raised panels)
+        for (const side of [-1, 1]) {
+            const pY = TRY * side;
+            const panel = lift(
+                [
+                    PT(TURR_CX - TRX + 0.04, pY - 0.03 * side),
+                    PT(TURR_CX + TRX - 0.06, pY - 0.03 * side),
+                    PT(TURR_CX + TRX - 0.06, pY),
+                    PT(TURR_CX - TRX + 0.04, pY),
+                ],
+                turrTop,
+            );
+            fill(panel, hullDark);
+        }
+
+        // Turret bustle (overhang at rear for ammo storage)
+        const bustle = lift(
+            [
+                PT(TURR_CX - TRX - 0.08, -TRY + 0.02),
+                PT(TURR_CX - TRX, -TRY + 0.02),
+                PT(TURR_CX - TRX, TRY - 0.02),
+                PT(TURR_CX - TRX - 0.08, TRY - 0.02),
+            ],
+            turrTop,
+        );
+        slab(bustle, TURR_H - 1, "#5a6340", hullDark);
+
+        // Commander's cupola (raised circle on turret roof)
+        const cupN = 8,
+            cupR = 0.055;
+        const cupCX = TURR_CX - 0.06,
+            cupCY = -TRY * 0.35;
+        const cupPts = [];
+        for (let i = 0; i < cupN; i++) {
+            const a = (i / cupN) * Math.PI * 2;
+            cupPts.push(lift([PT(cupCX + Math.cos(a) * cupR, cupCY + Math.sin(a) * cupR)], turrTop - 3)[0]);
+        }
+        slab(cupPts, 3, hullAccent, hullDark);
+
+        // Periscopes (small rectangles on cupola)
+        const periPts = lift(
+            [
+                PT(cupCX + cupR * 0.6, cupCY - 0.015),
+                PT(cupCX + cupR * 0.6 + 0.025, cupCY - 0.015),
+                PT(cupCX + cupR * 0.6 + 0.025, cupCY + 0.015),
+                PT(cupCX + cupR * 0.6, cupCY + 0.015),
+            ],
+            turrTop - 4,
+        );
+        fill(periPts, "#224");
+
+        // Turret front vision slit
+        const vs1 = lift([PT(TURR_CX + TRX - 0.02, -TRY * 0.35)], turrTop)[0];
+        const vs2 = lift([PT(TURR_CX + TRX - 0.02, TRY * 0.35)], turrTop)[0];
+        ctx.strokeStyle = "#1a1a22";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(vs1[0], vs1[1]);
+        ctx.lineTo(vs2[0], vs2[1]);
+        ctx.stroke();
+
+        // ── Antenna on turret rear ──
+        const antBase = lift([PT(TURR_CX - TRX + 0.03, -TRY + 0.03)], turrTop)[0];
+        ctx.strokeStyle = "#666";
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(antBase[0], antBase[1]);
+        ctx.lineTo(antBase[0] + 1, antBase[1] - 14);
+        ctx.stroke();
+        // Antenna tip
+        ctx.fillStyle = "#888";
+        ctx.beginPath();
+        ctx.arc(antBase[0] + 1, antBase[1] - 14, 1, 0, Math.PI * 2);
+        ctx.fill();
+
+        /* ── 6. Charge indicator (ring above turret while charging) ── */
+        if (tank.isCharging) {
+            const vStats = VEHICLES.spg;
+            const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
+            const frac = Math.min(1, tank.chargeTime / maxCharge);
+            const center = lift([PT(TURR_CX, 0)], turrTop - 8)[0];
+            const ringR = 5 + frac * 7;
+            ctx.strokeStyle = frac > 0.9 ? "rgba(255,50,0,0.85)" : "rgba(255,180,0,0.65)";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(center[0], center[1], ringR, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+            ctx.stroke();
+            // Tick mark at full charge
+            if (frac > 0.95) {
+                ctx.fillStyle = "rgba(255,50,0,0.9)";
+                ctx.beginPath();
+                ctx.arc(center[0], center[1] - ringR, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
     /* ── drone drawing ────────────────────────────────────── */
 
     /**
@@ -1274,6 +1716,11 @@ export class Renderer {
     /* ── bullet drawing ───────────────────────────────────── */
 
     _drawBullet(ctx, bullet, sx, sy, time) {
+        if (bullet.arcing) {
+            this._drawArcingBullet(ctx, bullet, sx, sy, time);
+            return;
+        }
+
         const pulse = Math.sin(time * 30) * 0.3 + 0.7;
         const isIFV = bullet.damage < 1.0;
 
@@ -1330,6 +1777,54 @@ export class Renderer {
             ctx.fillStyle = "#fff";
             ctx.beginPath();
             ctx.arc(sx, sy, r * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    /* ── arcing bullet drawing ─────────────────────────────── */
+
+    _drawArcingBullet(ctx, bullet, sx, sy, time) {
+        const progress = bullet.arcProgress;
+        const arcH = VEHICLES.spg.arcHeight * Math.sin(progress * Math.PI);
+
+        // Shadow on ground (grows as shell is higher)
+        const shadowAlpha = 0.1 + 0.1 * Math.sin(progress * Math.PI);
+        ctx.fillStyle = `rgba(0,0,0,${shadowAlpha})`;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 4 + arcH * 0.1, 2 + arcH * 0.05, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shell at height offset
+        const shellY = sy - arcH;
+        const r = 3.5;
+        const pulse = Math.sin(time * 20) * 0.3 + 0.7;
+
+        // Orange glow trail
+        ctx.fillStyle = `rgba(255,120,0,${0.25 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(sx, shellY, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Shell body (hot orange-red)
+        ctx.fillStyle = `rgb(255,${(100 + pulse * 40) | 0},${(20 + pulse * 30) | 0})`;
+        ctx.beginPath();
+        ctx.arc(sx, shellY, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bright hot centre
+        ctx.fillStyle = "#ffee88";
+        ctx.beginPath();
+        ctx.arc(sx, shellY, r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Trail sparks (behind the shell)
+        const trailAngle = bullet.angle;
+        ctx.fillStyle = "rgba(255,180,50,0.3)";
+        for (let i = 1; i <= 3; i++) {
+            const tx = sx - Math.cos(trailAngle) * i * 3 * (1 - progress * 0.5);
+            const ty = shellY + Math.sin(trailAngle) * i * 1.5;
+            ctx.beginPath();
+            ctx.arc(tx, ty, r * 0.5, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -1481,6 +1976,14 @@ export class Renderer {
                 ctx.lineTo(dx - 1.5, dy);
                 ctx.closePath();
                 ctx.fill();
+            } else if (t.vehicleType === "spg") {
+                // Triangle for SPG
+                ctx.beginPath();
+                ctx.moveTo(dx, dy - 2);
+                ctx.lineTo(dx + 2, dy + 1.5);
+                ctx.lineTo(dx - 2, dy + 1.5);
+                ctx.closePath();
+                ctx.fill();
             } else {
                 ctx.fillRect(dx - 1, dy - 1, 3, 3);
             }
@@ -1620,6 +2123,41 @@ export class Renderer {
             }
         }
 
+        // SPG charge bar
+        if (game.humanTank.vehicleType === "spg") {
+            if (game.humanTank.isCharging) {
+                const vStats = VEHICLES.spg;
+                const range = Math.min(
+                    vStats.minRange + game.humanTank.chargeTime * vStats.chargeRate,
+                    vStats.maxRange,
+                );
+                const frac = (range - vStats.minRange) / (vStats.maxRange - vStats.minRange);
+                const barW = 100,
+                    barH = 8;
+                const barX = cx - barW / 2,
+                    barY = ch - 40;
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+                const col = frac > 0.9 ? "#ff4444" : frac > 0.5 ? "#ffaa22" : "#ff8800";
+                ctx.fillStyle = col;
+                ctx.fillRect(barX, barY, barW * frac, barH);
+                ctx.font = 'bold 9px "Courier New", monospace';
+                ctx.fillStyle = "#fff";
+                ctx.textAlign = "center";
+                ctx.fillText(`RNG ${range.toFixed(0)}`, cx, barY + 7);
+            } else if (game.humanTank.fireCooldown > 0) {
+                ctx.font = '10px "Courier New", monospace';
+                ctx.fillStyle = "#666";
+                ctx.textAlign = "center";
+                ctx.fillText(`RELOAD ${game.humanTank.fireCooldown.toFixed(1)}s`, cx, ch - 34);
+            } else {
+                ctx.font = '10px "Courier New", monospace';
+                ctx.fillStyle = "#888";
+                ctx.textAlign = "center";
+                ctx.fillText("HOLD FIRE to charge range", cx, ch - 34);
+            }
+        }
+
         // Allied bot role roster (bottom-left)
         if (game._bots) {
             const roleNames = { cavalry: "CAV", sniper: "SNP", defender: "DEF", scout: "SCT" };
@@ -1691,6 +2229,58 @@ export class Renderer {
         ctx.fillText("R   Menu", cw / 2, ch / 2 + 50);
 
         ctx.restore();
+    }
+
+    /* ── SPG targeting indicator ────────────────────────── */
+
+    _drawTargetIndicator(ctx, sx, sy, currentRange, maxRange, time) {
+        const pulse = Math.sin(time * 8) * 0.3 + 0.7;
+        const frac = currentRange / maxRange;
+        const hot = frac > 0.9;
+
+        // Outer isometric diamond
+        const r = 14;
+        ctx.strokeStyle = hot ? `rgba(255,50,0,${0.7 * pulse})` : `rgba(255,160,0,${0.5 * pulse})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - r / 2);
+        ctx.lineTo(sx + r, sy);
+        ctx.lineTo(sx, sy + r / 2);
+        ctx.lineTo(sx - r, sy);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Inner diamond (pulsing)
+        const r2 = 7;
+        ctx.strokeStyle = hot ? `rgba(255,80,0,${0.5 * pulse})` : `rgba(255,200,50,${0.35 * pulse})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - r2 / 2);
+        ctx.lineTo(sx + r2, sy);
+        ctx.lineTo(sx, sy + r2 / 2);
+        ctx.lineTo(sx - r2, sy);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Centre dot
+        ctx.fillStyle = hot ? `rgba(255,60,0,${0.9 * pulse})` : `rgba(255,180,0,${0.7 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Crosshair lines
+        ctx.strokeStyle = `rgba(255,180,50,${0.3 * pulse})`;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(sx - r - 4, sy);
+        ctx.lineTo(sx - r + 2, sy);
+        ctx.moveTo(sx + r - 2, sy);
+        ctx.lineTo(sx + r + 4, sy);
+        ctx.moveTo(sx, sy - r / 2 - 3);
+        ctx.lineTo(sx, sy - r / 2 + 1);
+        ctx.moveTo(sx, sy + r / 2 - 1);
+        ctx.lineTo(sx, sy + r / 2 + 3);
+        ctx.stroke();
     }
 
     /* ── utility ──────────────────────────────────────────── */

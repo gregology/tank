@@ -21,6 +21,8 @@
  *   - 'ifv' — fixed forward gun, 1-hit kill, faster, rapid fire
  *   - 'drone'   — FPV kamikaze quadcopter, flies over terrain,
  *                  detonates on contact for 1.0 damage, 1-hit kill
+ *   - 'spg'    — self-propelled gun, hold fire to charge range,
+ *                  release to lob arcing shell over terrain, 1-hit kill
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
@@ -63,6 +65,10 @@ export class Tank {
         this.turretDisabled = false; // front hit: can't rotate turret
         this.leftTrackDisabled = false; // left-side hit: can't drive straight
         this.rightTrackDisabled = false; // right-side hit: can't drive straight
+
+        // SPG charge state
+        this.chargeTime = 0; // seconds fire button has been held
+        this.isCharging = false; // true while holding fire to charge range
 
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
@@ -143,10 +149,15 @@ export class Tank {
         // ── Forward / reverse
         // Disabled if any track is damaged (can only pivot).
         // Drones always fly freely.
+        // SPGs cannot drive while charging (deployed).
         let move = 0;
         if (isDrone || !this.trackDamaged) {
-            if (input.isDown(keyMap.forward)) move = 1;
-            if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
+            if (this.isCharging) {
+                // SPG is deployed — no movement
+            } else {
+                if (input.isDown(keyMap.forward)) move = 1;
+                if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
+            }
         }
 
         if (move !== 0) {
@@ -221,7 +232,7 @@ export class Tank {
      */
     applyHit(zone, damage = 1.0) {
         // IFV / Drone: any hit kills instantly (1-hit armour)
-        if (this.vehicleType === "ifv" || this.vehicleType === "drone") {
+        if (this.vehicleType === "ifv" || this.vehicleType === "drone" || this.vehicleType === "spg") {
             this.kill();
             return "destroyed";
         }
@@ -284,6 +295,8 @@ export class Tank {
     kill() {
         this.alive = false;
         this.respawnTimer = CONFIG.TANK_RESPAWN_TIME;
+        this.chargeTime = 0;
+        this.isCharging = false;
     }
 
     respawnAt(x, y) {
@@ -291,6 +304,10 @@ export class Tank {
         this.y = y;
         this.angle = Math.random() * Math.PI * 2;
         this.turretAngle = 0; // turret starts aligned with hull
+
+        // Clear charge state
+        this.chargeTime = 0;
+        this.isCharging = false;
 
         // Clear all damage
         this.damaged = false;

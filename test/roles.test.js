@@ -86,6 +86,20 @@ describe("AI Roles – pickRoleForVehicle", () => {
             `scout (${counts.scout}) should be more common than cavalry (${counts.cavalry}) for IFV`,
         );
     });
+
+    it("SPG favours sniper role and never gets cavalry or scout", () => {
+        const counts = {};
+        for (let i = 0; i < 500; i++) {
+            const role = pickRoleForVehicle("spg");
+            counts[role] = (counts[role] || 0) + 1;
+        }
+        assert.equal(counts.cavalry || 0, 0, "SPG should never be cavalry");
+        assert.equal(counts.scout || 0, 0, "SPG should never be scout");
+        assert.ok(
+            (counts.sniper || 0) > (counts.defender || 0),
+            `sniper (${counts.sniper}) should dominate for SPG (defender=${counts.defender})`,
+        );
+    });
 });
 
 describe("AI Roles – Cavalry", () => {

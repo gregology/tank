@@ -669,6 +669,33 @@ export class AIController {
     _aimAndFire(me, target, map) {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
 
+        // ── SPG: hold fire to charge, release when range matches target ──
+        if (me.vehicleType === "spg") {
+            this._steerTurretTo(me, desiredWorld);
+
+            const turretWorld = me.turretWorld;
+            let diffT = desiredWorld - turretWorld;
+            while (diffT > Math.PI) diffT -= Math.PI * 2;
+            while (diffT < -Math.PI) diffT += Math.PI * 2;
+            if (Math.abs(diffT) > 0.3) return; // not aimed yet
+
+            const dist = target.dist;
+            const vStats = VEHICLES.spg;
+            if (dist < vStats.minRange * 0.5 || dist > vStats.maxRange * 1.1) return;
+            if (me.fireCooldown > 0) return;
+
+            // Compute charge time needed for this distance
+            const clampedDist = Math.max(vStats.minRange, Math.min(dist, vStats.maxRange));
+            const neededCharge = (clampedDist - vStats.minRange) / vStats.chargeRate;
+
+            // Hold fire key while charge hasn't reached needed level
+            if (me.chargeTime < neededCharge + 0.05) {
+                this.keys[this.keyMap.fire] = true;
+            }
+            // Else: don't set fire → release → game fires the shell
+            return;
+        }
+
         // ── IFV: fire opportunistically without overriding navigation ──
         // The hull is already being steered toward the nav goal, so don't
         // fight it — just fire when the forward gun happens to aim near a target.

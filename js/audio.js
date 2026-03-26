@@ -32,9 +32,11 @@ export class AudioManager {
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
         game.on("fire", (d) => {
-            if (d.tank?.vehicleType === "ifv") this.playIFVShoot();
+            if (d.tank?.vehicleType === "spg") this.playSPGShoot();
+            else if (d.tank?.vehicleType === "ifv") this.playIFVShoot();
             else this.playShoot();
         });
+        game.on("artillery_impact", () => this.playSPGLand());
         game.on("drone_strike", () => this.playDroneStrike());
         game.on("destroy", () => this.playExplosion());
         game.on("destroy_tile", () => this.playExplosion());
@@ -127,6 +129,61 @@ export class AudioManager {
         n.connect(nf).connect(ng).connect(ctx.destination);
         n.start(t + 0.05);
         n.stop(t + 0.35);
+    }
+
+    /** Deep booming artillery shot — low frequency, longer than tank. */
+    playSPGShoot() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        // Heavy noise burst (big muzzle blast)
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "bandpass";
+        nf.Q.value = 1.5;
+        nf.frequency.setValueAtTime(1800, t);
+        nf.frequency.exponentialRampToValueAtTime(200, t + 0.25);
+        const ng = this._env(t, 0.45, 0.3);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t);
+        n.stop(t + 0.35);
+
+        // Very deep thud (lower than tank)
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(100, t);
+        o.frequency.exponentialRampToValueAtTime(25, t + 0.3);
+        const og = this._env(t, 0.5, 0.35);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.4);
+    }
+
+    /** Distant crump of artillery landing. */
+    playSPGLand() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        // Delayed crump
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "lowpass";
+        nf.frequency.setValueAtTime(3000, t);
+        nf.frequency.exponentialRampToValueAtTime(60, t + 0.5);
+        const ng = this._env(t, 0.45, 0.6);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t);
+        n.stop(t + 0.7);
+
+        // Low rumble
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(70, t);
+        o.frequency.exponentialRampToValueAtTime(15, t + 0.5);
+        const og = this._env(t, 0.5, 0.55);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.7);
     }
 
     playExplosion() {
