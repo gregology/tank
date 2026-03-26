@@ -93,6 +93,75 @@ export const CONFIG = {
 };
 
 /**
+ * Game mode definitions.
+ *
+ * Each mode describes:
+ *   teams:    [[humans, bots], [humans, bots]]  — team 1 (red) and team 2 (blue)
+ *   split:    true = split screen (requires 2 humans total)
+ *   bases:    true = towers + tower-destruction win condition
+ *             false = score-based win condition (first to WIN_SCORE kills)
+ *   vehicles: array of allowed vehicle type keys from VEHICLES
+ *             Humans always spawn as the first entry; bots pick randomly
+ *             using spawnWeight from the allowed subset.
+ */
+export const MODE_DEFS = {
+    duel_split: {
+        teams: [
+            [1, 0],
+            [1, 0],
+        ],
+        split: true,
+        bases: false,
+        vehicles: ["tank"],
+    },
+    duel_bot: {
+        teams: [
+            [1, 0],
+            [0, 1],
+        ],
+        split: false,
+        bases: false,
+        vehicles: ["tank"],
+    },
+    skirmish_coop: {
+        teams: [
+            [2, 0],
+            [0, 2],
+        ],
+        split: true,
+        bases: false,
+        vehicles: ["tank"],
+    },
+    battle_split: {
+        teams: [
+            [1, 4],
+            [1, 4],
+        ],
+        split: true,
+        bases: true,
+        vehicles: ["tank", "ifv", "drone", "spg"],
+    },
+    battle_coop: {
+        teams: [
+            [2, 3],
+            [0, 5],
+        ],
+        split: true,
+        bases: true,
+        vehicles: ["tank", "ifv", "drone", "spg"],
+    },
+    battle_solo: {
+        teams: [
+            [1, 4],
+            [0, 5],
+        ],
+        split: false,
+        bases: true,
+        vehicles: ["tank", "ifv", "drone", "spg"],
+    },
+};
+
+/**
  * Per-vehicle-type stats.  Every gameplay value that varies between
  * vehicle types lives here.  The game reads VEHICLES[tank.vehicleType]
  * at runtime — adding a new vehicle is just a new entry in this table.
@@ -104,58 +173,58 @@ export const CONFIG = {
  */
 export const VEHICLES = {
     tank: {
-        speed: 3.0, // world-units / second
-        rotationSpeed: 3.5, // radians / second (hull)
-        turretSpeed: 2.0, // radians / second (independent turret)
-        size: 0.45, // collision radius in world-units
-        bulletSpeed: 9.0, // world-units / second
-        bulletDamage: 1.0, // damage per shot
-        bulletCooldown: 0.45, // seconds between shots
-        spawnWeight: 3, // relative spawn chance in team mode
-        cameraLookAhead: 3.5, // world-units offset in turret direction
+        speed: 3.0,
+        rotationSpeed: 3.5,
+        turretSpeed: 2.0,
+        size: 0.45,
+        bulletSpeed: 9.0,
+        bulletDamage: 1.0,
+        bulletCooldown: 0.45,
+        spawnWeight: 3,
+        cameraLookAhead: 3.5,
         roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
     },
     ifv: {
-        speed: 4.5, // faster (was 1.5× tank)
-        rotationSpeed: 4.0, // wheeled — agile
-        turretSpeed: 0, // fixed forward gun
-        size: 0.45, // same footprint as tank
-        bulletSpeed: 13.0, // faster rounds (was 1.5× tank)
-        bulletDamage: 0.25, // 4 hits = 1 tank hit
-        bulletCooldown: 0.18, // rapid fire
-        spawnWeight: 3, // relative spawn chance
+        speed: 4.5,
+        rotationSpeed: 4.0,
+        turretSpeed: 0,
+        size: 0.45,
+        bulletSpeed: 13.0,
+        bulletDamage: 0.25,
+        bulletCooldown: 0.18,
+        spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
     },
     drone: {
-        speed: 6.0, // very fast (was 2× tank)
-        rotationSpeed: 5.0, // very agile
-        turretSpeed: 0, // no turret
-        size: 0.1, // small, hard to hit
-        bulletSpeed: 0, // N/A — kamikaze
-        bulletDamage: 0, // N/A — uses blastDamage
-        bulletCooldown: 0, // N/A
-        blastRadius: 2.5, // detonation AoE radius
-        blastDamage: 1.0, // max damage at point blank
-        spawnWeight: 3, // relative spawn chance
+        speed: 6.0,
+        rotationSpeed: 5.0,
+        turretSpeed: 0,
+        size: 0.1,
+        bulletSpeed: 0,
+        bulletDamage: 0,
+        bulletCooldown: 0,
+        blastRadius: 2.5,
+        blastDamage: 1.0,
+        spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
     },
     spg: {
-        speed: 2.0, // slow, lumbering
-        rotationSpeed: 2.0, // sluggish hull traverse
-        turretSpeed: 1.0, // slow independent turret
-        size: 0.5, // larger than a tank
-        bulletSpeed: 7.0, // arcing shell flight speed
-        bulletDamage: 1.5, // devastating direct hit
-        bulletCooldown: 3.0, // very long reload
-        chargeRate: 8.0, // range units per second of holding fire
-        minRange: 4.0, // minimum range (quick tap)
-        maxRange: 25.0, // maximum range (full charge)
-        arcHeight: 40, // max visual arc height (pixels)
-        splashRadius: 1.5, // AoE at impact point
-        spawnWeight: 3, // relatively rare
-        cameraLookAhead: 10.0, // further out — helps aim at long range
+        speed: 2.0,
+        rotationSpeed: 2.0,
+        turretSpeed: 1.0,
+        size: 0.5,
+        bulletSpeed: 7.0,
+        bulletDamage: 1.5,
+        bulletCooldown: 3.0,
+        chargeRate: 8.0,
+        minRange: 4.0,
+        maxRange: 25.0,
+        arcHeight: 40,
+        splashRadius: 1.5,
+        spawnWeight: 3,
+        cameraLookAhead: 10.0,
         roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
     },
 };

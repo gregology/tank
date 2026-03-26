@@ -21,7 +21,7 @@ const menu = new Menu();
 
 let game = null;
 let state = "menu"; // 'menu' | 'playing'
-let lastMode = "pvp"; // remember for rematch
+let lastMode = "duel_split"; // remember for rematch
 
 /* ── Game loop ────────────────────────────────────────────── */
 
