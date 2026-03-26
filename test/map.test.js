@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CONFIG, GameMap, T, VEHICLES } from "./helpers.js";
+import { GameMap, T, VEHICLES } from "./helpers.js";
 
 describe("Map generation", () => {
     it("creates a 64x64 map", () => {

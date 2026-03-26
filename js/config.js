@@ -100,6 +100,7 @@ export const CONFIG = {
  * roleWeights: per-vehicle role distribution for team mode AI.
  *              Higher weight = more likely.  0 = never assigned.
  *              Drones are always cavalry; IFVs lean toward scout.
+ *              SPGs lean toward sniper (long-range indirect fire).
  */
 export const VEHICLES = {
     tank: {
@@ -110,7 +111,8 @@ export const VEHICLES = {
         bulletSpeed: 9.0, // world-units / second
         bulletDamage: 1.0, // damage per shot
         bulletCooldown: 0.45, // seconds between shots
-        spawnWeight: 5, // relative spawn chance in team mode
+        spawnWeight: 3, // relative spawn chance in team mode
+        cameraLookAhead: 3.5, // world-units offset in turret direction
         roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
     },
     ifv: {
@@ -118,10 +120,11 @@ export const VEHICLES = {
         rotationSpeed: 4.0, // wheeled — agile
         turretSpeed: 0, // fixed forward gun
         size: 0.45, // same footprint as tank
-        bulletSpeed: 13.5, // faster rounds (was 1.5× tank)
+        bulletSpeed: 13.0, // faster rounds (was 1.5× tank)
         bulletDamage: 0.25, // 4 hits = 1 tank hit
         bulletCooldown: 0.18, // rapid fire
         spawnWeight: 3, // relative spawn chance
+        cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
     },
     drone: {
@@ -135,6 +138,24 @@ export const VEHICLES = {
         blastRadius: 2.5, // detonation AoE radius
         blastDamage: 1.0, // max damage at point blank
         spawnWeight: 3, // relative spawn chance
+        cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
+    },
+    spg: {
+        speed: 2.0, // slow, lumbering
+        rotationSpeed: 2.0, // sluggish hull traverse
+        turretSpeed: 1.0, // slow independent turret
+        size: 0.5, // larger than a tank
+        bulletSpeed: 7.0, // arcing shell flight speed
+        bulletDamage: 1.5, // devastating direct hit
+        bulletCooldown: 3.0, // very long reload
+        chargeRate: 8.0, // range units per second of holding fire
+        minRange: 4.0, // minimum range (quick tap)
+        maxRange: 25.0, // maximum range (full charge)
+        arcHeight: 40, // max visual arc height (pixels)
+        splashRadius: 1.5, // AoE at impact point
+        spawnWeight: 3, // relatively rare
+        cameraLookAhead: 10.0, // further out — helps aim at long range
+        roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
     },
 };
