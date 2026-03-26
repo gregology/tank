@@ -21,62 +21,68 @@
  *   - 'ifv' — fixed forward gun, 1-hit kill, faster, rapid fire
  */
 
-import { CONFIG } from './config.js';
-import { normalizeAngle } from './utils.js';
+import { CONFIG } from "./config.js";
+import { normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
 
 export const HIT_ZONE = {
-    FRONT:      'front',
-    SIDE_LEFT:  'side_left',
-    SIDE_RIGHT: 'side_right',
-    REAR:       'rear',
+    FRONT: "front",
+    SIDE_LEFT: "side_left",
+    SIDE_RIGHT: "side_right",
+    REAR: "rear",
 };
 
 export class Tank {
     constructor(playerNumber, color, darkColor) {
         this.playerNumber = playerNumber;
-        this.color     = color;
+        this.color = color;
         this.darkColor = darkColor;
 
         // World-space state
-        this.x     = 0;
-        this.y     = 0;
-        this.angle = 0;          // hull angle (radians – 0 = east in world space)
-        this.turretAngle = 0;    // turret offset from hull (0 = aligned with hull)
-        this.team  = 0;          // 1 = red, 2 = blue (set by Game)
+        this.x = 0;
+        this.y = 0;
+        this.angle = 0; // hull angle (radians – 0 = east in world space)
+        this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
+        this.team = 0; // 1 = red, 2 = blue (set by Game)
 
         // Vehicle type
-        this.vehicleType = 'tank';  // 'tank' or 'ifv'
+        this.vehicleType = "tank"; // 'tank' or 'ifv'
 
         // Gameplay
-        this.alive        = true;
-        this.score        = 0;
+        this.alive = true;
+        this.score = 0;
         this.fireCooldown = 0;
         this.respawnTimer = 0;
 
         // Subsystem damage
-        this.damaged          = false;  // true after first non-rear hit
-        this.damageAccum      = 0;      // partial damage accumulator (for IFV bullets)
-        this.turretDisabled   = false;  // front hit: can't rotate turret
-        this.leftTrackDisabled  = false; // left-side hit: can't drive straight
+        this.damaged = false; // true after first non-rear hit
+        this.damageAccum = 0; // partial damage accumulator (for IFV bullets)
+        this.turretDisabled = false; // front hit: can't rotate turret
+        this.leftTrackDisabled = false; // left-side hit: can't drive straight
         this.rightTrackDisabled = false; // right-side hit: can't drive straight
 
         // Visual feedback
-        this.flashTimer  = 0;    // invulnerability flash after respawn
-        this.recoilTimer = 0;    // barrel recoil animation
-        this.treadPhase  = 0;    // 0–1 tread scroll offset (animated)
-        this.smokeTimer  = 0;    // damage smoke emitter cooldown
+        this.flashTimer = 0; // invulnerability flash after respawn
+        this.recoilTimer = 0; // barrel recoil animation
+        this.treadPhase = 0; // 0–1 tread scroll offset (animated)
+        this.smokeTimer = 0; // damage smoke emitter cooldown
     }
 
     /** World-space angle the turret is pointing. */
-    get turretWorld() { return this.angle + this.turretAngle; }
+    get turretWorld() {
+        return this.angle + this.turretAngle;
+    }
 
     /** True if any track is disabled (can only pivot). */
-    get trackDamaged() { return this.leftTrackDisabled || this.rightTrackDisabled; }
+    get trackDamaged() {
+        return this.leftTrackDisabled || this.rightTrackDisabled;
+    }
 
     /** True if the gun fires only forward (IFV or disabled turret). */
-    get fixedGun() { return this.vehicleType === 'ifv' || this.turretDisabled; }
+    get fixedGun() {
+        return this.vehicleType === "ifv" || this.turretDisabled;
+    }
 
     /* ── per-frame update ─────────────────────────────────── */
 
@@ -86,35 +92,31 @@ export class Tank {
             this.respawnTimer -= dt;
             if (this.respawnTimer <= 0) {
                 this.alive = true;
-                this.flashTimer = 1.0;  // 1 s of invuln-flash
+                this.flashTimer = 1.0; // 1 s of invuln-flash
             }
             return;
         }
 
-        if (this.flashTimer  > 0) this.flashTimer  -= dt;
+        if (this.flashTimer > 0) this.flashTimer -= dt;
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
-        if (this.recoilTimer  > 0) this.recoilTimer  -= dt;
+        if (this.recoilTimer > 0) this.recoilTimer -= dt;
 
-        const oldX = this.x, oldY = this.y;
-        const isIFV = this.vehicleType === 'ifv';
+        const oldX = this.x,
+            oldY = this.y;
+        const isIFV = this.vehicleType === "ifv";
 
         // ── Hull rotation
         // If a track is disabled, can only pivot in the direction
         // of the working track (left track out → can only turn right,
         // right track out → can only turn left).
-        let canRotateLeft  = !this.rightTrackDisabled;
-        let canRotateRight = !this.leftTrackDisabled;
+        const canRotateLeft = !this.rightTrackDisabled;
+        const canRotateRight = !this.leftTrackDisabled;
 
-        const rotSpeed = isIFV
-            ? CONFIG.IFV_ROTATION_SPEED
-            : CONFIG.TANK_ROTATION_SPEED;
+        const rotSpeed = isIFV ? CONFIG.IFV_ROTATION_SPEED : CONFIG.TANK_ROTATION_SPEED;
 
-        const rotating = (input.isDown(keyMap.left) && canRotateLeft)
-                       || (input.isDown(keyMap.right) && canRotateRight);
-        if (input.isDown(keyMap.left)  && canRotateLeft)
-            this.angle -= rotSpeed * dt;
-        if (input.isDown(keyMap.right) && canRotateRight)
-            this.angle += rotSpeed * dt;
+        const rotating = (input.isDown(keyMap.left) && canRotateLeft) || (input.isDown(keyMap.right) && canRotateRight);
+        if (input.isDown(keyMap.left) && canRotateLeft) this.angle -= rotSpeed * dt;
+        if (input.isDown(keyMap.right) && canRotateRight) this.angle += rotSpeed * dt;
         this.angle = normalizeAngle(this.angle);
 
         // ── Turret rotation (relative to hull, slower)
@@ -123,10 +125,8 @@ export class Tank {
         if (isIFV) {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
-            if (input.isDown(keyMap.turretLeft))
-                this.turretAngle -= CONFIG.TURRET_ROTATION_SPEED * dt;
-            if (input.isDown(keyMap.turretRight))
-                this.turretAngle += CONFIG.TURRET_ROTATION_SPEED * dt;
+            if (input.isDown(keyMap.turretLeft)) this.turretAngle -= CONFIG.TURRET_ROTATION_SPEED * dt;
+            if (input.isDown(keyMap.turretRight)) this.turretAngle += CONFIG.TURRET_ROTATION_SPEED * dt;
             this.turretAngle = normalizeAngle(this.turretAngle);
         }
 
@@ -134,14 +134,12 @@ export class Tank {
         // Disabled if any track is damaged (can only pivot)
         let move = 0;
         if (!this.trackDamaged) {
-            if (input.isDown(keyMap.forward))  move =  1;
+            if (input.isDown(keyMap.forward)) move = 1;
             if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
         }
 
         if (move !== 0) {
-            const baseSpeed = isIFV
-                ? CONFIG.TANK_SPEED * CONFIG.IFV_SPEED_FACTOR
-                : CONFIG.TANK_SPEED;
+            const baseSpeed = isIFV ? CONFIG.TANK_SPEED * CONFIG.IFV_SPEED_FACTOR : CONFIG.TANK_SPEED;
             const speed = baseSpeed * move;
             const nx = this.x + Math.cos(this.angle) * speed * dt;
             const ny = this.y + Math.sin(this.angle) * speed * dt;
@@ -152,23 +150,23 @@ export class Tank {
         }
 
         // ── Tread animation (scrolls when moving or rotating in place)
-        const dx = this.x - oldX, dy = this.y - oldY;
+        const dx = this.x - oldX,
+            dy = this.y - oldY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 0.0001 || rotating) {
-            this.treadPhase = (this.treadPhase
-                + Math.max(dist * 6, rotating ? dt * 2.5 : 0)) % 1;
+            this.treadPhase = (this.treadPhase + Math.max(dist * 6, rotating ? dt * 2.5 : 0)) % 1;
         }
     }
 
     /* ── firing ───────────────────────────────────────────── */
 
-    canFire() { return this.alive && this.fireCooldown <= 0; }
+    canFire() {
+        return this.alive && this.fireCooldown <= 0;
+    }
 
     fire() {
-        this.fireCooldown = this.vehicleType === 'ifv'
-            ? CONFIG.IFV_BULLET_COOLDOWN
-            : CONFIG.BULLET_COOLDOWN;
-        this.recoilTimer  = 0.1;
+        this.fireCooldown = this.vehicleType === "ifv" ? CONFIG.IFV_BULLET_COOLDOWN : CONFIG.BULLET_COOLDOWN;
+        this.recoilTimer = 0.1;
     }
 
     /* ── directional damage ───────────────────────────────── */
@@ -186,12 +184,12 @@ export class Tank {
         const bearing = Math.atan2(by - this.y, bx - this.x) - this.angle;
         // Normalize to [-PI, PI]
         let b = bearing % (Math.PI * 2);
-        if (b >  Math.PI) b -= Math.PI * 2;
+        if (b > Math.PI) b -= Math.PI * 2;
         if (b < -Math.PI) b += Math.PI * 2;
 
         const abs = Math.abs(b);
-        if (abs <= CONFIG.HIT_FRONT_ARC)          return HIT_ZONE.FRONT;
-        if (abs >= Math.PI - CONFIG.HIT_REAR_ARC)  return HIT_ZONE.REAR;
+        if (abs <= CONFIG.HIT_FRONT_ARC) return HIT_ZONE.FRONT;
+        if (abs >= Math.PI - CONFIG.HIT_REAR_ARC) return HIT_ZONE.REAR;
         return b < 0 ? HIT_ZONE.SIDE_LEFT : HIT_ZONE.SIDE_RIGHT;
     }
 
@@ -206,21 +204,21 @@ export class Tank {
      */
     applyHit(zone, damage = 1.0) {
         // IFV: any hit kills instantly (1-hit armour)
-        if (this.vehicleType === 'ifv') {
+        if (this.vehicleType === "ifv") {
             this.kill();
-            return 'destroyed';
+            return "destroyed";
         }
 
         // Full-damage rear hit → instant kill
         if (zone === HIT_ZONE.REAR && damage >= 1.0) {
             this.kill();
-            return 'destroyed';
+            return "destroyed";
         }
 
         // Already damaged + full-damage hit → instant kill
         if (this.damaged && damage >= 1.0) {
             this.kill();
-            return 'destroyed';
+            return "destroyed";
         }
 
         // Accumulate damage
@@ -232,13 +230,13 @@ export class Tank {
             // Accumulated rear zone → kill
             if (zone === HIT_ZONE.REAR) {
                 this.kill();
-                return 'destroyed';
+                return "destroyed";
             }
 
             if (this.damaged) {
                 // Second full hit → destroyed
                 this.kill();
-                return 'destroyed';
+                return "destroyed";
             }
 
             // First full hit: apply subsystem damage
@@ -258,10 +256,10 @@ export class Tank {
                     break;
             }
 
-            return 'damaged';
+            return "damaged";
         }
 
-        return 'absorbed';
+        return "absorbed";
     }
 
     /* ── death / respawn ──────────────────────────────────── */
@@ -275,13 +273,13 @@ export class Tank {
         this.x = x;
         this.y = y;
         this.angle = Math.random() * Math.PI * 2;
-        this.turretAngle = 0;   // turret starts aligned with hull
+        this.turretAngle = 0; // turret starts aligned with hull
 
         // Clear all damage
-        this.damaged            = false;
-        this.damageAccum        = 0;
-        this.turretDisabled     = false;
-        this.leftTrackDisabled  = false;
+        this.damaged = false;
+        this.damageAccum = 0;
+        this.turretDisabled = false;
+        this.leftTrackDisabled = false;
         this.rightTrackDisabled = false;
     }
 
@@ -289,9 +287,11 @@ export class Tank {
 
     _canOccupy(wx, wy, map) {
         const s = CONFIG.TANK_SIZE * 0.85;
-        return map.isPassable(wx - s, wy - s)
-            && map.isPassable(wx + s, wy - s)
-            && map.isPassable(wx - s, wy + s)
-            && map.isPassable(wx + s, wy + s);
+        return (
+            map.isPassable(wx - s, wy - s) &&
+            map.isPassable(wx + s, wy - s) &&
+            map.isPassable(wx - s, wy + s) &&
+            map.isPassable(wx + s, wy + s)
+        );
     }
 }

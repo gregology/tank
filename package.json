@@ -7,6 +7,19 @@
     "test:pathfinder": "node --test test/pathfinder.test.js",
     "test:map": "node --test test/map.test.js",
     "test:game": "node --test test/game.test.js",
-    "test:roles": "node --test test/roles.test.js"
+    "test:roles": "node --test test/roles.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=85 --test-coverage-functions=80 test/*.test.js",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check": "npm run lint && npm run test:coverage && npm run graph:validate",
+    "graph:validate": "depcruise js --config .dependency-cruiser.cjs",
+    "mutation": "stryker run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.9",
+    "@stryker-mutator/core": "^9.6.0",
+    "dependency-cruiser": "^17.3.9",
+    "lefthook": "^2.1.4"
   }
 }

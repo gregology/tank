@@ -1,0 +1,45 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.4.9/schema.json",
+    "files": {
+        "includes": ["**/js/**/*.js", "**/test/**/*.js"]
+    },
+    "formatter": {
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 120
+    },
+    "linter": {
+        "rules": {
+            "recommended": true,
+            "correctness": {
+                "noUnusedVariables": "warn",
+                "noUnusedImports": "warn"
+            },
+            "style": {
+                "useConst": "error",
+                "useDefaultParameterLast": "off"
+            },
+            "suspicious": {
+                "noExplicitAny": "off",
+                "noVar": "error"
+            }
+        }
+    },
+    "javascript": {
+        "globals": [
+            "document",
+            "window",
+            "HTMLCanvasElement",
+            "CanvasRenderingContext2D",
+            "requestAnimationFrame",
+            "cancelAnimationFrame",
+            "performance",
+            "AudioContext",
+            "GainNode",
+            "OscillatorNode",
+            "BiquadFilterNode",
+            "AudioBufferSourceNode",
+            "Image"
+        ]
+    }
+}

@@ -9,7 +9,7 @@
  * and its own `speed` (IFV bullets travel 1.5× faster).
  */
 
-import { CONFIG } from './config.js';
+import { CONFIG } from "./config.js";
 
 export class Bullet {
     /**
@@ -23,13 +23,13 @@ export class Bullet {
      */
     constructor(x, y, angle, owner, team = 0, damage = 1.0, speed = CONFIG.BULLET_SPEED) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
-        this.x     = x + Math.cos(angle) * offset;
-        this.y     = y + Math.sin(angle) * offset;
+        this.x = x + Math.cos(angle) * offset;
+        this.y = y + Math.sin(angle) * offset;
         this.angle = angle;
         this.owner = owner;
-        this.team  = team;
+        this.team = team;
         this.damage = damage;
-        this.speed  = speed;
+        this.speed = speed;
         this.alive = true;
         this.lifetime = CONFIG.BULLET_LIFETIME;
     }
@@ -48,8 +48,7 @@ export class Bullet {
         }
 
         // Off the map edge
-        if (this.x < -1 || this.x > map.width + 1 ||
-            this.y < -1 || this.y > map.height + 1) {
+        if (this.x < -1 || this.x > map.width + 1 || this.y < -1 || this.y > map.height + 1) {
             this.alive = false;
             return;
         }

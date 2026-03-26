@@ -9,21 +9,21 @@
  * Rocks block both movement and projectiles – they're the cover.
  */
 
-import { CONFIG, TILES as T } from './config.js';
-import { distance, randomInt } from './utils.js';
+import { CONFIG, TILES as T } from "./config.js";
+import { distance, randomInt } from "./utils.js";
 
 export class GameMap {
     constructor() {
-        this.width  = CONFIG.MAP_WIDTH;
+        this.width = CONFIG.MAP_WIDTH;
         this.height = CONFIG.MAP_HEIGHT;
         /** Flat Uint8 array – index with `y * width + x`. */
-        this.tiles  = new Uint8Array(this.width * this.height);
+        this.tiles = new Uint8Array(this.width * this.height);
         /** Per-tile hit-points (0 = full health / not destructible). */
-        this.hp     = new Float32Array(this.width * this.height);
+        this.hp = new Float32Array(this.width * this.height);
         /** Max HP per tile (for damage fraction calculation). */
-        this.maxHp  = new Uint8Array(this.width * this.height);
+        this.maxHp = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions (new island every game). */
-        this.seed   = Math.floor(Math.random() * 2147483647);
+        this.seed = Math.floor(Math.random() * 2147483647);
         this.generate();
     }
 
@@ -43,29 +43,42 @@ export class GameMap {
             // Initialise HP for destructible tiles
             let h = 0;
             switch (type) {
-                case T.HILL:        h = CONFIG.HILL_HP; break;
-                case T.ROCK:        h = CONFIG.ROCK_HP; break;
-                case T.BLDG_SMALL:  h = CONFIG.BLDG_SMALL_HP; break;
-                case T.BLDG_MEDIUM: h = CONFIG.BLDG_MEDIUM_HP; break;
-                case T.BLDG_LARGE:  h = CONFIG.BLDG_LARGE_HP; break;
+                case T.HILL:
+                    h = CONFIG.HILL_HP;
+                    break;
+                case T.ROCK:
+                    h = CONFIG.ROCK_HP;
+                    break;
+                case T.BLDG_SMALL:
+                    h = CONFIG.BLDG_SMALL_HP;
+                    break;
+                case T.BLDG_MEDIUM:
+                    h = CONFIG.BLDG_MEDIUM_HP;
+                    break;
+                case T.BLDG_LARGE:
+                    h = CONFIG.BLDG_LARGE_HP;
+                    break;
             }
-            this.hp[i]    = h;
+            this.hp[i] = h;
             this.maxHp[i] = h;
         }
     }
 
     /** Is this tile type a solid obstacle (hill, rock, or building)? */
     isSolid(tileType) {
-        return tileType === T.HILL || tileType === T.ROCK
-            || tileType === T.BLDG_SMALL || tileType === T.BLDG_MEDIUM
-            || tileType === T.BLDG_LARGE;
+        return (
+            tileType === T.HILL ||
+            tileType === T.ROCK ||
+            tileType === T.BLDG_SMALL ||
+            tileType === T.BLDG_MEDIUM ||
+            tileType === T.BLDG_LARGE
+        );
     }
 
     /** Can a tank stand at continuous world position (wx, wy)? */
     isPassable(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
-        return t === T.GRASS || t === T.DARK_GRASS || t === T.SAND
-            || t === T.DIRT || t === T.PAVED;
+        return t === T.GRASS || t === T.DARK_GRASS || t === T.SAND || t === T.DIRT || t === T.PAVED;
     }
 
     /** Is this a road tile? Buildings must not be placed on roads. */
@@ -77,8 +90,7 @@ export class GameMap {
     /** Does this tile stop a bullet? */
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
-        return t === T.HILL || t === T.ROCK
-            || t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE;
+        return t === T.HILL || t === T.ROCK || t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE;
     }
 
     /**
@@ -87,12 +99,12 @@ export class GameMap {
      */
     damageTile(gx, gy, damage = 1.0) {
         const i = gy * this.width + gx;
-        if (this.hp[i] <= 0) return false;        // not destructible
+        if (this.hp[i] <= 0) return false; // not destructible
         this.hp[i] -= damage;
         if (this.hp[i] <= 0) {
             // Destroyed → replace with grass
             this.tiles[i] = T.GRASS;
-            this.hp[i]    = 0;
+            this.hp[i] = 0;
             this.maxHp[i] = 0;
             return true;
         }
@@ -109,12 +121,18 @@ export class GameMap {
     /** Pixel-height of a tile type (for isometric elevation). */
     tileHeight(tileType) {
         switch (tileType) {
-            case T.HILL:        return CONFIG.TILE_DEPTH;
-            case T.ROCK:        return Math.round(CONFIG.TILE_DEPTH * 0.6);
-            case T.BLDG_SMALL:  return 14;
-            case T.BLDG_MEDIUM: return 22;
-            case T.BLDG_LARGE:  return 32;
-            default:            return 0;
+            case T.HILL:
+                return CONFIG.TILE_DEPTH;
+            case T.ROCK:
+                return Math.round(CONFIG.TILE_DEPTH * 0.6);
+            case T.BLDG_SMALL:
+                return 14;
+            case T.BLDG_MEDIUM:
+                return 22;
+            case T.BLDG_LARGE:
+                return 32;
+            default:
+                return 0;
         }
     }
 
@@ -125,7 +143,8 @@ export class GameMap {
      * @returns {[{x,y},{x,y}]}
      */
     findTowerPositions() {
-        const cx = this.width / 2, cy = this.height / 2;
+        const cx = this.width / 2,
+            cy = this.height / 2;
         const off = Math.min(this.width, this.height) * 0.28;
         const p1 = this._findClearSpot(Math.round(cx - off), Math.round(cy - off), 3);
         const p2 = this._findClearSpot(Math.round(cx + off), Math.round(cy + off), 3);
@@ -146,9 +165,9 @@ export class GameMap {
      * tank can never spawn stuck against water or terrain.
      */
     getBaseSpawnPoint(towerX, towerY) {
-        const s = CONFIG.TANK_SIZE * 0.85;          // collision half-extent
+        const s = CONFIG.TANK_SIZE * 0.85; // collision half-extent
         const minR = CONFIG.TOWER_RADIUS + CONFIG.TANK_SIZE + 0.2; // avoid tower
-        const maxR = 5 - s - 0.3;                  // stay inside sand circle
+        const maxR = 5 - s - 0.3; // stay inside sand circle
 
         for (let attempt = 0; attempt < 100; attempt++) {
             const a = Math.random() * Math.PI * 2;
@@ -156,10 +175,12 @@ export class GameMap {
             const x = towerX + Math.cos(a) * r;
             const y = towerY + Math.sin(a) * r;
             // Check all four corners of the tank's collision box
-            if (this.isPassable(x - s, y - s) &&
+            if (
+                this.isPassable(x - s, y - s) &&
                 this.isPassable(x + s, y - s) &&
                 this.isPassable(x - s, y + s) &&
-                this.isPassable(x + s, y + s)) {
+                this.isPassable(x + s, y + s)
+            ) {
                 return { x, y };
             }
         }
@@ -174,7 +195,8 @@ export class GameMap {
         for (let dy = -r; dy <= r; dy++) {
             for (let dx = -r; dx <= r; dx++) {
                 if (dx * dx + dy * dy > r * r) continue;
-                const tx = gx + dx, ty = gy + dy;
+                const tx = gx + dx,
+                    ty = gy + dy;
                 const t = this.getTile(tx, ty);
                 if (this.isSolid(t)) {
                     this.setTile(tx, ty, T.GRASS);
@@ -189,12 +211,14 @@ export class GameMap {
      * converts water → sand so the path is always walkable.
      */
     _clearPath(p1, p2, hw) {
-        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const dx = p2.x - p1.x,
+            dy = p2.y - p1.y;
         const len = Math.hypot(dx, dy);
         if (len < 1) return;
-        const px = -dy / len, py = dx / len;   // perpendicular
+        const px = -dy / len,
+            py = dx / len; // perpendicular
 
-        const steps = Math.ceil(len * 2);       // oversample for no gaps
+        const steps = Math.ceil(len * 2); // oversample for no gaps
         for (let s = 0; s <= steps; s++) {
             const t = s / steps;
             const cx = p1.x + dx * t;
@@ -218,7 +242,8 @@ export class GameMap {
             for (let dy = -ring; dy <= ring; dy++) {
                 for (let dx = -ring; dx <= ring; dx++) {
                     if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
-                    const gx = tx + dx, gy = ty + dy;
+                    const gx = tx + dx,
+                        gy = ty + dy;
                     if (this._areaPassable(gx, gy, r)) {
                         return { x: gx + 0.5, y: gy + 0.5 };
                     }
@@ -230,8 +255,7 @@ export class GameMap {
 
     _areaPassable(gx, gy, r) {
         for (let dy = -r; dy <= r; dy++)
-            for (let dx = -r; dx <= r; dx++)
-                if (!this.isPassable(gx + dx + 0.5, gy + dy + 0.5)) return false;
+            for (let dx = -r; dx <= r; dx++) if (!this.isPassable(gx + dx + 0.5, gy + dy + 0.5)) return false;
         return true;
     }
 
@@ -243,8 +267,9 @@ export class GameMap {
         const R = 5;
         for (let dy = -R; dy <= R; dy++) {
             for (let dx = -R; dx <= R; dx++) {
-                if (dx * dx + dy * dy > R * R) continue;   // circular
-                const tx = gx + dx, ty = gy + dy;
+                if (dx * dx + dy * dy > R * R) continue; // circular
+                const tx = gx + dx,
+                    ty = gy + dy;
                 const t = this.getTile(tx, ty);
                 // Only overwrite land tiles (not water)
                 if (t !== T.DEEP_WATER && t !== T.SHALLOW_WATER) {
@@ -257,7 +282,7 @@ export class GameMap {
     /** Find a random passable spawn point, far from (ax, ay). */
     getSpawnPoint(ax, ay, minDist = 10) {
         for (let attempt = 0; attempt < 300; attempt++) {
-            const x = randomInt(6, this.width  - 7) + 0.5;
+            const x = randomInt(6, this.width - 7) + 0.5;
             const y = randomInt(6, this.height - 7) + 0.5;
             const t = this.getTile(Math.floor(x), Math.floor(y));
             // Prefer flat ground for spawning
@@ -273,8 +298,10 @@ export class GameMap {
      * ═══════════════════════════════════════════════════════ */
 
     generate() {
-        const w = this.width, h = this.height;
-        const cx = w / 2, cy = h / 2;
+        const w = this.width,
+            h = this.height;
+        const cx = w / 2,
+            cy = h / 2;
         const maxR = Math.min(w, h) / 2 - 1;
 
         // Pass 1: lay down water / sand / grass
@@ -294,9 +321,9 @@ export class GameMap {
         const coastNoise = this._fbm(gx * 0.06, gy * 0.06, 3, 0) - 0.5;
         const islandEdge = maxR + coastNoise * 8;
 
-        if (d > islandEdge)           return T.DEEP_WATER;
-        if (d > islandEdge - 1.8)     return T.SHALLOW_WATER;
-        if (d > islandEdge - 3.5)     return T.SAND;
+        if (d > islandEdge) return T.DEEP_WATER;
+        if (d > islandEdge - 1.8) return T.SHALLOW_WATER;
+        if (d > islandEdge - 3.5) return T.SAND;
 
         const grassN = this._fbm(gx * 0.12, gy * 0.12, 2, 300);
         return grassN > 0.52 ? T.DARK_GRASS : T.GRASS;
@@ -316,7 +343,7 @@ export class GameMap {
         // Step 1: pick village positions, enforcing minimum separation
         for (let i = 0; i < attempts; i++) {
             const angle = this._hash(i * 11, 100) * Math.PI * 2;
-            const dist  = 5 + this._hash(i * 17, 200) * (maxR - 12);
+            const dist = 5 + this._hash(i * 17, 200) * (maxR - 12);
             const vx = Math.round(cx + Math.cos(angle) * dist);
             const vy = Math.round(cy + Math.sin(angle) * dist);
 
@@ -327,7 +354,8 @@ export class GameMap {
             let tooClose = false;
             for (const vc of villageCentres) {
                 if (distance(vx, vy, vc.x, vc.y) < MIN_VILLAGE_DIST) {
-                    tooClose = true; break;
+                    tooClose = true;
+                    break;
                 }
             }
             if (tooClose) continue;
@@ -344,16 +372,27 @@ export class GameMap {
 
         const roadSegments = [];
         while (remaining.size > 0) {
-            let bestI = -1, bestJ = -1, bestD = Infinity;
+            let bestI = -1,
+                bestJ = -1,
+                bestD = Infinity;
             for (const ci of connected) {
                 for (const ri of remaining) {
-                    const d = distance(villageCentres[ci].x, villageCentres[ci].y,
-                                       villageCentres[ri].x, villageCentres[ri].y);
-                    if (d < bestD) { bestD = d; bestI = ci; bestJ = ri; }
+                    const d = distance(
+                        villageCentres[ci].x,
+                        villageCentres[ci].y,
+                        villageCentres[ri].x,
+                        villageCentres[ri].y,
+                    );
+                    if (d < bestD) {
+                        bestD = d;
+                        bestI = ci;
+                        bestJ = ri;
+                    }
                 }
             }
             if (bestJ < 0) break;
-            const a = villageCentres[bestI], b = villageCentres[bestJ];
+            const a = villageCentres[bestI],
+                b = villageCentres[bestJ];
             this._layDirtRoad(a, b);
             roadSegments.push({ a, b });
             connected.push(bestJ);
@@ -362,8 +401,7 @@ export class GameMap {
 
         // Step 3: scatter a few buildings along the dirt roads between villages
         for (let seg = 0; seg < roadSegments.length; seg++) {
-            this._scatterRoadsideBuildings(roadSegments[seg].a,
-                roadSegments[seg].b, seg);
+            this._scatterRoadsideBuildings(roadSegments[seg].a, roadSegments[seg].b, seg);
         }
     }
 
@@ -373,8 +411,10 @@ export class GameMap {
      * full edge with the next — no diagonal-only connections.
      */
     _layDirtRoad(a, b) {
-        let x = Math.floor(a.x), y = Math.floor(a.y);
-        const gx = Math.floor(b.x), gy = Math.floor(b.y);
+        let x = Math.floor(a.x),
+            y = Math.floor(a.y);
+        const gx = Math.floor(b.x),
+            gy = Math.floor(b.y);
 
         while (x !== gx || y !== gy) {
             const tile = this.getTile(x, y);
@@ -384,17 +424,16 @@ export class GameMap {
             // Step one tile: pick the axis with the larger remaining gap.
             // When equal, use a hash for a natural wobble instead of
             // always favouring the same axis.
-            const dx = gx - x, dy = gy - y;
+            const dx = gx - x,
+                dy = gy - y;
             if (Math.abs(dx) > Math.abs(dy)) {
                 x += dx > 0 ? 1 : -1;
             } else if (Math.abs(dy) > Math.abs(dx)) {
                 y += dy > 0 ? 1 : -1;
             } else {
                 // Equal — random pick for variety
-                if (this._hash(x * 31 + y * 47, 1050) > 0.5)
-                    x += dx > 0 ? 1 : -1;
-                else
-                    y += dy > 0 ? 1 : -1;
+                if (this._hash(x * 31 + y * 47, 1050) > 0.5) x += dx > 0 ? 1 : -1;
+                else y += dy > 0 ? 1 : -1;
             }
         }
         // Final tile
@@ -410,12 +449,15 @@ export class GameMap {
      * a full village.
      */
     _scatterRoadsideBuildings(a, b, seed) {
-        const dx = b.x - a.x, dy = b.y - a.y;
+        const dx = b.x - a.x,
+            dy = b.y - a.y;
         const len = Math.hypot(dx, dy);
-        if (len < 8) return;  // too short, skip
+        if (len < 8) return; // too short, skip
 
-        const ux = dx / len, uy = dy / len;     // road direction
-        const px = -uy, py = ux;                 // perpendicular
+        const ux = dx / len,
+            uy = dy / len; // road direction
+        const px = -uy,
+            py = ux; // perpendicular
 
         const count = 2 + Math.floor(this._hash(seed * 67, 1100) * 4);
         for (let i = 0; i < count; i++) {
@@ -426,7 +468,7 @@ export class GameMap {
 
             // Offset 1–2 tiles to one side
             const side = this._hash(seed * 19 + i * 31, 1300) > 0.5 ? 1 : -1;
-            const off  = 1 + Math.floor(this._hash(seed * 23 + i * 37, 1400) * 1.5);
+            const off = 1 + Math.floor(this._hash(seed * 23 + i * 37, 1400) * 1.5);
             const bx = Math.round(cx + px * side * off);
             const by = Math.round(cy + py * side * off);
 
@@ -477,7 +519,7 @@ export class GameMap {
 
         // Step 2: place buildings along roads (never ON a road)
         for (const road of roads) {
-            const px = road.dy !== 0 ? 1 : 0;   // perpendicular
+            const px = road.dy !== 0 ? 1 : 0; // perpendicular
             const py = road.dx !== 0 ? 1 : 0;
 
             for (let s = -road.halfLen; s <= road.halfLen; s++) {
@@ -498,15 +540,16 @@ export class GameMap {
 
                     const sizeRoll = this._hash(seed * 23 + s * 37 + side * 53, 600);
                     let bldgType;
-                    if      (sizeRoll < 0.45) bldgType = T.BLDG_SMALL;
-                    else if (sizeRoll < 0.80) bldgType = T.BLDG_MEDIUM;
-                    else                      bldgType = T.BLDG_LARGE;
+                    if (sizeRoll < 0.45) bldgType = T.BLDG_SMALL;
+                    else if (sizeRoll < 0.8) bldgType = T.BLDG_MEDIUM;
+                    else bldgType = T.BLDG_LARGE;
 
                     this.setTile(bx, by, bldgType);
 
                     // Large buildings extend along the road
                     if (bldgType === T.BLDG_LARGE) {
-                        const ex = bx + road.dx, ey = by + road.dy;
+                        const ex = bx + road.dx,
+                            ey = by + road.dy;
                         if (!this.isRoad(ex, ey) && this.isPassable(ex + 0.5, ey + 0.5))
                             this.setTile(ex, ey, T.BLDG_LARGE);
                     }
@@ -529,13 +572,15 @@ export class GameMap {
 
     /** Smooth value noise via bilinear interpolation + smoothstep. */
     _noise(x, y, off) {
-        const ix = Math.floor(x), iy = Math.floor(y);
-        const fx = x - ix, fy = y - iy;
+        const ix = Math.floor(x),
+            iy = Math.floor(y);
+        const fx = x - ix,
+            fy = y - iy;
         const sx = fx * fx * (3 - 2 * fx);
         const sy = fy * fy * (3 - 2 * fy);
-        const v00 = this._hash(ix     + off, iy);
+        const v00 = this._hash(ix + off, iy);
         const v10 = this._hash(ix + 1 + off, iy);
-        const v01 = this._hash(ix     + off, iy + 1);
+        const v01 = this._hash(ix + off, iy + 1);
         const v11 = this._hash(ix + 1 + off, iy + 1);
         const top = v00 + (v10 - v00) * sx;
         const bot = v01 + (v11 - v01) * sx;
@@ -544,12 +589,15 @@ export class GameMap {
 
     /** Fractal Brownian Motion – layered noise for natural textures. */
     _fbm(x, y, octaves, off) {
-        let value = 0, amp = 1, freq = 1, total = 0;
+        let value = 0,
+            amp = 1,
+            freq = 1,
+            total = 0;
         for (let i = 0; i < octaves; i++) {
             value += this._noise(x * freq, y * freq, off + i * 997) * amp;
             total += amp;
-            amp   *= 0.5;
-            freq  *= 2;
+            amp *= 0.5;
+            freq *= 2;
         }
         return value / total;
     }
