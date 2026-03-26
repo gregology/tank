@@ -12,6 +12,22 @@ import { distance } from "../js/utils.js";
 
 export { AI_ROLES, AIController, Bullet, CONFIG, distance, GameMap, Pathfinder, pickRoleForVehicle, T, Tank, VEHICLES };
 
+/* ── Seeded PRNG (mulberry32) ─────────────────────────────── */
+
+/**
+ * Return a deterministic PRNG seeded with `seed`.
+ * Produces values in [0, 1) — a drop-in replacement for Math.random().
+ */
+export function seededRng(seed) {
+    let s = seed | 0;
+    return function () {
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 export const BOT_KEYS = {
     forward: "_bf",
     backward: "_bb",
@@ -92,7 +108,7 @@ export function zigzag(startY, spacing, count, x1, x2, gapSide = "alternate") {
 /**
  * Create a bot tank + AI at the given position.
  */
-export function createBot(x, y, angle = 0, map = null) {
+export function createBot(x, y, angle = 0, map = null, rng = undefined) {
     const tank = new Tank(1, "#cc3333", "#882222");
     tank.team = 1;
     tank.alive = true;
@@ -100,7 +116,7 @@ export function createBot(x, y, angle = 0, map = null) {
     tank.y = y;
     tank.angle = angle;
     tank.turretAngle = 0;
-    const ai = new AIController(BOT_KEYS, map);
+    const ai = new AIController(BOT_KEYS, map, rng);
     return { tank, ai };
 }
 
