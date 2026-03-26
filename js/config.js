@@ -28,12 +28,8 @@ export const CONFIG = {
     MAP_WIDTH: 64,
     MAP_HEIGHT: 64,
 
-    // ── Tank ─────────────────────────────────────────────────
-    TANK_SPEED: 3.0, // world-units / second
+    // ── Shared vehicle defaults ──────────────────────────────
     TANK_REVERSE_FACTOR: 0.4, // backward speed multiplier
-    TANK_ROTATION_SPEED: 3.5, // radians / second (hull)
-    TURRET_ROTATION_SPEED: 2, // radians / second (slower than hull)
-    TANK_SIZE: 0.45, // collision radius in world-units
     TANK_BARREL_LENGTH: 0.52, // barrel tip distance from centre (world-units)
     CAMERA_LOOK_AHEAD: 3.5, // world-units offset in the facing direction
     CAMERA_SMOOTHING: 2.5, // lower = smoother/slower follow
@@ -58,28 +54,10 @@ export const CONFIG = {
     TOWER_VIS_HEIGHT: 35, // pixel height for rendering
 
     // ── Bullet ───────────────────────────────────────────────
-    BULLET_SPEED: 9.0,
     BULLET_RADIUS: 3, // screen-pixel radius
-    BULLET_COOLDOWN: 0.45,
     BULLET_LIFETIME: 3.0,
 
-    // ── IFV vehicle ──────────────────────────────────────
-    IFV_SPEED_FACTOR: 1.5, // multiplied by TANK_SPEED
-    IFV_ROTATION_SPEED: 4.0, // faster hull rotation (wheeled)
-    IFV_BULLET_SPEED_FACTOR: 1.5, // multiplied by BULLET_SPEED
-    IFV_BULLET_DAMAGE: 0.25, // fraction of tank bullet damage (4 hits = 1 tank hit)
-    IFV_BULLET_COOLDOWN: 0.18, // rapid fire
-    IFV_SPAWN_CHANCE: 0.4, // probability of spawning as IFV in team mode
-
     // ── AI Roles (team mode) ─────────────────────────────────
-    // Spawn weights — randomly assigned at spawn/respawn.
-    // Values are relative weights (not probabilities).
-    ROLE_WEIGHTS: {
-        cavalry: 3,
-        sniper: 2,
-        defender: 2,
-        scout: 3,
-    },
     SNIPER_FIRE_RANGE: 12, // preferred distance from enemy tower
     SNIPER_MIN_RANGE: 8, // won't get closer than this
     SNIPER_ENGAGE_RANGE: 6, // only fights enemies this close
@@ -111,5 +89,52 @@ export const CONFIG = {
         turretLeft: "Comma",
         turretRight: "Period",
         fire: "Enter",
+    },
+};
+
+/**
+ * Per-vehicle-type stats.  Every gameplay value that varies between
+ * vehicle types lives here.  The game reads VEHICLES[tank.vehicleType]
+ * at runtime — adding a new vehicle is just a new entry in this table.
+ *
+ * roleWeights: per-vehicle role distribution for team mode AI.
+ *              Higher weight = more likely.  0 = never assigned.
+ *              Drones are always cavalry; IFVs lean toward scout.
+ */
+export const VEHICLES = {
+    tank: {
+        speed: 3.0, // world-units / second
+        rotationSpeed: 3.5, // radians / second (hull)
+        turretSpeed: 2.0, // radians / second (independent turret)
+        size: 0.45, // collision radius in world-units
+        bulletSpeed: 9.0, // world-units / second
+        bulletDamage: 1.0, // damage per shot
+        bulletCooldown: 0.45, // seconds between shots
+        spawnWeight: 5, // relative spawn chance in team mode
+        roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
+    },
+    ifv: {
+        speed: 4.5, // faster (was 1.5× tank)
+        rotationSpeed: 4.0, // wheeled — agile
+        turretSpeed: 0, // fixed forward gun
+        size: 0.45, // same footprint as tank
+        bulletSpeed: 13.5, // faster rounds (was 1.5× tank)
+        bulletDamage: 0.25, // 4 hits = 1 tank hit
+        bulletCooldown: 0.18, // rapid fire
+        spawnWeight: 3, // relative spawn chance
+        roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
+    },
+    drone: {
+        speed: 6.0, // very fast (was 2× tank)
+        rotationSpeed: 5.0, // very agile
+        turretSpeed: 0, // no turret
+        size: 0.1, // small, hard to hit
+        bulletSpeed: 0, // N/A — kamikaze
+        bulletDamage: 0, // N/A — uses blastDamage
+        bulletCooldown: 0, // N/A
+        blastRadius: 2.5, // detonation AoE radius
+        blastDamage: 1.0, // max damage at point blank
+        spawnWeight: 3, // relative spawn chance
+        roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
     },
 };

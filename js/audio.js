@@ -35,6 +35,7 @@ export class AudioManager {
             if (d.tank?.vehicleType === "ifv") this.playIFVShoot();
             else this.playShoot();
         });
+        game.on("drone_strike", () => this.playDroneStrike());
         game.on("destroy", () => this.playExplosion());
         game.on("destroy_tile", () => this.playExplosion());
         game.on("impact", () => this.playImpact());
@@ -97,6 +98,35 @@ export class AudioManager {
         o.connect(og).connect(ctx.destination);
         o.start(t);
         o.stop(t + 0.06);
+    }
+
+    /** High-pitched whine + crunch when a drone detonates. */
+    playDroneStrike() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        // Descending whine (FPV dive sound)
+        const o = ctx.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(2000, t);
+        o.frequency.exponentialRampToValueAtTime(200, t + 0.15);
+        const og = this._env(t, 0.2, 0.18);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.2);
+
+        // Sharp crack
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "bandpass";
+        nf.Q.value = 2;
+        nf.frequency.setValueAtTime(3000, t + 0.05);
+        nf.frequency.exponentialRampToValueAtTime(200, t + 0.25);
+        const ng = this._env(t + 0.05, 0.4, 0.25);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t + 0.05);
+        n.stop(t + 0.35);
     }
 
     playExplosion() {

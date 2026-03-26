@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CONFIG, GameMap, T } from "./helpers.js";
+import { CONFIG, GameMap, T, VEHICLES } from "./helpers.js";
 
 describe("Map generation", () => {
     it("creates a 64x64 map", () => {
@@ -179,7 +179,7 @@ describe("Tower positions", () => {
     it("base spawn points are fully passable", () => {
         const map = new GameMap();
         const [tp1] = map.findTowerPositions();
-        const s = CONFIG.TANK_SIZE * 0.85;
+        const s = VEHICLES.tank.size * 0.85;
         for (let i = 0; i < 20; i++) {
             const sp = map.getBaseSpawnPoint(tp1.x, tp1.y);
             assert.ok(

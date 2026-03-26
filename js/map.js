@@ -9,7 +9,7 @@
  * Rocks block both movement and projectiles – they're the cover.
  */
 
-import { CONFIG, TILES as T } from "./config.js";
+import { CONFIG, TILES as T, VEHICLES } from "./config.js";
 import { distance, randomInt } from "./utils.js";
 
 export class GameMap {
@@ -165,8 +165,8 @@ export class GameMap {
      * tank can never spawn stuck against water or terrain.
      */
     getBaseSpawnPoint(towerX, towerY) {
-        const s = CONFIG.TANK_SIZE * 0.85; // collision half-extent
-        const minR = CONFIG.TOWER_RADIUS + CONFIG.TANK_SIZE + 0.2; // avoid tower
+        const s = VEHICLES.tank.size * 0.85; // collision half-extent
+        const minR = CONFIG.TOWER_RADIUS + VEHICLES.tank.size + 0.2; // avoid tower
         const maxR = 5 - s - 0.3; // stay inside sand circle
 
         for (let attempt = 0; attempt < 100; attempt++) {

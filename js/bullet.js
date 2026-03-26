@@ -9,7 +9,7 @@
  * and its own `speed` (IFV bullets travel 1.5× faster).
  */
 
-import { CONFIG } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
 
 export class Bullet {
     /**
@@ -21,7 +21,7 @@ export class Bullet {
      * @param {number} damage damage multiplier (1.0 = tank, 0.25 = IFV)
      * @param {number} speed  bullet speed (world-units / second)
      */
-    constructor(x, y, angle, owner, team = 0, damage = 1.0, speed = CONFIG.BULLET_SPEED) {
+    constructor(x, y, angle, owner, team = 0, damage = 1.0, speed = VEHICLES.tank.bulletSpeed) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x = x + Math.cos(angle) * offset;
         this.y = y + Math.sin(angle) * offset;

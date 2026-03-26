@@ -2,15 +2,15 @@
  * Shared test utilities: map builders, bot simulation, assertions.
  */
 
-import { AI_ROLES, AIController, pickRole } from "../js/ai.js";
+import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
-import { CONFIG, TILES as T } from "../js/config.js";
+import { CONFIG, TILES as T, VEHICLES } from "../js/config.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
 
-export { AI_ROLES, AIController, Bullet, CONFIG, distance, GameMap, Pathfinder, pickRole, T, Tank };
+export { AI_ROLES, AIController, Bullet, CONFIG, distance, GameMap, Pathfinder, pickRoleForVehicle, T, Tank, VEHICLES };
 
 export const BOT_KEYS = {
     forward: "_bf",
@@ -196,7 +196,7 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
     }
 
     const canStand = (x, y) => {
-        const s = CONFIG.TANK_SIZE * 0.85;
+        const s = VEHICLES.tank.size * 0.85;
         return (
             map.isPassable(x - s, y - s) &&
             map.isPassable(x + s, y - s) &&
@@ -217,7 +217,7 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         for (let i = 0; i < alive.length; i++) {
             for (let j = i + 1; j < alive.length; j++) {
                 const d = distance(alive[i].x, alive[i].y, alive[j].x, alive[j].y);
-                const min = CONFIG.TANK_SIZE * 2;
+                const min = VEHICLES.tank.size * 2;
                 if (d < min && d > 0.001) {
                     const o = (min - d) / 2;
                     const nx = (alive[j].x - alive[i].x) / d;

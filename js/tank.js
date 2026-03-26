@@ -19,9 +19,11 @@
  * Vehicle types:
  *   - 'tank'    — default, independent turret, 2-hit armour
  *   - 'ifv' — fixed forward gun, 1-hit kill, faster, rapid fire
+ *   - 'drone'   — FPV kamikaze quadcopter, flies over terrain,
+ *                  detonates on contact for 1.0 damage, 1-hit kill
  */
 
-import { CONFIG } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
 import { normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
@@ -79,9 +81,14 @@ export class Tank {
         return this.leftTrackDisabled || this.rightTrackDisabled;
     }
 
-    /** True if the gun fires only forward (IFV or disabled turret). */
+    /** True if the gun fires only forward (IFV, drone, or disabled turret). */
     get fixedGun() {
-        return this.vehicleType === "ifv" || this.turretDisabled;
+        return this.vehicleType === "ifv" || this.vehicleType === "drone" || this.turretDisabled;
+    }
+
+    /** Collision radius — varies by vehicle type. */
+    get size() {
+        return VEHICLES[this.vehicleType].size;
     }
 
     /* ── per-frame update ─────────────────────────────────── */
@@ -104,15 +111,17 @@ export class Tank {
         const oldX = this.x,
             oldY = this.y;
         const isIFV = this.vehicleType === "ifv";
+        const isDrone = this.vehicleType === "drone";
 
         // ── Hull rotation
         // If a track is disabled, can only pivot in the direction
         // of the working track (left track out → can only turn right,
         // right track out → can only turn left).
-        const canRotateLeft = !this.rightTrackDisabled;
-        const canRotateRight = !this.leftTrackDisabled;
+        // Drones have no tracks — always free to rotate.
+        const canRotateLeft = isDrone || !this.rightTrackDisabled;
+        const canRotateRight = isDrone || !this.leftTrackDisabled;
 
-        const rotSpeed = isIFV ? CONFIG.IFV_ROTATION_SPEED : CONFIG.TANK_ROTATION_SPEED;
+        const rotSpeed = VEHICLES[this.vehicleType].rotationSpeed;
 
         const rotating = (input.isDown(keyMap.left) && canRotateLeft) || (input.isDown(keyMap.right) && canRotateRight);
         if (input.isDown(keyMap.left) && canRotateLeft) this.angle -= rotSpeed * dt;
@@ -120,33 +129,41 @@ export class Tank {
         this.angle = normalizeAngle(this.angle);
 
         // ── Turret rotation (relative to hull, slower)
-        // IFV: turret is fixed forward (always 0)
+        // IFV/Drone: turret is fixed forward (always 0)
         // Disabled by front hit on tanks
-        if (isIFV) {
+        if (isIFV || isDrone) {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
-            if (input.isDown(keyMap.turretLeft)) this.turretAngle -= CONFIG.TURRET_ROTATION_SPEED * dt;
-            if (input.isDown(keyMap.turretRight)) this.turretAngle += CONFIG.TURRET_ROTATION_SPEED * dt;
+            const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
+            if (input.isDown(keyMap.turretLeft)) this.turretAngle -= turretSpd * dt;
+            if (input.isDown(keyMap.turretRight)) this.turretAngle += turretSpd * dt;
             this.turretAngle = normalizeAngle(this.turretAngle);
         }
 
         // ── Forward / reverse
-        // Disabled if any track is damaged (can only pivot)
+        // Disabled if any track is damaged (can only pivot).
+        // Drones always fly freely.
         let move = 0;
-        if (!this.trackDamaged) {
+        if (isDrone || !this.trackDamaged) {
             if (input.isDown(keyMap.forward)) move = 1;
             if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
         }
 
         if (move !== 0) {
-            const baseSpeed = isIFV ? CONFIG.TANK_SPEED * CONFIG.IFV_SPEED_FACTOR : CONFIG.TANK_SPEED;
+            const baseSpeed = VEHICLES[this.vehicleType].speed;
             const speed = baseSpeed * move;
             const nx = this.x + Math.cos(this.angle) * speed * dt;
             const ny = this.y + Math.sin(this.angle) * speed * dt;
 
-            // Slide along obstacles – try each axis independently
-            if (this._canOccupy(nx, this.y, map)) this.x = nx;
-            if (this._canOccupy(this.x, ny, map)) this.y = ny;
+            if (isDrone) {
+                // Drones fly over all terrain — only check map bounds
+                if (this._canFly(nx, this.y, map)) this.x = nx;
+                if (this._canFly(this.x, ny, map)) this.y = ny;
+            } else {
+                // Slide along obstacles – try each axis independently
+                if (this._canOccupy(nx, this.y, map)) this.x = nx;
+                if (this._canOccupy(this.x, ny, map)) this.y = ny;
+            }
         }
 
         // ── Tread animation (scrolls when moving or rotating in place)
@@ -165,7 +182,7 @@ export class Tank {
     }
 
     fire() {
-        this.fireCooldown = this.vehicleType === "ifv" ? CONFIG.IFV_BULLET_COOLDOWN : CONFIG.BULLET_COOLDOWN;
+        this.fireCooldown = VEHICLES[this.vehicleType].bulletCooldown;
         this.recoilTimer = 0.1;
     }
 
@@ -203,8 +220,8 @@ export class Tank {
      *                     'absorbed' if partial damage accumulated
      */
     applyHit(zone, damage = 1.0) {
-        // IFV: any hit kills instantly (1-hit armour)
-        if (this.vehicleType === "ifv") {
+        // IFV / Drone: any hit kills instantly (1-hit armour)
+        if (this.vehicleType === "ifv" || this.vehicleType === "drone") {
             this.kill();
             return "destroyed";
         }
@@ -286,12 +303,17 @@ export class Tank {
     /* ── collision helper ─────────────────────────────────── */
 
     _canOccupy(wx, wy, map) {
-        const s = CONFIG.TANK_SIZE * 0.85;
+        const s = VEHICLES[this.vehicleType].size * 0.85;
         return (
             map.isPassable(wx - s, wy - s) &&
             map.isPassable(wx + s, wy - s) &&
             map.isPassable(wx - s, wy + s) &&
             map.isPassable(wx + s, wy + s)
         );
+    }
+
+    /** Drones fly over everything — only check map bounds. */
+    _canFly(wx, wy, map) {
+        return wx > 0.5 && wx < map.width - 0.5 && wy > 0.5 && wy < map.height - 0.5;
     }
 }
