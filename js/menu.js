@@ -15,7 +15,7 @@
  * projected at a configurable scale.
  */
 
-import { CONFIG, VEHICLES } from "./config.js";
+import { CONFIG, MODE_DEFS, VEHICLES } from "./config.js";
 
 const TW = CONFIG.TILE_WIDTH;
 const TH = CONFIG.TILE_HEIGHT;
@@ -235,7 +235,7 @@ export class Menu {
         const W = canvas.width,
             H = canvas.height;
         const cx = W / 2,
-            cy = H / 2;
+            cy = H / 2 - 50;
         const t = this._time;
 
         ctx.fillStyle = "#080810";
@@ -332,8 +332,44 @@ export class Menu {
         ctx.fillStyle = "#444";
         ctx.fillText("\u2191 \u2193   Select          Enter   Start", cx, y + 16);
 
-        ctx.font = '11px "Courier New", monospace';
-        ctx.fillStyle = "#222";
+        // ── Controls panel (anchored to bottom, contextual) ──
+        const chosen = this._items[this.selectedIndex];
+        const modeDef = chosen.mode && chosen.mode !== "_about" ? MODE_DEFS[chosen.mode] : null;
+        if (modeDef) {
+            const isSplit = modeDef.split;
+            const panelH = isSplit ? 68 : 52;
+            const panelY = H - panelH - 30;
+
+            // Background
+            ctx.fillStyle = "rgba(255,255,255,0.04)";
+            this._roundedRect(ctx, cx - 230, panelY, 460, panelH, 6);
+            ctx.fill();
+
+            ctx.font = 'bold 11px "Courier New", monospace';
+            ctx.fillStyle = "#666";
+            ctx.fillText("──  CONTROLS  ──", cx, panelY + 14);
+
+            ctx.font = '13px "Courier New", monospace';
+            if (isSplit) {
+                ctx.fillStyle = "#cc3333";
+                ctx.fillText("P1", cx - 185, panelY + 32);
+                ctx.fillStyle = "#aaa";
+                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx + 10, panelY + 32);
+
+                ctx.fillStyle = "#3366dd";
+                ctx.fillText("P2", cx - 185, panelY + 50);
+                ctx.fillStyle = "#aaa";
+                ctx.fillText("Arrows move  ·  ,. turret  ·  ENTER fire", cx + 10, panelY + 50);
+            } else {
+                ctx.fillStyle = "#aaa";
+                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx, panelY + 32);
+            }
+
+            ctx.font = '10px "Courier New", monospace';
+            ctx.fillStyle = "#555";
+            ctx.fillText("R  back to menu  ·  Space / Enter  rematch after game", cx, panelY + panelH - 6);
+        }
+
         ctx.fillText("W/S also navigate  \u00b7  Sound auto-enabled", cx, H - 20);
     }
 
