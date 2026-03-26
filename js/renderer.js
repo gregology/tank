@@ -1,8 +1,8 @@
 /**
  * Isometric pixel-art renderer.
  *
- * Draws two side-by-side viewports (split-screen), each following one
- * player's tank.  Rendering is depth-sorted so elevated terrain
+ * Draws one or two viewports depending on game mode.
+ * Split-screen modes show two side-by-side viewports.  Rendering is depth-sorted so elevated terrain
  * correctly occludes entities behind it.
  */
 
@@ -63,10 +63,14 @@ export class Renderer {
             ch = this.canvas.height;
         ctx.clearRect(0, 0, cw, ch);
 
-        if (game.mode === "pvp") {
+        if (game.splitScreen) {
             // ── Split screen ──
-            this._renderViewport(ctx, game, game.tank1, game.camera1, 0, 0, this.vpW, this.vpH);
-            this._renderViewport(ctx, game, game.tank2, game.camera2, this.vpW, 0, this.vpW, this.vpH);
+            const h0 = game.humanTanks[0],
+                h1 = game.humanTanks[1];
+            const c0 = game.cameras[0],
+                c1 = game.cameras[1];
+            this._renderViewport(ctx, game, h0, c0, 0, 0, this.vpW, this.vpH);
+            this._renderViewport(ctx, game, h1, c1, this.vpW, 0, this.vpW, this.vpH);
             ctx.save();
             ctx.strokeStyle = "#556";
             ctx.lineWidth = 3;
@@ -77,13 +81,20 @@ export class Renderer {
             ctx.lineTo(this.vpW, ch);
             ctx.stroke();
             ctx.restore();
-            this._drawHUD(ctx, game, 1, 0, 0, this.vpW, this.vpH);
-            this._drawHUD(ctx, game, 2, this.vpW, 0, this.vpW, this.vpH);
+            if (game.modeDef.bases) {
+                this._drawBattleHUD(ctx, game, 0, 0, 0, this.vpW, this.vpH, h0);
+                this._drawBattleHUD(ctx, game, 1, this.vpW, 0, this.vpW, this.vpH, h1);
+            } else {
+                this._drawScoreHUD(ctx, game, 0, 0, 0, this.vpW, this.vpH, h0);
+                this._drawScoreHUD(ctx, game, 1, this.vpW, 0, this.vpW, this.vpH, h1);
+            }
         } else {
-            // ── Full screen (pvb or team) ──
-            this._renderViewport(ctx, game, game.humanTank, game.camera1, 0, 0, cw, ch);
-            if (game.mode === "team") this._drawTeamHUD(ctx, game, cw, ch);
-            else this._drawHUD(ctx, game, 1, 0, 0, cw, ch);
+            // ── Full screen ──
+            const h0 = game.humanTanks[0],
+                c0 = game.cameras[0];
+            this._renderViewport(ctx, game, h0, c0, 0, 0, cw, ch);
+            if (game.modeDef.bases) this._drawBattleHUD(ctx, game, 0, 0, 0, cw, ch, h0);
+            else this._drawScoreHUD(ctx, game, 0, 0, 0, cw, ch, h0);
         }
 
         if (game.gameOver) this._drawGameOver(ctx, game);
@@ -1841,52 +1852,47 @@ export class Renderer {
 
     /* ── HUD (per-viewport overlay) ───────────────────────── */
 
-    _drawHUD(ctx, game, playerNum, vx, vy, vw, vh) {
-        const tank = playerNum === 1 ? game.tank1 : game.tank2;
-        const label = playerNum === 2 && game.mode === "pvb" ? "BOT" : `P${playerNum}`;
-        const score = tank.score;
-
+    /**
+     * Score-based HUD for non-base modes.
+     * Shows both teams' scores, controls hint, minimap.
+     */
+    _drawScoreHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank) {
         ctx.save();
-
-        // Player label + score
-        ctx.font = 'bold 22px "Courier New", monospace';
         ctx.textAlign = "center";
         const cx = vx + vw / 2;
 
         // Background pill
         ctx.fillStyle = "rgba(0,0,0,0.45)";
-        const pillW = 140,
+        const pillW = 200,
             pillH = 36;
         this._roundedRect(ctx, cx - pillW / 2, vy + 10, pillW, pillH, 8);
         ctx.fill();
 
-        // Text
-        ctx.fillStyle = tank.color;
-        ctx.fillText(`${label}: ${score} / ${CONFIG.WIN_SCORE}`, cx, vy + 35);
+        // Both teams' scores
+        const s1 = game.teamScores[1],
+            s2 = game.teamScores[2];
+        ctx.font = 'bold 20px "Courier New", monospace';
+        ctx.fillStyle = "#cc3333";
+        ctx.fillText(`RED ${s1}`, cx - 50, vy + 35);
+        ctx.fillStyle = "#555";
+        ctx.fillText("—", cx, vy + 35);
+        ctx.fillStyle = "#3366dd";
+        ctx.fillText(`${s2} BLU`, cx + 50, vy + 35);
+
+        // Win target
+        ctx.font = '10px "Courier New", monospace';
+        ctx.fillStyle = "#666";
+        ctx.fillText(`first to ${CONFIG.WIN_SCORE}`, cx, vy + 50);
 
         // Respawn message
-        if (!tank.alive) {
+        if (!focusTank.alive) {
             ctx.font = 'bold 18px "Courier New", monospace';
             ctx.fillStyle = "rgba(255,255,255,0.7)";
             ctx.fillText("RESPAWNING...", cx, vy + vh / 2);
         }
 
-        // Controls hint (first few seconds)
-        if (game.gameTime < 6) {
-            const alpha = game.gameTime < 4 ? 0.7 : 0.7 * (1 - (game.gameTime - 4) / 2);
-            ctx.globalAlpha = Math.max(0, alpha);
-            ctx.font = '14px "Courier New", monospace';
-            ctx.fillStyle = "#ccc";
-            if (playerNum === 1) {
-                ctx.fillText("WASD move · QE turret · SPACE fire", cx, vy + vh - 30);
-            } else {
-                ctx.fillText("Arrows move · ,. turret · ENTER fire", cx, vy + vh - 30);
-            }
-            ctx.globalAlpha = 1;
-        }
-
         // Minimap
-        this._drawMinimap(ctx, game, playerNum, vx, vy, vw, vh);
+        this._drawMinimap(ctx, game, focusTank.team, vx, vy, vw, vh);
 
         ctx.restore();
     }
@@ -1988,7 +1994,7 @@ export class Renderer {
                 ctx.fillRect(dx - 1, dy - 1, 3, 3);
             }
             // Show role letter for allied bots in team mode
-            if (game.mode === "team" && game._bots) {
+            if (game._bots) {
                 const bot = game._bots.find((b) => b.tank === t);
                 if (bot?.ai.role) {
                     const letter = roleLetters[bot.ai.role] || "?";
@@ -2021,10 +2027,16 @@ export class Renderer {
 
     /* ── team HUD ─────────────────────────────────────────── */
 
-    _drawTeamHUD(ctx, game, cw, ch) {
+    /**
+     * Battle HUD for base modes.
+     * Shows tower HP, vehicle type, charge/reload indicators, bot roster, minimap.
+     */
+    _drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank) {
+        const cw = vw,
+            ch = vh;
         ctx.save();
         ctx.textAlign = "center";
-        const cx = cw / 2;
+        const cx = vx + cw / 2;
 
         // Tower HP for both teams
         const barW = 150,
@@ -2033,7 +2045,7 @@ export class Renderer {
         for (let i = 0; i < game.towers.length; i++) {
             const tw = game.towers[i];
             const x = i === 0 ? cx - barW - gap : cx + gap;
-            const y = 14;
+            const y = vy + 14;
             const frac = tw.alive ? tw.hp / tw.maxHp : 0;
             const label = tw.team === 1 ? "RED TOWER" : "BLUE TOWER";
 
@@ -2068,34 +2080,34 @@ export class Renderer {
         ctx.font = 'bold 14px "Courier New", monospace';
         ctx.fillStyle = "#555";
         ctx.textAlign = "center";
-        ctx.fillText("VS", cx, 36);
+        ctx.fillText("VS", cx, vy + 36);
 
         // Vehicle type indicator
-        if (game.humanTank.alive) {
+        if (focusTank.alive) {
             const vType =
-                game.humanTank.vehicleType === "drone"
+                focusTank.vehicleType === "drone"
                     ? "\u2716 DRONE"
-                    : game.humanTank.vehicleType === "ifv"
+                    : focusTank.vehicleType === "ifv"
                       ? "\u25C7 IFV"
                       : "\u25C6 TANK";
             ctx.font = 'bold 13px "Courier New", monospace';
-            ctx.fillStyle = game.humanTank.color;
+            ctx.fillStyle = focusTank.color;
             ctx.textAlign = "center";
-            ctx.fillText(vType, cx, ch - 20);
+            ctx.fillText(vType, cx, vy + ch - 20);
 
             // Drone proximity damage indicator
-            if (game.humanTank.vehicleType === "drone") {
+            if (focusTank.vehicleType === "drone") {
                 const blastR = VEHICLES.drone.blastRadius;
                 let bestDmg = 0;
                 for (const t of game.allTanks) {
-                    if (!t.alive || t.team === game.humanTank.team) continue;
-                    const d = distance(game.humanTank.x, game.humanTank.y, t.x, t.y);
+                    if (!t.alive || t.team === focusTank.team) continue;
+                    const d = distance(focusTank.x, focusTank.y, t.x, t.y);
                     const dmg = Math.max(0, 1 - d / blastR);
                     if (dmg > bestDmg) bestDmg = dmg;
                 }
                 for (const tw of game.towers) {
-                    if (!tw.alive || tw.team === game.humanTank.team) continue;
-                    const d = distance(game.humanTank.x, game.humanTank.y, tw.x, tw.y);
+                    if (!tw.alive || tw.team === focusTank.team) continue;
+                    const d = distance(focusTank.x, focusTank.y, tw.x, tw.y);
                     const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
                     const dmg = Math.max(0, 1 - edgeDist / blastR);
                     if (dmg > bestDmg) bestDmg = dmg;
@@ -2106,7 +2118,7 @@ export class Renderer {
                     const barW = 80,
                         barH = 8;
                     const barX = cx - barW / 2,
-                        barY = ch - 38;
+                        barY = vy + ch - 38;
                     ctx.fillStyle = "rgba(0,0,0,0.5)";
                     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
                     const col = bestDmg > 0.7 ? "#ff4444" : bestDmg > 0.4 ? "#ffaa22" : "#888";
@@ -2118,24 +2130,21 @@ export class Renderer {
                 } else {
                     ctx.font = '10px "Courier New", monospace';
                     ctx.fillStyle = "#666";
-                    ctx.fillText("FIRE to detonate", cx, ch - 34);
+                    ctx.fillText("FIRE to detonate", cx, vy + ch - 34);
                 }
             }
         }
 
         // SPG charge bar
-        if (game.humanTank.vehicleType === "spg") {
-            if (game.humanTank.isCharging) {
+        if (focusTank.vehicleType === "spg") {
+            if (focusTank.isCharging) {
                 const vStats = VEHICLES.spg;
-                const range = Math.min(
-                    vStats.minRange + game.humanTank.chargeTime * vStats.chargeRate,
-                    vStats.maxRange,
-                );
+                const range = Math.min(vStats.minRange + focusTank.chargeTime * vStats.chargeRate, vStats.maxRange);
                 const frac = (range - vStats.minRange) / (vStats.maxRange - vStats.minRange);
                 const barW = 100,
                     barH = 8;
                 const barX = cx - barW / 2,
-                    barY = ch - 40;
+                    barY = vy + ch - 40;
                 ctx.fillStyle = "rgba(0,0,0,0.5)";
                 ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
                 const col = frac > 0.9 ? "#ff4444" : frac > 0.5 ? "#ffaa22" : "#ff8800";
@@ -2145,16 +2154,16 @@ export class Renderer {
                 ctx.fillStyle = "#fff";
                 ctx.textAlign = "center";
                 ctx.fillText(`RNG ${range.toFixed(0)}`, cx, barY + 7);
-            } else if (game.humanTank.fireCooldown > 0) {
+            } else if (focusTank.fireCooldown > 0) {
                 ctx.font = '10px "Courier New", monospace';
                 ctx.fillStyle = "#666";
                 ctx.textAlign = "center";
-                ctx.fillText(`RELOAD ${game.humanTank.fireCooldown.toFixed(1)}s`, cx, ch - 34);
+                ctx.fillText(`RELOAD ${focusTank.fireCooldown.toFixed(1)}s`, cx, vy + ch - 34);
             } else {
                 ctx.font = '10px "Courier New", monospace';
                 ctx.fillStyle = "#888";
                 ctx.textAlign = "center";
-                ctx.fillText("HOLD FIRE to charge range", cx, ch - 34);
+                ctx.fillText("HOLD FIRE to charge range", cx, vy + ch - 34);
             }
         }
 
@@ -2162,11 +2171,11 @@ export class Renderer {
         if (game._bots) {
             const roleNames = { cavalry: "CAV", sniper: "SNP", defender: "DEF", scout: "SCT" };
             const roleColors = { cavalry: "#e55", sniper: "#5ae", defender: "#5c5", scout: "#da5" };
-            const allyBots = game._bots.filter((b) => b.tank.team === game.humanTank.team);
+            const allyBots = game._bots.filter((b) => b.tank.team === focusTank.team);
             ctx.textAlign = "left";
             ctx.font = 'bold 10px "Courier New", monospace';
-            const rx = 12,
-                ry = ch - 14 - allyBots.length * 13;
+            const rx = vx + 12,
+                ry = vy + ch - 14 - allyBots.length * 13;
             for (let i = 0; i < allyBots.length; i++) {
                 const b = allyBots[i];
                 const role = b.ai.role || "???";
@@ -2182,14 +2191,14 @@ export class Renderer {
         }
 
         // Respawn message
-        if (!game.humanTank.alive) {
+        if (!focusTank.alive) {
             ctx.font = 'bold 20px "Courier New", monospace';
             ctx.fillStyle = "rgba(255,255,255,0.7)";
-            ctx.fillText("RESPAWNING...", cx, ch / 2);
+            ctx.fillText("RESPAWNING...", cx, vy + ch / 2);
         }
 
         // Minimap
-        this._drawMinimap(ctx, game, 1, 0, 0, cw, ch);
+        this._drawMinimap(ctx, game, focusTank.team, vx, vy, vw, vh);
 
         ctx.restore();
     }
@@ -2208,17 +2217,11 @@ export class Renderer {
         ctx.textAlign = "center";
 
         // Winner label
-        let winner, label;
-        if (game.mode === "team") {
-            winner = { color: game.winner === 1 ? "#cc3333" : "#3366dd" };
-            label = game.winner === 1 ? "RED TEAM" : "BLUE TEAM";
-        } else {
-            winner = game.winner === 1 ? game.tank1 : game.tank2;
-            label = game.winner === 1 ? "PLAYER 1" : game.mode === "pvb" ? "BOT" : "PLAYER 2";
-        }
+        const label = game.winnerLabel;
+        const winColor = game.winner === 1 ? "#cc3333" : "#3366dd";
 
         ctx.font = 'bold 48px "Courier New", monospace';
-        ctx.fillStyle = winner.color;
+        ctx.fillStyle = winColor;
         ctx.fillText(`${label} WINS!`, cw / 2, ch / 2 - 30);
 
         // Prompts

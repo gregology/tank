@@ -1,10 +1,10 @@
 /**
  * Start-screen menu rendered on the game canvas.
  *
- * Modes:
- *   • pvp  — two human players, split screen
- *   • pvb  — human (P1) vs AI bot (P2)
- *   • team — 5v5 team battle with towers
+ * Modes are organised into three categories:
+ *   DUEL (1v1)      — duel_split, duel_bot
+ *   SKIRMISH (2v2)  — skirmish_coop
+ *   BATTLE (5v5)    — battle_split, battle_coop, battle_solo
  *
  * Sub-screens:
  *   • main   — mode selection with vehicle showcase
@@ -101,19 +101,32 @@ const VEHICLE_INFO = [
     },
 ];
 
+/* ── Menu items with category headers ─────────────────────── */
+
+const MENU_ITEMS = [
+    { type: "header", label: "DUEL  (1v1)" },
+    { type: "mode", label: "SPLIT SCREEN", mode: "duel_split", desc: "2 players, tanks" },
+    { type: "mode", label: "vs BOT", mode: "duel_bot", desc: "1 player vs AI" },
+    { type: "header", label: "SKIRMISH  (2v2)" },
+    { type: "mode", label: "CO-OP vs BOTS", mode: "skirmish_coop", desc: "2 players vs 2 AI" },
+    { type: "header", label: "BATTLE  (5v5)" },
+    { type: "mode", label: "SPLIT SCREEN", mode: "battle_split", desc: "1+4 vs 1+4, bases" },
+    { type: "mode", label: "CO-OP", mode: "battle_coop", desc: "2+3 vs 5 AI, bases" },
+    { type: "mode", label: "vs BOTS", mode: "battle_solo", desc: "1+4 vs 5 AI, bases" },
+    { type: "header", label: "" },
+    { type: "mode", label: "VEHICLE INFO", mode: "_about", desc: "" },
+];
+
 /* ================================================================== */
 
 export class Menu {
     constructor() {
-        this.modes = [
-            { label: "1v1 SPLIT SCREEN", mode: "pvp" },
-            { label: "PLAYER  vs  BOT", mode: "pvb" },
-            { label: "5v5 TEAM BATTLE", mode: "team" },
-            { label: "VEHICLE  INFO", mode: "_about" },
-        ];
-        this.selectedIndex = 0;
+        // Build selectable indices (skip headers)
+        this._items = MENU_ITEMS;
+        this._selectableIndices = MENU_ITEMS.map((item, i) => (item.type === "mode" ? i : -1)).filter((i) => i >= 0);
+        this._selCursor = 0; // index into _selectableIndices
         this.confirmed = false;
-        this.selectedMode = "pvp";
+        this.selectedMode = "duel_split";
 
         // Sub-screen state
         this._screen = "main"; // 'main' | 'about'
@@ -121,6 +134,11 @@ export class Menu {
 
         // decorative
         this._time = 0;
+    }
+
+    /** Currently highlighted item index (into MENU_ITEMS). */
+    get selectedIndex() {
+        return this._selectableIndices[this._selCursor];
     }
 
     reset() {
@@ -142,21 +160,21 @@ export class Menu {
         const go = input.wasPressed("Enter") || input.wasPressed("Space");
 
         if (up) {
-            this.selectedIndex = (this.selectedIndex - 1 + this.modes.length) % this.modes.length;
+            this._selCursor = (this._selCursor - 1 + this._selectableIndices.length) % this._selectableIndices.length;
             if (audio) {
                 audio.init();
                 audio.playSelect();
             }
         }
         if (down) {
-            this.selectedIndex = (this.selectedIndex + 1) % this.modes.length;
+            this._selCursor = (this._selCursor + 1) % this._selectableIndices.length;
             if (audio) {
                 audio.init();
                 audio.playSelect();
             }
         }
         if (go) {
-            const chosen = this.modes[this.selectedIndex];
+            const chosen = this._items[this.selectedIndex];
             if (chosen.mode === "_about") {
                 this._screen = "about";
                 this._aboutIndex = 0;
@@ -229,16 +247,16 @@ export class Menu {
         // Title
         ctx.font = 'bold 58px "Courier New", monospace';
         ctx.fillStyle = "#cc3333";
-        ctx.fillText("TANK", cx - 90, cy - 180);
+        ctx.fillText("TANK", cx - 90, cy - 210);
         ctx.fillStyle = "#3366dd";
-        ctx.fillText("BATTLE", cx + 100, cy - 180);
+        ctx.fillText("BATTLE", cx + 100, cy - 210);
 
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#555";
-        ctx.fillText("ISOMETRIC  WARFARE", cx, cy - 153);
+        ctx.fillText("ISOMETRIC  WARFARE", cx, cy - 183);
 
         // Vehicle showcase
-        const vehicleY = cy - 100;
+        const vehicleY = cy - 130;
         const spacing = Math.min(160, (W - 80) / 4);
         const startX = cx - spacing * 1.5;
 
@@ -247,7 +265,7 @@ export class Menu {
             const vx = startX + i * spacing;
 
             const glow = 0.04 + Math.sin(t * 2 + i * 1.5) * 0.02;
-            ctx.fillStyle = "rgba(255,255,255," + glow + ")";
+            ctx.fillStyle = `rgba(255,255,255,${glow})`;
             ctx.beginPath();
             ctx.arc(vx, vehicleY, 36, 0, Math.PI * 2);
             ctx.fill();
@@ -265,27 +283,54 @@ export class Menu {
             ctx.fillText(v.tagline, vx, vehicleY + 52);
         }
 
-        // Menu items
-        const menuStartY = cy + 10;
-        ctx.font = 'bold 24px "Courier New", monospace';
-        for (let i = 0; i < this.modes.length; i++) {
-            const y = menuStartY + i * 46;
-            const sel = i === this.selectedIndex;
-            if (sel) {
-                const pulse = 0.05 + Math.sin(t * 4) * 0.02;
-                ctx.fillStyle = "rgba(255,255,255," + pulse + ")";
-                ctx.fillRect(cx - 210, y - 24, 420, 36);
-                ctx.fillStyle = "#fff";
-                ctx.fillText("\u25BA  " + this.modes[i].label, cx, y);
+        // ── Menu items with category headers ──
+        const menuStartY = cy - 50;
+        const rowH = 30;
+        const headerH = 26;
+        let y = menuStartY;
+
+        for (let i = 0; i < this._items.length; i++) {
+            const item = this._items[i];
+            const sel = item.type === "mode" && i === this.selectedIndex;
+
+            if (item.type === "header") {
+                // Category header (non-selectable, dim)
+                if (item.label) {
+                    y += 6; // extra gap before header
+                    ctx.font = 'bold 13px "Courier New", monospace';
+                    ctx.fillStyle = "#444";
+                    ctx.fillText(`\u2500\u2500  ${item.label}  \u2500\u2500`, cx, y);
+                }
+                y += headerH;
             } else {
-                ctx.fillStyle = "#555";
-                ctx.fillText("   " + this.modes[i].label, cx, y);
+                // Selectable mode item
+                if (sel) {
+                    const pulse = 0.05 + Math.sin(t * 4) * 0.02;
+                    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+                    ctx.fillRect(cx - 200, y - 16, 400, rowH);
+                    ctx.font = 'bold 20px "Courier New", monospace';
+                    ctx.fillStyle = "#fff";
+                    ctx.fillText(`\u25BA  ${item.label}`, cx - 20, y + 4);
+                    // Description on the right
+                    if (item.desc) {
+                        ctx.font = '11px "Courier New", monospace';
+                        ctx.fillStyle = "#888";
+                        ctx.textAlign = "right";
+                        ctx.fillText(item.desc, cx + 190, y + 4);
+                        ctx.textAlign = "center";
+                    }
+                } else {
+                    ctx.font = 'bold 18px "Courier New", monospace';
+                    ctx.fillStyle = "#555";
+                    ctx.fillText(`   ${item.label}`, cx - 20, y + 4);
+                }
+                y += rowH;
             }
         }
 
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#444";
-        ctx.fillText("\u2191 \u2193   Select          Enter   Start", cx, menuStartY + this.modes.length * 46 + 16);
+        ctx.fillText("\u2191 \u2193   Select          Enter   Start", cx, y + 16);
 
         ctx.font = '11px "Courier New", monospace';
         ctx.fillStyle = "#222";
@@ -334,7 +379,7 @@ export class Menu {
         // Vehicle preview (larger)
         const previewY = 165;
         const glow = 0.06 + Math.sin(t * 2) * 0.02;
-        ctx.fillStyle = "rgba(255,255,255," + glow + ")";
+        ctx.fillStyle = `rgba(255,255,255,${glow})`;
         ctx.beginPath();
         ctx.arc(cx, previewY, 55, 0, Math.PI * 2);
         ctx.fill();
@@ -366,7 +411,7 @@ export class Menu {
             ctx.fillStyle = "#555";
             ctx.fillText(key, sx, statsY - 2);
             ctx.fillStyle = vi.color;
-            ctx.fillText("" + vi.stats[key], sx, statsY + 12);
+            ctx.fillText(`${vi.stats[key]}`, sx, statsY + 12);
         }
 
         // Description
@@ -481,11 +526,6 @@ export class Menu {
         }
     }
 
-    /**
-     * Draw a vehicle on the menu screen using the EXACT in-game models.
-     * `scale` multiplies TW/2 and TH/2 plus all pixel-space heights.
-     * scale=1.0 ≈ full in-game size.
-     */
     _drawMenuVehicle(ctx, sx, sy, angle, type, color, dark, scale) {
         const s = scale !== undefined ? scale : 1.0;
         ctx.save();
@@ -497,11 +537,8 @@ export class Menu {
     }
 
     /* ────────────────────────────────────────────────────────
-     *  The following 4 methods replicate the EXACT geometry
-     *  from renderer.js _drawTank / _drawIFV / _drawDrone /
-     *  _drawSPG, with all damage states set to "undamaged"
-     *  and the turret aligned with the hull.  Pixel heights
-     *  and projection are scaled by `sc`.
+     *  Vehicle drawing methods — identical to original menu.js
+     *  (tank, IFV, drone, SPG preview renderers)
      * ──────────────────────────────────────────────────────── */
 
     _drawMenuTank(ctx, sx, sy, angle, color, dark, sc) {
@@ -516,7 +553,6 @@ export class Menu {
             const wy = lx * sa + ly * ca;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
         };
-        // Turret aligned with hull
         const PT = P;
 
         const fill = (pts, c) => {
@@ -564,7 +600,6 @@ export class Menu {
         const turrTop = -(TRACK_H + HULL_H + TURR_H);
         const barrTop = -(TRACK_H + HULL_H + BARR_H);
 
-        // 1. Shadow
         fill(
             drop(
                 [
@@ -577,12 +612,9 @@ export class Menu {
             ),
             "rgba(0,0,0,0.18)",
         );
-
-        // 2. Tracks
         slab(lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop), TRACK_H, "#2a2a2a", "#111");
         slab(lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop), TRACK_H, "#2a2a2a", "#111");
 
-        // Tread marks
         ctx.strokeStyle = "#444";
         ctx.lineWidth = 1.5 * sc;
         ctx.beginPath();
@@ -600,7 +632,6 @@ export class Menu {
         }
         ctx.stroke();
 
-        // Track wheels
         ctx.fillStyle = "#1a1a1a";
         for (let i = 0; i < 3; i++) {
             const lx = -THL * 0.6 + i * THL * 0.6;
@@ -614,16 +645,11 @@ export class Menu {
             ctx.fill();
         }
 
-        // 3. Hull
         const hullPts = lift([P(HR, -HW), P(HF, -HW), P(HT, 0), P(HF, HW), P(HR, HW)], hullTop);
         slab(hullPts, HULL_H, color, dark);
         outline(hullPts, dark, 0.5);
-
-        // Rear panel
         const rearW = HW - 0.03;
         fill(lift([P(HR, -rearW), P(HR + 0.05, -rearW), P(HR + 0.05, rearW), P(HR, rearW)], hullTop), dark);
-
-        // Hull centre ridge
         ctx.strokeStyle = dark;
         ctx.lineWidth = 1 * sc;
         const rg1 = lift([P(HR + 0.08, 0)], hullTop)[0];
@@ -632,8 +658,6 @@ export class Menu {
         ctx.moveTo(rg1[0], rg1[1]);
         ctx.lineTo(rg2[0], rg2[1]);
         ctx.stroke();
-
-        // Side panel line
         ctx.lineWidth = 0.5;
         const sp1a = lift([P(HR + 0.04, -HW)], hullTop)[0];
         const sp1b = lift([P(HR + 0.04, HW)], hullTop)[0];
@@ -642,11 +666,8 @@ export class Menu {
         ctx.lineTo(sp1b[0], sp1b[1]);
         ctx.stroke();
 
-        // 4. Barrel
         const barrPts = lift([PT(BX0, -BHW), PT(BX1, -BHW), PT(BX1, BHW), PT(BX0, BHW)], barrTop);
         slab(barrPts, BARR_H, "#666", "#333");
-
-        // Muzzle brake
         const MZ = 0.04;
         slab(
             lift(
@@ -663,7 +684,6 @@ export class Menu {
             "#444",
         );
 
-        // 5. Turret
         const tPts = [],
             tHatch = [];
         for (let i = 0; i < 10; i++) {
@@ -674,8 +694,6 @@ export class Menu {
         slab(tPts, TURR_H, color, dark);
         outline(tPts, dark, 0.5);
         fill(tHatch, dark);
-
-        // Hatch crosshair
         ctx.strokeStyle = color;
         ctx.lineWidth = 0.5;
         const ht = lift([PT(0, -TR * 0.3)], turrTop)[0];
@@ -691,12 +709,12 @@ export class Menu {
     }
 
     _drawMenuIFV(ctx, sx, sy, angle, color, dark, sc) {
+        // Simplified — same geometry as original, just compacted
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
         const HTW = (TW / 2) * sc,
             HTH = (TH / 2) * sc;
         const treadPhase = (this._time * 2.5) % 1;
-
         const P = (lx, ly) => {
             const wx = lx * ca - ly * sa;
             const wy = lx * sa + ly * ca;
@@ -728,23 +746,21 @@ export class Menu {
 
         const SHL = 0.36,
             SHW = 0.26,
-            SWO = 0.3;
-        const BHW = 0.02,
+            SWO = 0.3,
+            BHW = 0.02,
             BX0 = 0.05,
-            BX1 = 0.48;
-        const MHW = 0.07,
+            BX1 = 0.48,
+            MHW = 0.07,
             MHL = 0.1;
-
         const WHEEL_H = 4 * sc,
             HULL_H = 4 * sc,
             MOUNT_H = 3 * sc,
             BARR_H = 2 * sc;
-        const wheelTop = -WHEEL_H;
-        const hullTop = -(WHEEL_H + HULL_H);
-        const mountTop = -(WHEEL_H + HULL_H + MOUNT_H);
-        const barrTop = -(WHEEL_H + HULL_H + BARR_H);
+        const wheelTop = -WHEEL_H,
+            hullTop = -(WHEEL_H + HULL_H),
+            mountTop = -(WHEEL_H + HULL_H + MOUNT_H),
+            barrTop = -(WHEEL_H + HULL_H + BARR_H);
 
-        // 1. Shadow
         fill(
             drop(
                 [
@@ -757,10 +773,8 @@ export class Menu {
             ),
             "rgba(0,0,0,0.2)",
         );
-
-        // 2. Wheels
-        const wheelXs = [-0.24, -0.08, 0.08, 0.24];
-        const wheelR = 4.5 * sc;
+        const wheelXs = [-0.24, -0.08, 0.08, 0.24],
+            wheelR = 4.5 * sc;
         for (const wx of wheelXs) {
             for (const side of [-1, 1]) {
                 const wc = lift([P(wx, SWO * side)], wheelTop)[0];
@@ -772,7 +786,6 @@ export class Menu {
                 ctx.beginPath();
                 ctx.arc(wc[0], wc[1], wheelR * 0.5, 0, Math.PI * 2);
                 ctx.fill();
-                // Spinning hub cross
                 const spA = treadPhase * Math.PI * 2;
                 ctx.strokeStyle = "#777";
                 ctx.lineWidth = 1;
@@ -788,13 +801,9 @@ export class Menu {
                 ctx.stroke();
             }
         }
-
-        // 3. Hull
         const hullPts = lift([P(-SHL, -SHW), P(SHL, -SHW), P(SHL, SHW), P(-SHL, SHW)], hullTop);
         slab(hullPts, HULL_H, color, dark);
         outline(hullPts, dark, 0.7);
-
-        // Rear panel
         fill(
             lift(
                 [P(-SHL, -SHW + 0.03), P(-SHL + 0.04, -SHW + 0.03), P(-SHL + 0.04, SHW - 0.03), P(-SHL, SHW - 0.03)],
@@ -802,8 +811,6 @@ export class Menu {
             ),
             dark,
         );
-
-        // Chevron
         ctx.strokeStyle = "rgba(255,255,255,0.4)";
         ctx.lineWidth = 2 * sc;
         const chev1 = lift([P(0.12, -SHW * 0.6)], hullTop)[0];
@@ -814,8 +821,6 @@ export class Menu {
         ctx.lineTo(chev2[0], chev2[1]);
         ctx.lineTo(chev3[0], chev3[1]);
         ctx.stroke();
-
-        // Side armour stripes
         ctx.strokeStyle = "rgba(255,255,255,0.25)";
         ctx.lineWidth = 2.5 * sc;
         const s1 = lift([P(-SHL + 0.05, -SHW)], hullTop)[0];
@@ -830,8 +835,6 @@ export class Menu {
         ctx.moveTo(s3[0], s3[1]);
         ctx.lineTo(s4[0], s4[1]);
         ctx.stroke();
-
-        // Hull cross-bar
         ctx.strokeStyle = dark;
         ctx.lineWidth = 0.6;
         const cb1 = lift([P(-0.1, -SHW)], hullTop)[0];
@@ -840,10 +843,7 @@ export class Menu {
         ctx.moveTo(cb1[0], cb1[1]);
         ctx.lineTo(cb2[0], cb2[1]);
         ctx.stroke();
-
-        // 4. Barrel
         slab(lift([P(BX0, -BHW), P(BX1, -BHW), P(BX1, BHW), P(BX0, BHW)], barrTop), BARR_H, "#777", "#444");
-        // Muzzle brake
         slab(
             lift(
                 [
@@ -858,13 +858,9 @@ export class Menu {
             "#888",
             "#555",
         );
-
-        // 5. Gun mount
         const mountPts = lift([P(-MHL, -MHW), P(MHL, -MHW), P(MHL, MHW), P(-MHL, MHW)], mountTop);
         slab(mountPts, MOUNT_H, color, dark);
         outline(mountPts, dark, 0.5);
-
-        // Vision slit
         ctx.strokeStyle = "#222";
         ctx.lineWidth = 1.5 * sc;
         const vs1 = lift([P(MHL - 0.01, -MHW * 0.5)], mountTop)[0];
@@ -881,7 +877,6 @@ export class Menu {
         const HTW = (TW / 2) * sc,
             HTH = (TH / 2) * sc;
         const t = this._time;
-
         const P = (lx, ly) => {
             const wx = lx * ca - ly * sa;
             const wy = lx * sa + ly * ca;
@@ -897,16 +892,11 @@ export class Menu {
         };
         const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
 
-        // Hover height (bobbing)
         const hoverH = (20 + Math.sin(t * 3) * 2) * sc;
-
-        // 1. Shadow
         ctx.fillStyle = "rgba(0,0,0,0.15)";
         ctx.beginPath();
         ctx.ellipse(sx, sy + (TH / 4) * sc, 8 * sc, 4 * sc, 0, 0, Math.PI * 2);
         ctx.fill();
-
-        // 2. Arms
         const armLen = 0.2;
         const arms = [
             { lx: armLen, ly: armLen },
@@ -915,7 +905,6 @@ export class Menu {
             { lx: -armLen, ly: -armLen },
         ];
         const centre = lift([P(0, 0)], -hoverH)[0];
-
         ctx.strokeStyle = "#333";
         ctx.lineWidth = 2 * sc;
         for (const arm of arms) {
@@ -925,8 +914,6 @@ export class Menu {
             ctx.lineTo(tip[0], tip[1]);
             ctx.stroke();
         }
-
-        // 3. Rotor discs
         const rotorPhase = t * 25;
         for (let ai = 0; ai < arms.length; ai++) {
             const arm = arms[ai];
@@ -935,7 +922,6 @@ export class Menu {
             ctx.beginPath();
             ctx.arc(tip[0], tip[1], 6 * sc, 0, Math.PI * 2);
             ctx.fill();
-
             const bladeAngle = rotorPhase + ai * 0.7;
             ctx.strokeStyle = "rgba(80,80,80,0.5)";
             ctx.lineWidth = 1.5 * sc;
@@ -950,8 +936,6 @@ export class Menu {
             }
             ctx.stroke();
         }
-
-        // 4. Central body
         const bw = 0.09,
             bh = 0.06;
         const body = lift([P(-bw, -bh), P(bw, -bh), P(bw, bh), P(-bw, bh)], -hoverH);
@@ -963,11 +947,7 @@ export class Menu {
         for (let i = 1; i < body.length; i++) ctx.lineTo(body[i][0], body[i][1]);
         ctx.closePath();
         ctx.stroke();
-
-        // Payload
         fill(lift([P(-0.04, -0.03), P(0.04, -0.03), P(0.04, 0.03), P(-0.04, 0.03)], -hoverH + 2 * sc), dark);
-
-        // 5. Front LED
         if (Math.sin(t * 5) > 0) {
             const nose = lift([P(bw + 0.03, 0)], -hoverH)[0];
             ctx.fillStyle = "#fff";
@@ -980,13 +960,11 @@ export class Menu {
     _drawMenuSPG(ctx, sx, sy, angle, color, dark, sc) {
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
-        // Turret aligned with hull
         const ta = ca,
             tb = sa;
         const HTW = (TW / 2) * sc,
             HTH = (TH / 2) * sc;
         const treadPhase = (this._time * 2.5) % 1;
-
         const P = (lx, ly) => {
             const wx = lx * ca - ly * sa;
             const wy = lx * sa + ly * ca;
@@ -1021,7 +999,6 @@ export class Menu {
             fill(topPts, topC);
         };
 
-        // Olive drab tint
         const parseHex = (hex) => [
             parseInt(hex.slice(1, 3), 16),
             parseInt(hex.slice(3, 5), 16),
@@ -1045,28 +1022,26 @@ export class Menu {
 
         const THL = 0.5,
             TYO = 0.32,
-            TYI = 0.22;
-        const HR = -0.46,
+            TYI = 0.22,
+            HR = -0.46,
             HF = 0.36,
             HW = 0.24;
         const TURR_CX = -0.08,
             TRX = 0.22,
             TRY = 0.18;
         const BHW = 0.04,
-            BX0 = TURR_CX + TRX - 0.02;
-        const BX1 = 0.72,
+            BX0 = TURR_CX + TRX - 0.02,
+            BX1 = 0.72,
             BARR_ELEV = 6 * sc;
-
         const TRACK_H = 5 * sc,
             HULL_H = 6 * sc,
             TURR_H = 9 * sc,
             BARR_H = 3 * sc;
-        const trackTop = -TRACK_H;
-        const hullTop = -(TRACK_H + HULL_H);
-        const turrTop = -(TRACK_H + HULL_H + TURR_H);
-        const barrBase = -(TRACK_H + HULL_H + BARR_H + 2 * sc);
+        const trackTop = -TRACK_H,
+            hullTop = -(TRACK_H + HULL_H),
+            turrTop = -(TRACK_H + HULL_H + TURR_H),
+            barrBase = -(TRACK_H + HULL_H + BARR_H + 2 * sc);
 
-        // 1. Shadow
         fill(
             drop(
                 [
@@ -1079,12 +1054,8 @@ export class Menu {
             ),
             "rgba(0,0,0,0.2)",
         );
-
-        // 2. Tracks
         slab(lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop), TRACK_H, "#282828", "#0e0e0e");
         slab(lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop), TRACK_H, "#282828", "#0e0e0e");
-
-        // Tread marks
         ctx.strokeStyle = "#3e3e3e";
         ctx.lineWidth = 1.5 * sc;
         ctx.beginPath();
@@ -1101,8 +1072,6 @@ export class Menu {
             ctx.lineTo(b2[0], b2[1]);
         }
         ctx.stroke();
-
-        // Track wheels
         ctx.fillStyle = "#181818";
         for (let i = 0; i < 5; i++) {
             const lx = -THL * 0.8 + i * THL * 0.4;
@@ -1115,15 +1084,12 @@ export class Menu {
             }
         }
 
-        // 3. Hull
         const hullPts = lift(
             [P(HR, -HW), P(HF - 0.08, -HW), P(HF, -HW + 0.06), P(HF, HW - 0.06), P(HF - 0.08, HW), P(HR, HW)],
             hullTop,
         );
         slab(hullPts, HULL_H, hullColor, hullDark);
         outline(hullPts, hullDark, 0.6);
-
-        // Rear spades
         const spadeW = 0.06,
             spadeL = 0.14;
         for (const side of [-1, 1]) {
@@ -1155,14 +1121,10 @@ export class Menu {
                 "#3a3a3a",
             );
         }
-
-        // Hull rear panel
         fill(
             lift([P(HR, -HW + 0.03), P(HR + 0.04, -HW + 0.03), P(HR + 0.04, HW - 0.03), P(HR, HW - 0.03)], hullTop),
             hullDark,
         );
-
-        // Engine deck
         slab(
             lift(
                 [
@@ -1177,8 +1139,6 @@ export class Menu {
             hullAccent,
             hullDark,
         );
-
-        // Engine grille lines
         ctx.strokeStyle = hullDark;
         ctx.lineWidth = 0.5;
         for (let i = 0; i < 4; i++) {
@@ -1190,8 +1150,6 @@ export class Menu {
             ctx.lineTo(g2[0], g2[1]);
             ctx.stroke();
         }
-
-        // Stowage bins
         for (const side of [-1, 1]) {
             const binY = HW * side;
             slab(
@@ -1204,8 +1162,6 @@ export class Menu {
             const latch = lift([P(-0.15, binY - 0.01 * side)], hullTop - 1 * sc)[0];
             ctx.fillRect(latch[0] - 1, latch[1], 2, 1.5);
         }
-
-        // Camo netting
         ctx.strokeStyle = "rgba(70,80,50,0.4)";
         ctx.lineWidth = 2 * sc;
         for (let i = 0; i < 3; i++) {
@@ -1219,7 +1175,6 @@ export class Menu {
             ctx.stroke();
         }
 
-        // 4. Barrel (segmented with elevation)
         const barrLen = BX1 - BX0;
         for (let i = 0; i < 6; i++) {
             const t0 = i / 6,
@@ -1236,8 +1191,6 @@ export class Menu {
             ];
             slab(seg, BARR_H, i % 2 === 0 ? "#5a5a5a" : "#606060", "#333");
         }
-
-        // Muzzle brake
         const mx = BX1,
             mElev = barrBase - BARR_ELEV;
         slab(
@@ -1251,8 +1204,6 @@ export class Menu {
             "#707070",
             "#404040",
         );
-
-        // Fume extractor
         const fmX = BX0 + barrLen * 0.35,
             fmElev = barrBase - BARR_ELEV * 0.35;
         slab(
@@ -1267,7 +1218,6 @@ export class Menu {
             "#3a3a3a",
         );
 
-        // 5. Turret
         const tPts = lift(
             [
                 PT(TURR_CX - TRX, -TRY),
@@ -1281,8 +1231,6 @@ export class Menu {
         );
         slab(tPts, TURR_H, mix(teamRGB, olive, 0.3), hullDark);
         outline(tPts, hullDark, 0.7);
-
-        // Turret side panels
         for (const side of [-1, 1]) {
             const pY = TRY * side;
             fill(
@@ -1298,8 +1246,6 @@ export class Menu {
                 hullDark,
             );
         }
-
-        // Bustle
         slab(
             lift(
                 [
@@ -1314,8 +1260,6 @@ export class Menu {
             "#5a6340",
             hullDark,
         );
-
-        // Commander's cupola
         const cupR = 0.055,
             cupCX = TURR_CX - 0.06,
             cupCY = -TRY * 0.35;
@@ -1325,8 +1269,6 @@ export class Menu {
             cupPts.push(lift([PT(cupCX + Math.cos(a) * cupR, cupCY + Math.sin(a) * cupR)], turrTop - 3 * sc)[0]);
         }
         slab(cupPts, 3 * sc, hullAccent, hullDark);
-
-        // Periscopes
         fill(
             lift(
                 [
@@ -1339,8 +1281,6 @@ export class Menu {
             ),
             "#224",
         );
-
-        // Vision slit
         ctx.strokeStyle = "#1a1a22";
         ctx.lineWidth = 2 * sc;
         const vs1 = lift([PT(TURR_CX + TRX - 0.02, -TRY * 0.35)], turrTop)[0];
@@ -1349,8 +1289,6 @@ export class Menu {
         ctx.moveTo(vs1[0], vs1[1]);
         ctx.lineTo(vs2[0], vs2[1]);
         ctx.stroke();
-
-        // Antenna
         const antBase = lift([PT(TURR_CX - TRX + 0.03, -TRY + 0.03)], turrTop)[0];
         ctx.strokeStyle = "#666";
         ctx.lineWidth = 0.8;
