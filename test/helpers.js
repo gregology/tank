@@ -4,13 +4,17 @@
 
 import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
-import { CONFIG, TILES as T, VEHICLES } from "../js/config.js";
+import { CONFIG, TILES as T, VEHICLES, BASE_STRUCTURES } from "../js/config.js";
+import { Base, BaseWall, BaseHQ, BaseWatchTower, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
 
-export { AI_ROLES, AIController, Bullet, CONFIG, distance, GameMap, Pathfinder, pickRoleForVehicle, T, Tank, VEHICLES };
+export {
+    AI_ROLES, AIController, Base, BASE_STRUCTURES, BaseHQ, BaseWall, BaseWatchTower,
+    Bullet, CONFIG, distance, GameEntity, GameMap, Pathfinder, pickRoleForVehicle, T, Tank, VEHICLES,
+};
 
 /* ── Seeded PRNG (mulberry32) ─────────────────────────────── */
 
@@ -40,11 +44,13 @@ export const BOT_KEYS = {
 
 /* ── Map builders ─────────────────────────────────────────── */
 
-/** Create a fresh random map with tower positions. */
+/** Create a fresh random map with base compounds. */
 export function randomMap() {
     const map = new GameMap();
-    const towers = map.findTowerPositions();
-    return { map, towers };
+    const layouts = map.buildBaseCompounds();
+    // Backward-compat: "towers" returns passable spawn points near compound centres
+    const towers = layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y));
+    return { map, layouts, towers };
 }
 
 /**

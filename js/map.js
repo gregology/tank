@@ -64,14 +64,15 @@ export class GameMap {
         }
     }
 
-    /** Is this tile type a solid obstacle (hill, rock, or building)? */
+    /** Is this tile type a solid obstacle (hill, rock, building, or base structure)? */
     isSolid(tileType) {
         return (
             tileType === T.HILL ||
             tileType === T.ROCK ||
             tileType === T.BLDG_SMALL ||
             tileType === T.BLDG_MEDIUM ||
-            tileType === T.BLDG_LARGE
+            tileType === T.BLDG_LARGE ||
+            tileType === T.BASE_STRUCTURE
         );
     }
 
@@ -90,7 +91,11 @@ export class GameMap {
     /** Does this tile stop a bullet? */
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
-        return t === T.HILL || t === T.ROCK || t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE;
+        return (
+            t === T.HILL || t === T.ROCK ||
+            t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE ||
+            t === T.BASE_STRUCTURE
+        );
     }
 
     /**
@@ -131,60 +136,259 @@ export class GameMap {
                 return 22;
             case T.BLDG_LARGE:
                 return 32;
+            case T.BASE_STRUCTURE:
+                return 0; // entity renders the 3D height
             default:
                 return 0;
         }
     }
 
     /**
-     * Find two tower positions on opposite sides of the island.
-     * Creates a circular sand base (radius 5) around each one,
-     * clearing all terrain features.
-     * @returns {[{x,y},{x,y}]}
+     * Build two base compounds on opposite sides of the island.
+     *
+     * Each compound is 10×10 tiles with walls around the perimeter,
+     * a 2-tile entrance gap facing the enemy, watch towers flanking
+     * the gap, and a 1×2 HQ tent in the centre.
+     *
+     * @returns {[CompoundLayout, CompoundLayout]}  layout data for
+     *          game.js to create entity objects from.
      */
-    findTowerPositions() {
+    buildBaseCompounds() {
         const cx = this.width / 2,
             cy = this.height / 2;
-        const off = Math.min(this.width, this.height) * 0.28;
-        const p1 = this._findClearSpot(Math.round(cx - off), Math.round(cy - off), 3);
-        const p2 = this._findClearSpot(Math.round(cx + off), Math.round(cy + off), 3);
-        // Sand base circles
-        this._createBase(Math.floor(p1.x), Math.floor(p1.y));
-        this._createBase(Math.floor(p2.x), Math.floor(p2.y));
-        // Clear terrain around each base (larger radius, grass not sand)
-        this._clearAroundBase(Math.floor(p1.x), Math.floor(p1.y), 10);
-        this._clearAroundBase(Math.floor(p2.x), Math.floor(p2.y), 10);
+        const maxR = Math.min(this.width, this.height) / 2 - 1;
+        const compoundR = 7; // half-extent needed for 10x10 compound + buffer
+
+        // Scale spatial parameters from island radius
+        const clearR = Math.round(maxR * 0.25);      // clear terrain radius around base
+        const pathHW = Math.max(3, Math.round(maxR * 0.06)); // path half-width
+
+        // Place bases by searching inward from the coast on opposite sides.
+        // This adapts automatically to any map size or island shape.
+        const baseAngle = Math.PI * 1.25; // SW → NE diagonal
+        const p1 = this._findCoastalSpot(cx, cy, maxR, baseAngle, compoundR);
+        const p2 = this._findCoastalSpot(cx, cy, maxR, baseAngle + Math.PI, compoundR);
+
+        // Clear large areas (remove hills, rocks, buildings)
+        this._clearAroundBase(Math.floor(p1.x), Math.floor(p1.y), clearR);
+        this._clearAroundBase(Math.floor(p2.x), Math.floor(p2.y), clearR);
+
+        // Determine entrance directions (face each other)
+        const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const angle2 = Math.atan2(p1.y - p2.y, p1.x - p2.x);
+        const dir1 = this._angleToCardinal(angle1);
+        const dir2 = this._angleToCardinal(angle2);
+
+        // Stamp compounds onto the map
+        const layout1 = this._stampCompound(Math.floor(p1.x), Math.floor(p1.y), dir1);
+        const layout2 = this._stampCompound(Math.floor(p2.x), Math.floor(p2.y), dir2);
+
         // Carve a wide path between the two bases
-        this._clearPath(p1, p2, 3);
-        return [p1, p2];
+        this._clearPath(p1, p2, pathHW);
+
+        // Connect each compound entrance to the road network
+        this._connectCompoundToRoad(layout1);
+        this._connectCompoundToRoad(layout2);
+
+        return [layout1, layout2];
     }
 
     /**
-     * Pick a random spawn point inside a tower's sand base.
-     * Checks that the full tank collision box is passable so the
-     * tank can never spawn stuck against water or terrain.
+     * Search inward from the coast along `angle` to find a spot with
+     * enough dry land for a compound.  Only rejects water tiles — hills
+     * and buildings are ignored because _clearAroundBase removes them.
+     *
+     * Works for any map size because it walks from the actual island
+     * edge rather than using a fixed offset from the centre.
      */
-    getBaseSpawnPoint(towerX, towerY) {
-        const s = VEHICLES.tank.size * 0.85; // collision half-extent
-        const minR = CONFIG.TOWER_RADIUS + VEHICLES.tank.size + 0.2; // avoid tower
-        const maxR = 5 - s - 0.3; // stay inside sand circle
-
-        for (let attempt = 0; attempt < 100; attempt++) {
-            const a = Math.random() * Math.PI * 2;
-            const r = minR + Math.random() * (maxR - minR);
-            const x = towerX + Math.cos(a) * r;
-            const y = towerY + Math.sin(a) * r;
-            // Check all four corners of the tank's collision box
-            if (
-                this.isPassable(x - s, y - s) &&
-                this.isPassable(x + s, y - s) &&
-                this.isPassable(x - s, y + s) &&
-                this.isPassable(x + s, y + s)
-            ) {
-                return { x, y };
+    _findCoastalSpot(cx, cy, maxR, angle, clearRadius) {
+        const inset = clearRadius + 5; // stay inside the coast
+        for (let r = maxR - inset; r > clearRadius + 5; r -= 1) {
+            const gx = Math.round(cx + Math.cos(angle) * r);
+            const gy = Math.round(cy + Math.sin(angle) * r);
+            if (gx < clearRadius || gx >= this.width - clearRadius) continue;
+            if (gy < clearRadius || gy >= this.height - clearRadius) continue;
+            if (this._areaOnLand(gx, gy, clearRadius)) {
+                return { x: gx + 0.5, y: gy + 0.5 };
             }
         }
-        return { x: towerX + 2, y: towerY + 2 };
+        // Fallback: search outward from a safe interior position
+        return this._findClearSpot(
+            Math.round(cx + Math.cos(angle) * maxR * 0.4),
+            Math.round(cy + Math.sin(angle) * maxR * 0.4),
+            clearRadius,
+        );
+    }
+
+    /** True if every tile in a square of radius `r` is on land (not water). */
+    _areaOnLand(gx, gy, r) {
+        for (let dy = -r; dy <= r; dy++)
+            for (let dx = -r; dx <= r; dx++) {
+                const t = this.getTile(gx + dx, gy + dy);
+                if (t === T.DEEP_WATER || t === T.SHALLOW_WATER) return false;
+            }
+        return true;
+    }
+
+    /** Pick a cardinal direction from an angle. */
+    _angleToCardinal(angle) {
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? "E" : "W";
+        return dy > 0 ? "S" : "N";
+    }
+
+    /**
+     * Stamp a 10×10 compound centred at grid (cx, cy).
+     * Returns layout data (tile positions for each structure type).
+     */
+    _stampCompound(cx, cy, dir) {
+        const SIZE = 10;
+        const ox = cx - 5,
+            oy = cy - 5;
+
+        // Fill compound area with sand (force land — overwrite water too)
+        for (let dy = 0; dy < SIZE; dy++) {
+            for (let dx = 0; dx < SIZE; dx++) {
+                this.setTile(ox + dx, oy + dy, T.SAND);
+            }
+        }
+
+        const walls = [];
+        const towers = [];
+
+        // Helper: classify a perimeter tile on the entrance side.
+        // Returns 'gap', 'tower', or 'wall'.
+        const entranceRole = (dx, dy) => {
+            let edgePos = -1;
+            if (dir === "N" && dy === 0) edgePos = dx;
+            else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
+            else if (dir === "W" && dx === 0) edgePos = dy;
+            else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
+            else return "wall"; // not the entrance side
+            if (edgePos === 4 || edgePos === 5) return "gap";
+            if (edgePos === 3 || edgePos === 6) return "tower";
+            return "wall";
+        };
+
+        // Place perimeter structures
+        for (let dy = 0; dy < SIZE; dy++) {
+            for (let dx = 0; dx < SIZE; dx++) {
+                if (dx > 0 && dx < SIZE - 1 && dy > 0 && dy < SIZE - 1) continue;
+                const role = entranceRole(dx, dy);
+                const gx = ox + dx,
+                    gy = oy + dy;
+                if (role === "gap") {
+                    this.setTile(gx, gy, T.DIRT); // entrance road
+                } else if (role === "tower") {
+                    towers.push({ gx, gy });
+                    this.setTile(gx, gy, T.BASE_STRUCTURE);
+                } else {
+                    walls.push({ gx, gy });
+                    this.setTile(gx, gy, T.BASE_STRUCTURE);
+                }
+            }
+        }
+
+        // HQ placement — 1×2, perpendicular to entrance direction
+        let hqTiles;
+        if (dir === "E" || dir === "W") {
+            hqTiles = [
+                { gx: ox + 4, gy: oy + 4 },
+                { gx: ox + 4, gy: oy + 5 },
+            ];
+        } else {
+            hqTiles = [
+                { gx: ox + 4, gy: oy + 4 },
+                { gx: ox + 5, gy: oy + 4 },
+            ];
+        }
+        for (const t of hqTiles) this.setTile(t.gx, t.gy, T.BASE_STRUCTURE);
+
+        // HQ centre in world space (midpoint of two tile centres)
+        const hqCenter = {
+            x: (hqTiles[0].gx + hqTiles[1].gx) / 2 + 0.5,
+            y: (hqTiles[0].gy + hqTiles[1].gy) / 2 + 0.5,
+        };
+
+        return {
+            walls,
+            towers,
+            hqTiles,
+            hqCenter,
+            center: { x: ox + 5, y: oy + 5 },
+            dir,
+            ox,
+            oy,
+        };
+    }
+
+    /**
+     * Connect a compound entrance to the nearest road tile.
+     */
+    _connectCompoundToRoad(layout) {
+        const { ox, oy, dir } = layout;
+        let ex, ey;
+        if (dir === "N") {
+            ex = ox + 4;
+            ey = oy - 1;
+        } else if (dir === "S") {
+            ex = ox + 5;
+            ey = oy + 10;
+        } else if (dir === "E") {
+            ex = ox + 10;
+            ey = oy + 4;
+        } else {
+            ex = ox - 1;
+            ey = oy + 5;
+        }
+
+        // Find nearest road tile
+        let bestX = -1,
+            bestY = -1,
+            bestD = Infinity;
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (!this.isRoad(x, y)) continue;
+                const d = Math.hypot(x - ex, y - ey);
+                if (d < bestD) {
+                    bestD = d;
+                    bestX = x;
+                    bestY = y;
+                }
+            }
+        }
+        if (bestX >= 0) {
+            this._layDirtRoad({ x: ex, y: ey }, { x: bestX, y: bestY });
+        }
+    }
+
+    /**
+     * Pick a random spawn point inside a compound's interior.
+     * @param {number} cx  compound centre grid X
+     * @param {number} cy  compound centre grid Y
+     */
+    getBaseSpawnPoint(cx, cy) {
+        const s = VEHICLES.tank.size * 0.85;
+        const ox = Math.floor(cx) - 5,
+            oy = Math.floor(cy) - 5;
+
+        for (let attempt = 0; attempt < 100; attempt++) {
+            // Random tile inside the 8×8 interior
+            const gx = ox + 1 + Math.floor(Math.random() * 8);
+            const gy = oy + 1 + Math.floor(Math.random() * 8);
+            const wx = gx + 0.5,
+                wy = gy + 0.5;
+            if (
+                this.isPassable(wx - s, wy - s) &&
+                this.isPassable(wx + s, wy - s) &&
+                this.isPassable(wx - s, wy + s) &&
+                this.isPassable(wx + s, wy + s)
+            ) {
+                return { x: wx, y: wy };
+            }
+        }
+        return { x: cx + 0.5, y: cy + 0.5 };
     }
 
     /**
@@ -198,7 +402,7 @@ export class GameMap {
                 const tx = gx + dx,
                     ty = gy + dy;
                 const t = this.getTile(tx, ty);
-                if (this.isSolid(t)) {
+                if (this.isSolid(t) && t !== T.BASE_STRUCTURE) {
                     this.setTile(tx, ty, T.GRASS);
                 }
             }
@@ -227,7 +431,9 @@ export class GameMap {
                 const gx = Math.floor(cx + px * w);
                 const gy = Math.floor(cy + py * w);
                 const tile = this.getTile(gx, gy);
-                if (this.isSolid(tile)) {
+                if (tile === T.BASE_STRUCTURE) {
+                    continue; // never destroy compound structures
+                } else if (this.isSolid(tile)) {
                     this.setTile(gx, gy, T.GRASS);
                 } else if (tile === T.DEEP_WATER || tile === T.SHALLOW_WATER) {
                     this.setTile(gx, gy, T.SAND);
@@ -238,7 +444,8 @@ export class GameMap {
 
     /** Search outward from (tx,ty) for a spot with `r` tiles of clear grass. */
     _findClearSpot(tx, ty, r) {
-        for (let ring = 0; ring < 12; ring++) {
+        const maxRing = Math.max(12, Math.round(Math.min(this.width, this.height) * 0.2));
+        for (let ring = 0; ring < maxRing; ring++) {
             for (let dy = -ring; dy <= ring; dy++) {
                 for (let dx = -ring; dx <= ring; dx++) {
                     if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
@@ -336,9 +543,11 @@ export class GameMap {
      * roads, then scatter roadside buildings along the connecting roads.
      */
     _placeVillages(cx, cy, maxR) {
-        const MIN_VILLAGE_DIST = 14;
+        // Scale village density with map size
+        const mapScale = Math.min(this.width, this.height) / 64;
+        const MIN_VILLAGE_DIST = Math.round(14 * mapScale);
         const villageCentres = [];
-        const attempts = 20 + Math.floor(this._hash(77, 88) * 10);
+        const attempts = Math.round((20 + Math.floor(this._hash(77, 88) * 10)) * mapScale * mapScale);
 
         // Step 1: pick village positions, enforcing minimum separation
         for (let i = 0; i < attempts; i++) {

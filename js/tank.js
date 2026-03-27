@@ -26,6 +26,7 @@
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
+import { GameEntity } from "./entity.js";
 import { normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
@@ -37,24 +38,19 @@ export const HIT_ZONE = {
     REAR: "rear",
 };
 
-export class Tank {
+export class Tank extends GameEntity {
     constructor(playerNumber, color, darkColor) {
+        super("tank", 0, color, darkColor); // team set by Game later
         this.playerNumber = playerNumber;
-        this.color = color;
-        this.darkColor = darkColor;
 
-        // World-space state
-        this.x = 0;
-        this.y = 0;
+        // Hull / turret rotation
         this.angle = 0; // hull angle (radians – 0 = east in world space)
         this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
-        this.team = 0; // 1 = red, 2 = blue (set by Game)
 
         // Vehicle type
-        this.vehicleType = "tank"; // 'tank' or 'ifv'
+        this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg'
 
         // Gameplay
-        this.alive = true;
         this.score = 0;
         this.fireCooldown = 0;
         this.respawnTimer = 0;
@@ -95,6 +91,24 @@ export class Tank {
     /** Collision radius — varies by vehicle type. */
     get size() {
         return VEHICLES[this.vehicleType].size;
+    }
+
+    /* ── GameEntity capability overrides ──────────────────── */
+
+    get targetType() {
+        return this.vehicleType;
+    }
+    get isVehicle() {
+        return true;
+    }
+    get collidable() {
+        return true;
+    }
+    get mobile() {
+        return true;
+    }
+    get isShooter() {
+        return this.vehicleType !== "drone";
     }
 
     /* ── per-frame update ─────────────────────────────────── */

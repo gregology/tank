@@ -77,8 +77,9 @@ export class AIController {
         // Role (set externally for team mode, null for duel modes)
         this.role = null;
 
-        // Friendly tower reference (set by game.js for team mode)
-        this.friendlyTower = null;
+        // Base references (set by game.js for team mode)
+        this.friendlyBase = null;
+        this._enemyStructures = [];
 
         // Scout flank point (computed once per life)
         this._flankPoint = null;
@@ -143,10 +144,11 @@ export class AIController {
      *  Main think                                              *
      * ════════════════════════════════════════════════════════ */
 
-    think(dt, me, enemies, map, objective = null) {
+    think(dt, me, enemies, map, objective = null, enemyStructures = []) {
         this.keys = {};
         if (!me.alive) return;
         if (!this._pf) this._pf = new Pathfinder(map);
+        this._enemyStructures = enemyStructures;
 
         this.fireDelay -= dt;
         this._updateWobble(dt);
@@ -267,15 +269,15 @@ export class AIController {
         }
 
         if (bestEnemy && bestEnemy.dist < 10) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             if (!objective && bestEnemy.dist < 8) {
-                navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
+                navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
             }
         }
 
         if (!navGoal && bestEnemy) {
-            navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -299,7 +301,7 @@ export class AIController {
         // Engage nearby enemies (don't detour to chase — just shoot)
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < 10) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -354,7 +356,7 @@ export class AIController {
         // Self-defence: engage enemies only when very close
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -392,9 +394,9 @@ export class AIController {
         let navGoal = null;
         let fireTarget = null;
 
-        const ft = this.friendlyTower;
+        const ft = this.friendlyBase;
         if (!ft?.alive) {
-            // Friendly tower destroyed — fall back to cavalry rush
+            // Friendly base destroyed — fall back to cavalry rush
             return this._cavalryGoal(me, enemies, objective);
         }
 
@@ -405,7 +407,7 @@ export class AIController {
             closestDist = Infinity;
         for (const e of enemies) {
             if (!e.alive) continue;
-            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
+            if ((priorities[e.targetType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - ft.x, e.y - ft.y);
             if (d < engageRange && d < closestDist) {
                 closestThreat = e;
@@ -437,7 +439,7 @@ export class AIController {
             // Fire at any enemy within personal range
             const bestEnemy = this._bestTarget(me, enemies);
             if (bestEnemy && bestEnemy.dist < 10) {
-                fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+                fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             }
         }
 
@@ -483,7 +485,7 @@ export class AIController {
         // Only engage enemies that are very close (self-defence)
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < 6) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -584,7 +586,7 @@ export class AIController {
         const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
         for (const e of enemies) {
             if (!e.alive) continue;
-            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
+            if ((priorities[e.targetType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             if (d < detonateRange) {
                 this.keys[this.keyMap.fire] = true;
@@ -613,12 +615,12 @@ export class AIController {
         let target = null;
 
         if (bestEnemy && bestEnemy.dist < 15) {
-            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         } else if (objective) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
             target = { x: objective.x, y: objective.y, dist: d };
         } else if (bestEnemy) {
-            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         if (!target) return;
@@ -904,13 +906,20 @@ export class AIController {
      * @param {object[]} enemies array of enemy Tank objects
      * @returns {{ tank: object, dist: number } | null}
      */
+    /**
+     * Pick the best target from enemies + enemy structures using
+     * priority-weighted scoring:  weight / distance.
+     *
+     * Returns { target, dist } or null.
+     */
     _bestTarget(me, enemies) {
         const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
+        const allTargets = [...enemies, ...this._enemyStructures];
         let best = null;
         let bestScore = -1;
-        for (const e of enemies) {
+        for (const e of allTargets) {
             if (!e.alive) continue;
-            const w = priorities[e.vehicleType] ?? 1;
+            const w = priorities[e.targetType] ?? 1;
             if (w <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             const score = w / Math.max(d, 0.5);
@@ -919,7 +928,7 @@ export class AIController {
                 bestScore = score;
             }
         }
-        return best ? { tank: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
+        return best ? { target: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
     }
 
     _updateWobble(dt) {

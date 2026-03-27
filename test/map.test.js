@@ -3,10 +3,10 @@ import { describe, it } from "node:test";
 import { GameMap, T, VEHICLES } from "./helpers.js";
 
 describe("Map generation", () => {
-    it("creates a 64x64 map", () => {
+    it("creates a map matching CONFIG dimensions", () => {
         const map = new GameMap();
-        assert.equal(map.width, 64);
-        assert.equal(map.height, 64);
+        assert.equal(map.width, 100);
+        assert.equal(map.height, 100);
     });
 
     it("generates different maps each time (different seeds)", () => {
@@ -17,11 +17,12 @@ describe("Map generation", () => {
 
     it("has water around the edges", () => {
         const map = new GameMap();
+        const last = map.width - 1;
         const corners = [
             [0, 0],
-            [63, 0],
-            [0, 63],
-            [63, 63],
+            [last, 0],
+            [0, last],
+            [last, last],
         ];
         for (const [x, y] of corners) {
             const t = map.getTile(x, y);
@@ -32,8 +33,9 @@ describe("Map generation", () => {
     it("has passable terrain in the interior", () => {
         const map = new GameMap();
         let passable = 0;
-        for (let y = 16; y < 48; y++) {
-            for (let x = 16; x < 48; x++) {
+        const q1 = Math.floor(map.width * 0.25), q3 = Math.floor(map.width * 0.75);
+        for (let y = q1; y < q3; y++) {
+            for (let x = q1; x < q3; x++) {
                 if (map.isPassable(x + 0.5, y + 0.5)) passable++;
             }
         }
@@ -43,8 +45,8 @@ describe("Map generation", () => {
     it("has buildings for cover", () => {
         const map = new GameMap();
         let buildings = 0;
-        for (let y = 0; y < 64; y++) {
-            for (let x = 0; x < 64; x++) {
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
                 const t = map.getTile(x, y);
                 if (t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE) buildings++;
             }
@@ -56,8 +58,8 @@ describe("Map generation", () => {
 describe("Map passability", () => {
     it("grass and sand are passable; structures are not", () => {
         const map = new GameMap();
-        for (let y = 0; y < 64; y++) {
-            for (let x = 0; x < 64; x++) {
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
                 const t = map.getTile(x, y);
                 if (t === T.GRASS || t === T.DARK_GRASS || t === T.SAND) {
                     assert.ok(map.isPassable(x + 0.5, y + 0.5));
@@ -71,8 +73,8 @@ describe("Map passability", () => {
 
     it("solid tiles block projectiles; open tiles do not", () => {
         const map = new GameMap();
-        for (let y = 0; y < 64; y++) {
-            for (let x = 0; x < 64; x++) {
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
                 const t = map.getTile(x, y);
                 if (map.isSolid(t)) {
                     assert.ok(map.blocksProjectile(x + 0.5, y + 0.5));
@@ -125,63 +127,61 @@ describe("Destructible terrain", () => {
     });
 });
 
-describe("Tower positions", () => {
-    it("places towers on opposite sides of the island", () => {
+describe("Base compounds", () => {
+    it("places compounds on opposite sides of the island", () => {
         const map = new GameMap();
-        const [tp1, tp2] = map.findTowerPositions();
-        const d = Math.hypot(tp2.x - tp1.x, tp2.y - tp1.y);
-        assert.ok(d > 20, `towers should be far apart, got ${d.toFixed(0)}`);
+        const [l1, l2] = map.buildBaseCompounds();
+        const d = Math.hypot(l2.hqCenter.x - l1.hqCenter.x, l2.hqCenter.y - l1.hqCenter.y);
+        assert.ok(d > 15, `compounds should be far apart, got ${d.toFixed(0)}`);
     });
 
-    it("creates sand bases around towers", () => {
+    it("creates sand interior and structure walls", () => {
         const map = new GameMap();
-        const [tp1] = map.findTowerPositions();
-        const gx = Math.floor(tp1.x),
-            gy = Math.floor(tp1.y);
+        const [l1] = map.buildBaseCompounds();
         let sandCount = 0;
-        for (let dy = -4; dy <= 4; dy++) {
-            for (let dx = -4; dx <= 4; dx++) {
-                if (map.getTile(gx + dx, gy + dy) === T.SAND) sandCount++;
+        let structCount = 0;
+        for (let dy = 0; dy < 10; dy++) {
+            for (let dx = 0; dx < 10; dx++) {
+                const t = map.getTile(l1.ox + dx, l1.oy + dy);
+                if (t === T.SAND) sandCount++;
+                if (t === T.BASE_STRUCTURE) structCount++;
             }
         }
-        assert.ok(sandCount > 30, `base should have sand, got ${sandCount}`);
+        assert.ok(sandCount > 20, `compound should have sand interior, got ${sandCount}`);
+        assert.ok(structCount > 20, `compound should have structure walls, got ${structCount}`);
     });
 
-    it("clears terrain around bases (radius 10)", () => {
+    it("clears terrain around bases", () => {
         const map = new GameMap();
-        const [tp1] = map.findTowerPositions();
-        const gx = Math.floor(tp1.x),
-            gy = Math.floor(tp1.y);
+        const [l1] = map.buildBaseCompounds();
+        const gx = Math.floor(l1.center.x), gy = Math.floor(l1.center.y);
         for (let dy = -8; dy <= 8; dy++) {
             for (let dx = -8; dx <= 8; dx++) {
                 if (dx * dx + dy * dy > 64) continue;
                 const t = map.getTile(gx + dx, gy + dy);
-                assert.ok(t !== T.HILL && t !== T.ROCK, `(${gx + dx},${gy + dy}) near base should not be hill/rock`);
+                assert.ok(
+                    t !== T.HILL && t !== T.ROCK &&
+                    t !== T.BLDG_SMALL && t !== T.BLDG_MEDIUM && t !== T.BLDG_LARGE,
+                    `(${gx+dx},${gy+dy}) near base should be clear of terrain`
+                );
             }
         }
     });
 
-    it("clears a direct path between towers", () => {
+    it("compound has 2 watch tower positions and entrance gap", () => {
         const map = new GameMap();
-        const [tp1, tp2] = map.findTowerPositions();
-        const dx = tp2.x - tp1.x,
-            dy = tp2.y - tp1.y;
-        const len = Math.hypot(dx, dy);
-        const steps = Math.ceil(len * 2);
-        let blocked = 0;
-        for (let s = 0; s <= steps; s++) {
-            const t = s / steps;
-            if (!map.isPassable(tp1.x + dx * t, tp1.y + dy * t)) blocked++;
-        }
-        assert.equal(blocked, 0, "direct path between towers should be clear");
+        const [l1] = map.buildBaseCompounds();
+        assert.equal(l1.towers.length, 2, "should have 2 watch tower positions");
+        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.ok(l1.walls.length > 20, `should have many walls, got ${l1.walls.length}`);
     });
 
     it("base spawn points are fully passable", () => {
         const map = new GameMap();
-        const [tp1] = map.findTowerPositions();
+        const [l1] = map.buildBaseCompounds();
         const s = VEHICLES.tank.size * 0.85;
         for (let i = 0; i < 20; i++) {
-            const sp = map.getBaseSpawnPoint(tp1.x, tp1.y);
+            const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
             assert.ok(
                 map.isPassable(sp.x - s, sp.y - s) &&
                     map.isPassable(sp.x + s, sp.y - s) &&

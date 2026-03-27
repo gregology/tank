@@ -16,6 +16,7 @@ export const TILES = {
     BLDG_SMALL: 9, // 1-tile cottage / shed
     BLDG_MEDIUM: 10, // taller house
     BLDG_LARGE: 11, // 2-storey building
+    BASE_STRUCTURE: 12, // base compound tile (impassable, blocks projectiles)
 };
 
 export const CONFIG = {
@@ -25,8 +26,8 @@ export const CONFIG = {
     TILE_DEPTH: 20, // pixel height of elevated tiles
 
     // ── Map ──────────────────────────────────────────────────
-    MAP_WIDTH: 64,
-    MAP_HEIGHT: 64,
+    MAP_WIDTH: 100,
+    MAP_HEIGHT: 100,
 
     // ── Shared vehicle defaults ──────────────────────────────
     TANK_REVERSE_FACTOR: 0.4, // backward speed multiplier
@@ -47,11 +48,8 @@ export const CONFIG = {
     BLDG_MEDIUM_HP: 5,
     BLDG_LARGE_HP: 8,
 
-    // ── Team / Tower ────────────────────────────────────────
+    // ── Team ────────────────────────────────────────────────
     TEAM_SIZE: 5, // tanks per team (including human)
-    TOWER_HP: 10,
-    TOWER_RADIUS: 0.8, // collision / hit radius
-    TOWER_VIS_HEIGHT: 35, // pixel height for rendering
 
     // ── Bullet ───────────────────────────────────────────────
     BULLET_RADIUS: 3, // screen-pixel radius
@@ -191,7 +189,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
-        targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, base: 10 },
+        targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, baseWall: 5, baseTower: 10, baseHQ: 10 },
     },
     ifv: {
         speed: 4.5,
@@ -200,11 +198,11 @@ export const VEHICLES = {
         size: 0.45,
         bulletSpeed: 13.0,
         bulletDamage: 0.25,
-        bulletCooldown: 0.18,
+        bulletCooldown: 0.15,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
-        targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, base: 2 },
+        targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, baseWall: 3, baseTower: 5, baseHQ: 10 },
     },
     drone: {
         speed: 6.0,
@@ -219,7 +217,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
-        targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, base: 10 },
+        targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, baseWall: 0, baseTower: 0, baseHQ: 10 },
     },
     spg: {
         speed: 2.0,
@@ -237,6 +235,36 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 10.0,
         roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
-        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, base: 10 },
+        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, baseWall: 0, baseTower: 5, baseHQ: 10 },
+    },
+};
+
+/**
+ * Base structure definitions.
+ *
+ * Parallel to VEHICLES — every gameplay value that varies between
+ * structure types lives here.  targetPriority only appears on
+ * structures that can shoot (baseTower).
+ */
+export const BASE_STRUCTURES = {
+    baseWall: {
+        hp: 3,
+        size: 0.5,
+        visHeight: 10,
+    },
+    baseTower: {
+        hp: 5,
+        size: 0.5,
+        visHeight: 20,
+        fireRange: 15,
+        bulletSpeed: 13.0,
+        bulletDamage: 0.25,
+        bulletCooldown: 0.15,
+        targetPriority: { spg: 3, tank: 3, drone: 10, ifv: 3 },
+    },
+    baseHQ: {
+        hp: 20,
+        size: 0.5,
+        visHeight: 14,
     },
 };

@@ -17,7 +17,7 @@ import {
 function createRoleBot(x, y, angle, map, role, opts = {}) {
     const bot = createBot(x, y, angle, map);
     bot.ai.role = role;
-    if (opts.friendlyTower) bot.ai.friendlyTower = opts.friendlyTower;
+    if (opts.friendlyBase) bot.ai.friendlyBase = opts.friendlyBase;
     return bot;
 }
 
@@ -193,9 +193,9 @@ describe("AI Roles – Sniper", () => {
 describe("AI Roles – Defender", () => {
     it("stays near the friendly tower when no enemies", () => {
         const map = customMap([]);
-        const friendlyTower = { x: 14.5, y: 32.5, alive: true };
+        const friendlyBase = { x: 14.5, y: 32.5, alive: true };
         const objective = { x: 50.5, y: 32.5, alive: true };
-        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyTower });
+        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyBase });
 
         const dt = 0.016;
         for (let f = 0; f < 1200; f++) {
@@ -203,7 +203,7 @@ describe("AI Roles – Defender", () => {
             bot.tank.update(dt, bot.ai, BOT_KEYS, map);
         }
 
-        const distToFriendly = Math.hypot(friendlyTower.x - bot.tank.x, friendlyTower.y - bot.tank.y);
+        const distToFriendly = Math.hypot(friendlyBase.x - bot.tank.x, friendlyBase.y - bot.tank.y);
         assert.ok(
             distToFriendly < CONFIG.DEFENDER_PATROL_RADIUS + 5,
             `defender should patrol near tower, got dist=${distToFriendly.toFixed(1)}`,
@@ -212,9 +212,9 @@ describe("AI Roles – Defender", () => {
 
     it("intercepts enemies approaching the friendly tower", () => {
         const map = customMap([]);
-        const friendlyTower = { x: 14.5, y: 32.5, alive: true };
+        const friendlyBase = { x: 14.5, y: 32.5, alive: true };
         const objective = { x: 50.5, y: 32.5, alive: true };
-        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyTower });
+        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyBase });
 
         // Place enemy approaching the friendly tower
         const enemy = new Tank(9, "#33d", "#239");
@@ -235,9 +235,9 @@ describe("AI Roles – Defender", () => {
 
     it("falls back to cavalry when friendly tower is destroyed", () => {
         const map = customMap([]);
-        const friendlyTower = { x: 14.5, y: 32.5, alive: false };
+        const friendlyBase = { x: 14.5, y: 32.5, alive: false };
         const objective = { x: 50.5, y: 32.5, alive: true };
-        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyTower });
+        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.DEFENDER, { friendlyBase });
 
         const result = simulateRole(bot, objective, map, { seconds: 25, objective });
         assert.ok(
@@ -316,22 +316,23 @@ describe("AI Roles – team simulation with roles", () => {
         let failures = 0;
         for (let trial = 0; trial < 5; trial++) {
             const map = new GameMap();
-            const towers = map.findTowerPositions();
-            const [tp1, tp2] = towers;
-            const friendlyTower = { x: tp1.x, y: tp1.y, alive: true };
+            const [l1, l2] = map.buildBaseCompounds();
+            const sp1 = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+            const tp2 = l2.hqCenter;
+            const friendlyBase = { x: sp1.x, y: sp1.y, alive: true };
             const objective = { x: tp2.x, y: tp2.y, alive: true };
 
             const roles = [AI_ROLES.CAVALRY, AI_ROLES.SNIPER, AI_ROLES.DEFENDER, AI_ROLES.SCOUT];
             const bots = roles.map((role, i) => {
-                const sp = map.getBaseSpawnPoint(tp1.x, tp1.y);
-                const bot = createRoleBot(sp.x, sp.y, 0, map, role, { friendlyTower });
+                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+                const bot = createRoleBot(sp.x, sp.y, 0, map, role, { friendlyBase });
                 bot.tank.team = 1;
                 bot.tank.playerNumber = i + 2;
                 return bot;
             });
 
             const dt = 0.016;
-            const frames = Math.ceil(25 / dt);
+            const frames = Math.ceil(40 / dt);
             for (let f = 0; f < frames; f++) {
                 for (const bot of bots) {
                     bot.ai.think(dt, bot.tank, [], map, objective);
@@ -341,7 +342,7 @@ describe("AI Roles – team simulation with roles", () => {
 
             // At least cavalry and scout should make progress toward tower
             for (const bot of bots) {
-                const startDist = Math.hypot(tp2.x - tp1.x, tp2.y - tp1.y);
+                const startDist = Math.hypot(tp2.x - sp1.x, tp2.y - sp1.y);
                 const finalDist = Math.hypot(tp2.x - bot.tank.x, tp2.y - bot.tank.y);
                 // Defender stays near base, so only check non-defenders
                 if (bot.ai.role !== AI_ROLES.DEFENDER) {
