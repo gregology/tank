@@ -92,8 +92,11 @@ export class GameMap {
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
         return (
-            t === T.HILL || t === T.ROCK ||
-            t === T.BLDG_SMALL || t === T.BLDG_MEDIUM || t === T.BLDG_LARGE ||
+            t === T.HILL ||
+            t === T.ROCK ||
+            t === T.BLDG_SMALL ||
+            t === T.BLDG_MEDIUM ||
+            t === T.BLDG_LARGE ||
             t === T.BASE_STRUCTURE
         );
     }
@@ -160,7 +163,7 @@ export class GameMap {
         const compoundR = 7; // half-extent needed for 10x10 compound + buffer
 
         // Scale spatial parameters from island radius
-        const clearR = Math.round(maxR * 0.25);      // clear terrain radius around base
+        const clearR = Math.round(maxR * 0.25); // clear terrain radius around base
         const pathHW = Math.max(3, Math.round(maxR * 0.06)); // path half-width
 
         // Place bases by searching inward from the coast on opposite sides.
@@ -432,7 +435,6 @@ export class GameMap {
                 const gy = Math.floor(cy + py * w);
                 const tile = this.getTile(gx, gy);
                 if (tile === T.BASE_STRUCTURE) {
-                    continue; // never destroy compound structures
                 } else if (this.isSolid(tile)) {
                     this.setTile(gx, gy, T.GRASS);
                 } else if (tile === T.DEEP_WATER || tile === T.SHALLOW_WATER) {

@@ -4,16 +4,31 @@
 
 import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
-import { CONFIG, TILES as T, VEHICLES, BASE_STRUCTURES } from "../js/config.js";
-import { Base, BaseWall, BaseHQ, BaseWatchTower, GameEntity } from "../js/entity.js";
+import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
+import { Base, BaseHQ, BaseWall, BaseWatchTower, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
 
 export {
-    AI_ROLES, AIController, Base, BASE_STRUCTURES, BaseHQ, BaseWall, BaseWatchTower,
-    Bullet, CONFIG, distance, GameEntity, GameMap, Pathfinder, pickRoleForVehicle, T, Tank, VEHICLES,
+    AI_ROLES,
+    AIController,
+    BASE_STRUCTURES,
+    Base,
+    BaseHQ,
+    BaseWall,
+    BaseWatchTower,
+    Bullet,
+    CONFIG,
+    distance,
+    GameEntity,
+    GameMap,
+    Pathfinder,
+    pickRoleForVehicle,
+    T,
+    Tank,
+    VEHICLES,
 };
 
 /* ── Seeded PRNG (mulberry32) ─────────────────────────────── */
@@ -24,7 +39,7 @@ export {
  */
 export function seededRng(seed) {
     let s = seed | 0;
-    return function () {
+    return () => {
         s = (s + 0x6d2b79f5) | 0;
         let t = Math.imul(s ^ (s >>> 15), 1 | s);
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;

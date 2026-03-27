@@ -33,7 +33,8 @@ describe("Map generation", () => {
     it("has passable terrain in the interior", () => {
         const map = new GameMap();
         let passable = 0;
-        const q1 = Math.floor(map.width * 0.25), q3 = Math.floor(map.width * 0.75);
+        const q1 = Math.floor(map.width * 0.25),
+            q3 = Math.floor(map.width * 0.75);
         for (let y = q1; y < q3; y++) {
             for (let x = q1; x < q3; x++) {
                 if (map.isPassable(x + 0.5, y + 0.5)) passable++;
@@ -154,15 +155,15 @@ describe("Base compounds", () => {
     it("clears terrain around bases", () => {
         const map = new GameMap();
         const [l1] = map.buildBaseCompounds();
-        const gx = Math.floor(l1.center.x), gy = Math.floor(l1.center.y);
+        const gx = Math.floor(l1.center.x),
+            gy = Math.floor(l1.center.y);
         for (let dy = -8; dy <= 8; dy++) {
             for (let dx = -8; dx <= 8; dx++) {
                 if (dx * dx + dy * dy > 64) continue;
                 const t = map.getTile(gx + dx, gy + dy);
                 assert.ok(
-                    t !== T.HILL && t !== T.ROCK &&
-                    t !== T.BLDG_SMALL && t !== T.BLDG_MEDIUM && t !== T.BLDG_LARGE,
-                    `(${gx+dx},${gy+dy}) near base should be clear of terrain`
+                    t !== T.HILL && t !== T.ROCK && t !== T.BLDG_SMALL && t !== T.BLDG_MEDIUM && t !== T.BLDG_LARGE,
+                    `(${gx + dx},${gy + dy}) near base should be clear of terrain`,
                 );
             }
         }
