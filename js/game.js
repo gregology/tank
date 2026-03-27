@@ -16,7 +16,8 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { CONFIG, MODE_DEFS, VEHICLES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, MODE_DEFS, TILES as T, VEHICLES } from "./config.js";
+import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
 import { GameMap } from "./map.js";
 import { ParticleSystem } from "./particles.js";
 import { Tank } from "./tank.js";
@@ -48,29 +49,20 @@ function pickVehicleType(allowed) {
     return entries[entries.length - 1][0];
 }
 
-/* ── Tower data class ─────────────────────────────────────── */
-
-class Tower {
-    constructor(x, y, team, color, darkColor) {
-        this.x = x;
-        this.y = y;
-        this.team = team;
-        this.color = color;
-        this.darkColor = darkColor;
-        this.hp = CONFIG.TOWER_HP;
-        this.maxHp = CONFIG.TOWER_HP;
-        this.alive = true;
-    }
-}
-
 /* ================================================================== */
 
 export class Game {
-    constructor(input, mode = "duel_split") {
+    constructor(input, mode = "duel_split", settings = {}) {
         this.input = input;
         this.mode = mode;
         this.modeDef = MODE_DEFS[mode];
-        this.map = new GameMap();
+        this.settings = settings;
+
+        // Build map with settings-driven dimensions and density
+        const mapW = settings.mapSize?.w;
+        const mapH = settings.mapSize?.h;
+        const density = settings.buildingDensity;
+        this.map = new GameMap(mapW, mapH, density);
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
         this.bullets = [];
@@ -89,9 +81,13 @@ export class Game {
     get allTanks() {
         return this._allTanks;
     }
-    /** Towers (empty in non-base modes). */
-    get towers() {
-        return this._towers;
+    /** Base compounds (empty in non-base modes). */
+    get bases() {
+        return this._bases;
+    }
+    /** All base structures from both teams (flat list). */
+    get baseStructures() {
+        return this._allStructures;
     }
     /** The first human tank (for single-viewport modes / HUD). */
     get humanTank() {
@@ -151,7 +147,8 @@ export class Game {
         this.particles = new ParticleSystem();
         this.gameOver = false;
         this.winner = null;
-        this.map = new GameMap();
+        const s = this.settings;
+        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity);
         this._init();
     }
 
@@ -161,8 +158,16 @@ export class Game {
 
     _init() {
         const def = this.modeDef;
-        const [t1Humans, t1Bots] = def.teams[0];
-        const [t2Humans, t2Bots] = def.teams[1];
+        const s = this.settings;
+
+        // Compute team composition: if teamSize setting is present,
+        // adjust bot counts while keeping human counts from the mode def.
+        let [t1Humans, t1Bots] = def.teams[0];
+        let [t2Humans, t2Bots] = def.teams[1];
+        if (s.teamSize != null) {
+            t1Bots = Math.max(0, s.teamSize - t1Humans);
+            t2Bots = Math.max(0, s.teamSize - t2Humans);
+        }
         const keyMaps = [CONFIG.PLAYER1_KEYS, CONFIG.PLAYER2_KEYS];
 
         this._redTeam = [];
@@ -171,7 +176,9 @@ export class Game {
         this._humanKeys = [];
         this._cameras = [];
         this._bots = [];
-        this._towers = [];
+        this._bases = [];
+        this._allStructures = [];
+        this._structureMap = new Map(); // "gx,gy" → BaseStructure
         this._teamScores = { 1: 0, 2: 0 };
 
         let nextId = 1;
@@ -211,13 +218,21 @@ export class Game {
 
         this._allTanks = [...this._redTeam, ...this._blueTeam];
 
-        // ── Towers (base modes only) ──
+        // ── Base compounds (base modes only) ──
         if (def.bases) {
-            const [tp1, tp2] = this.map.findTowerPositions();
-            this._towers = [
-                new Tower(tp1.x, tp1.y, 1, "#cc3333", "#882222"),
-                new Tower(tp2.x, tp2.y, 2, "#3366dd", "#223399"),
+            const baseType = this.settings.baseType ?? "compound";
+            const [layout1, layout2] = this.map.buildBaseCompounds(baseType);
+            this._bases = [
+                this._buildBase(layout1, 1, "#cc3333", "#882222"),
+                this._buildBase(layout2, 2, "#3366dd", "#223399"),
             ];
+            this._allStructures = [...this._bases[0].allStructures, ...this._bases[1].allStructures];
+            // Populate tile → structure lookup
+            for (const s of this._allStructures) {
+                for (const pos of s.tilePositions) {
+                    this._structureMap.set(`${pos.gx},${pos.gy}`, s);
+                }
+            }
         }
 
         // ── AI bots ──
@@ -225,24 +240,24 @@ export class Game {
             if (this._humanTanks.includes(t)) continue;
             const ai = new AIController(BOT_KEYS, this.map);
             ai.role = pickRoleForVehicle(t.vehicleType);
-            if (def.bases) ai.friendlyTower = this._towers[0];
+            if (def.bases) ai.friendlyBase = this._bases[0];
             this._bots.push({
                 ai,
                 tank: t,
                 enemies: this._blueTeam,
-                objective: def.bases ? this._towers[1] : null,
+                enemyBase: def.bases ? this._bases[1] : null,
             });
         }
         for (const t of this._blueTeam) {
             if (this._humanTanks.includes(t)) continue;
             const ai = new AIController(BOT_KEYS, this.map);
             ai.role = pickRoleForVehicle(t.vehicleType);
-            if (def.bases) ai.friendlyTower = this._towers[1];
+            if (def.bases) ai.friendlyBase = this._bases[1];
             this._bots.push({
                 ai,
                 tank: t,
                 enemies: this._redTeam,
-                objective: def.bases ? this._towers[0] : null,
+                enemyBase: def.bases ? this._bases[0] : null,
             });
         }
 
@@ -253,20 +268,20 @@ export class Game {
         const def = this.modeDef;
 
         if (def.bases) {
-            // ── Base spawn: near towers ──
-            const t1 = this._towers[0],
-                t2 = this._towers[1];
+            // ── Base spawn: inside compound interior ──
+            const b1 = this._bases[0],
+                b2 = this._bases[1];
             for (const t of this._redTeam) {
-                const sp = this.map.getBaseSpawnPoint(t1.x, t1.y);
+                const sp = this.map.getBaseSpawnPoint(b1.center.x, b1.center.y);
                 t.respawnAt(sp.x, sp.y);
                 t.alive = true;
-                t.angle = Math.atan2(t2.y - t1.y, t2.x - t1.x) + (Math.random() - 0.5) * 0.5;
+                t.angle = Math.atan2(b2.y - b1.y, b2.x - b1.x) + (Math.random() - 0.5) * 0.5;
             }
             for (const t of this._blueTeam) {
-                const sp = this.map.getBaseSpawnPoint(t2.x, t2.y);
+                const sp = this.map.getBaseSpawnPoint(b2.center.x, b2.center.y);
                 t.respawnAt(sp.x, sp.y);
                 t.alive = true;
-                t.angle = Math.atan2(t1.y - t2.y, t1.x - t2.x) + (Math.random() - 0.5) * 0.5;
+                t.angle = Math.atan2(b1.y - b2.y, b1.x - b2.x) + (Math.random() - 0.5) * 0.5;
             }
         } else {
             // ── Random spawn: spread out, then face opponents ──
@@ -307,12 +322,13 @@ export class Game {
         const def = this.modeDef;
 
         // ── AI think ──
-        for (const { ai, tank, enemies, objective } of this._bots) {
+        for (const { ai, tank, enemies, enemyBase } of this._bots) {
             if (!tank.alive) continue;
-            const obj = def.bases && objective?.alive ? objective : null;
+            const obj = def.bases && enemyBase?.alive ? enemyBase : null;
             // For non-base modes give AI the nearest enemy as objective
             const target = obj ?? (enemies.find((e) => e.alive) || null);
-            ai.think(dt, tank, enemies, this.map, target);
+            const enemyStructures = enemyBase?.allStructures ?? [];
+            ai.think(dt, tank, enemies, this.map, target, enemyStructures);
         }
 
         // ── Movement — humans (only when alive) ──
@@ -327,7 +343,7 @@ export class Game {
         }
 
         this._separatePairs(this._allTanks);
-        if (def.bases) this._pushFromTowers();
+        if (def.bases) this._pushFromStructures();
 
         // ── Firing — humans ──
         for (let i = 0; i < this._humanTanks.length; i++) {
@@ -342,7 +358,7 @@ export class Game {
 
         this._tickBullets(dt);
         this._checkBulletHits();
-        if (def.bases) this._checkBulletTowers();
+        if (def.bases) this._updateWatchTowers(dt);
         this.bullets = this.bullets.filter((b) => b.alive);
         this.particles.update(dt);
         this._emitDamageSmoke(dt);
@@ -368,9 +384,11 @@ export class Game {
             t.respawnTimer -= dt;
             if (t.respawnTimer <= 0) {
                 if (def.bases) {
-                    // Spawn at base
-                    const tw = this._towers[t.team - 1];
-                    const sp = tw?.alive ? this.map.getBaseSpawnPoint(tw.x, tw.y) : this.map.getSpawnPoint();
+                    // Spawn inside compound
+                    const base = this._bases[t.team - 1];
+                    const sp = base?.alive
+                        ? this.map.getBaseSpawnPoint(base.center.x, base.center.y)
+                        : this.map.getSpawnPoint();
                     t.respawnAt(sp.x, sp.y);
                 }
                 // Non-base: position was already set when killed
@@ -393,11 +411,11 @@ export class Game {
     _checkWin() {
         const def = this.modeDef;
         if (def.bases) {
-            // Tower destruction
-            for (const tw of this._towers) {
-                if (!tw.alive) {
+            // HQ destruction
+            for (const base of this._bases) {
+                if (!base.alive) {
                     this.gameOver = true;
-                    this.winner = tw.team === 1 ? 2 : 1;
+                    this.winner = base.team === 1 ? 2 : 1;
                     this.emit("win", { winner: this.winner });
                     return;
                 }
@@ -537,21 +555,20 @@ export class Game {
             }
         }
 
-        for (const tw of this.towers) {
-            if (!tw.alive || b.team === tw.team) continue;
-            const d = distance(b.x, b.y, tw.x, tw.y);
-            if (d >= splashR + CONFIG.TOWER_RADIUS) continue;
+        for (const s of this._allStructures) {
+            if (!s.alive || b.team === s.team) continue;
+            const d = distance(b.x, b.y, s.x, s.y);
+            if (d >= splashR + s.size) continue;
 
-            const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+            const edgeDist = Math.max(0, d - s.size);
             const dmg = b.damage * Math.max(0, 1 - edgeDist / splashR);
             if (dmg <= 0) continue;
 
-            tw.hp -= dmg;
-            this.emit("impact", {});
-            if (tw.hp <= 0) {
-                tw.alive = false;
-                this.particles.emitExplosion(tw.x, tw.y);
-                this.emit("destroy", { tower: tw });
+            if (s.applyDamage(dmg)) {
+                this._onStructureDestroyed(s);
+            } else {
+                this.particles.emitImpact(b.x, b.y);
+                this.emit("impact", {});
             }
         }
 
@@ -597,22 +614,20 @@ export class Game {
             }
         }
 
-        for (const tw of this.towers) {
-            if (!tw.alive || tw.team === drone.team) continue;
-            const d = distance(drone.x, drone.y, tw.x, tw.y);
-            if (d >= blastR + CONFIG.TOWER_RADIUS) continue;
+        for (const s of this._allStructures) {
+            if (!s.alive || s.team === drone.team) continue;
+            const d = distance(drone.x, drone.y, s.x, s.y);
+            if (d >= blastR + s.size) continue;
 
-            const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+            const edgeDist = Math.max(0, d - s.size);
             const dmg = maxDmg * Math.max(0, 1 - edgeDist / blastR);
             if (dmg <= 0) continue;
 
-            tw.hp -= dmg;
-            this.particles.emitImpact(drone.x, drone.y);
-            this.emit("impact", {});
-            if (tw.hp <= 0) {
-                tw.alive = false;
-                this.particles.emitExplosion(tw.x, tw.y);
-                this.emit("destroy", { tower: tw });
+            if (s.applyDamage(dmg)) {
+                this._onStructureDestroyed(s);
+            } else {
+                this.particles.emitImpact(drone.x, drone.y);
+                this.emit("impact", {});
             }
         }
 
@@ -647,7 +662,15 @@ export class Game {
                     this.emit("impact", { bullet: b });
                     const gx = Math.floor(b.x),
                         gy = Math.floor(b.y);
-                    if (this.map.damageTile(gx, gy, b.damage)) {
+                    // Check for base structure at this tile
+                    const structure = this._getStructureAt(gx, gy);
+                    if (structure) {
+                        if (b.team !== structure.team) {
+                            if (structure.applyDamage(b.damage)) {
+                                this._onStructureDestroyed(structure);
+                            }
+                        }
+                    } else if (this.map.damageTile(gx, gy, b.damage)) {
                         this.particles.emitExplosion(gx + 0.5, gy + 0.5);
                         this.emit("destroy_tile", { gx, gy });
                         this._invalidatePathfinders();
@@ -684,42 +707,26 @@ export class Game {
         }
     }
 
-    _checkBulletTowers() {
-        for (const b of this.bullets) {
-            if (!b.alive || b.arcing) continue;
-            for (const tw of this._towers) {
-                if (!tw.alive || b.team === tw.team) continue;
-                if (distance(b.x, b.y, tw.x, tw.y) < CONFIG.TOWER_RADIUS) {
-                    b.alive = false;
-                    tw.hp -= b.damage;
-                    this.particles.emitImpact(b.x, b.y);
-                    this.emit("impact", {});
-                    if (tw.hp <= 0) {
-                        tw.alive = false;
-                        this.particles.emitExplosion(tw.x, tw.y);
-                        this.emit("destroy", { tower: tw });
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    _pushFromTowers() {
+    _pushFromStructures() {
         for (const t of this._allTanks) {
             if (!t.alive || t.vehicleType === "drone") continue;
-            for (const tw of this._towers) {
-                if (!tw.alive) continue;
-                const d = distance(t.x, t.y, tw.x, tw.y);
-                const min = VEHICLES[t.vehicleType].size + CONFIG.TOWER_RADIUS;
-                if (d < min && d > 0.001) {
-                    const nx = (t.x - tw.x) / d;
-                    const ny = (t.y - tw.y) / d;
-                    const newX = tw.x + nx * min;
-                    const newY = tw.y + ny * min;
-                    if (this._canStand(newX, newY)) {
-                        t.x = newX;
-                        t.y = newY;
+            for (const s of this._allStructures) {
+                if (!s.alive) continue;
+                // Push from each tile the structure occupies
+                for (const pos of s.tilePositions) {
+                    const sx = pos.gx + 0.5,
+                        sy = pos.gy + 0.5;
+                    const d = distance(t.x, t.y, sx, sy);
+                    const min = VEHICLES[t.vehicleType].size + 0.5;
+                    if (d < min && d > 0.001) {
+                        const nx = (t.x - sx) / d;
+                        const ny = (t.y - sy) / d;
+                        const newX = sx + nx * min;
+                        const newY = sy + ny * min;
+                        if (this._canStand(newX, newY)) {
+                            t.x = newX;
+                            t.y = newY;
+                        }
                     }
                 }
             }
@@ -773,6 +780,102 @@ export class Game {
         for (const { ai } of this._bots) ai._pf?.invalidate();
     }
 
+    /* ── Base compound helpers ─────────────────────────────── */
+
+    /** Create a Base compound from map layout data. */
+    _buildBase(layout, team, color, darkColor) {
+        const base = new Base(team, color, darkColor);
+        base.center = layout.center;
+        base.origin = { x: layout.ox, y: layout.oy };
+        base.entranceDir = layout.dir;
+
+        // HQ
+        const hq = new BaseHQ(team, color, darkColor);
+        hq.x = layout.hqCenter.x;
+        hq.y = layout.hqCenter.y;
+        hq.tilePositions = layout.hqTiles.map((t) => ({ gx: t.gx, gy: t.gy }));
+        base.hq = hq;
+
+        // Walls
+        for (const pos of layout.walls) {
+            const w = new BaseWall(team, color, darkColor);
+            w.x = pos.gx + 0.5;
+            w.y = pos.gy + 0.5;
+            w.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
+            base.walls.push(w);
+        }
+
+        // Watch towers
+        for (const pos of layout.towers) {
+            const t = new BaseWatchTower(team, color, darkColor);
+            t.x = pos.gx + 0.5;
+            t.y = pos.gy + 0.5;
+            t.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
+            base.towers.push(t);
+        }
+
+        return base;
+    }
+
+    /** Look up the structure entity occupying tile (gx, gy). */
+    _getStructureAt(gx, gy) {
+        return this._structureMap.get(`${gx},${gy}`) ?? null;
+    }
+
+    /** Handle a structure being destroyed: clear tiles, particles, events. */
+    _onStructureDestroyed(structure) {
+        for (const pos of structure.tilePositions) {
+            this.map.setTile(pos.gx, pos.gy, T.SAND);
+            this._structureMap.delete(`${pos.gx},${pos.gy}`);
+        }
+        this.particles.emitExplosion(structure.x, structure.y);
+        this.emit("destroy", { structure });
+        this._invalidatePathfinders();
+    }
+
+    /** Update watch tower firing (auto-targeting enemies in range). */
+    _updateWatchTowers(dt) {
+        for (const base of this._bases) {
+            const enemyTeam = base.team === 1 ? this._blueTeam : this._redTeam;
+            for (const tower of base.towers) {
+                if (!tower.alive) continue;
+                tower.fireCooldown -= dt;
+                if (tower.fireCooldown > 0) continue;
+
+                // Find best target in range
+                const cfg = BASE_STRUCTURES.baseTower;
+                const priorities = cfg.targetPriority;
+                let best = null,
+                    bestScore = -1;
+                for (const e of enemyTeam) {
+                    if (!e.alive) continue;
+                    const w = priorities[e.targetType] ?? 0;
+                    if (w <= 0) continue;
+                    const d = distance(tower.x, tower.y, e.x, e.y);
+                    if (d > cfg.fireRange) continue;
+                    if (!this._hasLineOfSight(tower.x, tower.y, e.x, e.y)) continue;
+                    const score = w / Math.max(d, 0.5);
+                    if (score > bestScore) {
+                        best = e;
+                        bestScore = score;
+                    }
+                }
+                if (!best) continue;
+
+                // Fire
+                const angle = Math.atan2(best.y - tower.y, best.x - tower.x);
+                tower.turretAngle = angle;
+                tower.fireCooldown = cfg.bulletCooldown;
+                const b = new Bullet(tower.x, tower.y, angle, 0, tower.team, cfg.bulletDamage, cfg.bulletSpeed);
+                this.bullets.push(b);
+                const tipX = tower.x + Math.cos(angle) * 0.3;
+                const tipY = tower.y + Math.sin(angle) * 0.3;
+                this.particles.emitIFVFlash(tipX, tipY, angle);
+                this.emit("fire", { tower, bullet: b });
+            }
+        }
+    }
+
     _canStand(x, y, vehicleSize = VEHICLES.tank.size) {
         const s = vehicleSize * 0.85;
         return (
@@ -783,6 +886,24 @@ export class Game {
         );
     }
 
+    /** Check if a straight line between two points is clear of projectile-blocking terrain.
+     *  Skips the shooter's own tile so structures (e.g. watch towers) don't block themselves. */
+    _hasLineOfSight(x1, y1, x2, y2) {
+        const dx = x2 - x1,
+            dy = y2 - y1;
+        const d = Math.hypot(dx, dy);
+        const n = Math.ceil(d * 3);
+        const originGx = Math.floor(x1),
+            originGy = Math.floor(y1);
+        for (let i = 1; i < n; i++) {
+            const t = i / n;
+            const sx = x1 + dx * t,
+                sy = y1 + dy * t;
+            if (Math.floor(sx) === originGx && Math.floor(sy) === originGy) continue;
+            if (this.map.blocksProjectile(sx, sy)) return false;
+        }
+        return true;
+    }
     _updateCamera(cam, tank, dt) {
         if (tank.alive) {
             const s = worldToScreen(tank.x, tank.y);

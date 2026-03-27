@@ -36,7 +36,7 @@
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
-import { CONFIG, VEHICLES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 
 /* ── Role names ───────────────────────────────────────────── */
@@ -77,8 +77,9 @@ export class AIController {
         // Role (set externally for team mode, null for duel modes)
         this.role = null;
 
-        // Friendly tower reference (set by game.js for team mode)
-        this.friendlyTower = null;
+        // Base references (set by game.js for team mode)
+        this.friendlyBase = null;
+        this._enemyStructures = [];
 
         // Scout flank point (computed once per life)
         this._flankPoint = null;
@@ -143,10 +144,11 @@ export class AIController {
      *  Main think                                              *
      * ════════════════════════════════════════════════════════ */
 
-    think(dt, me, enemies, map, objective = null) {
+    think(dt, me, enemies, map, objective = null, enemyStructures = []) {
         this.keys = {};
         if (!me.alive) return;
         if (!this._pf) this._pf = new Pathfinder(map);
+        this._enemyStructures = enemyStructures;
 
         this.fireDelay -= dt;
         this._updateWobble(dt);
@@ -267,15 +269,15 @@ export class AIController {
         }
 
         if (bestEnemy && bestEnemy.dist < 10) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             if (!objective && bestEnemy.dist < 8) {
-                navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
+                navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
             }
         }
 
         if (!navGoal && bestEnemy) {
-            navGoal = { x: bestEnemy.tank.x, y: bestEnemy.tank.y };
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -299,7 +301,7 @@ export class AIController {
         // Engage nearby enemies (don't detour to chase — just shoot)
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < 10) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
@@ -320,65 +322,163 @@ export class AIController {
         const fireRange = CONFIG.SNIPER_FIRE_RANGE;
         const minRange = CONFIG.SNIPER_MIN_RANGE;
 
-        // Compute a firing position once (and cache it for this life)
+        // ── Phase 0: compute firing position + flank waypoint (once per life)
         if (!this._sniperPos) {
-            this._sniperPos = this._findSniperPosition(me, objective, map);
+            this._sniperPos = this._findBestPosition(me, objective, map, CONFIG.SNIPER_POSITION_WEIGHTS, fireRange);
+            // Compute a flank waypoint toward the sniper position
+            // (so the sniper doesn't walk in a straight line)
+            this._flankPoint = this._computeFlankPoint(me, this._sniperPos, map, CONFIG.SNIPER_POSITION_WEIGHTS);
         }
 
         const posReached = this._sniperPos && Math.hypot(this._sniperPos.x - me.x, this._sniperPos.y - me.y) < 2;
 
-        if (posReached) {
-            // Hold position — fire at tower
-            navGoal = { x: me.x, y: me.y }; // stay put
-            if (objDist < fireRange + 5) {
-                fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+        // ── Phase 1: flank toward firing position
+        if (!this._flankReached && this._flankPoint) {
+            const flankDist = Math.hypot(this._flankPoint.x - me.x, this._flankPoint.y - me.y);
+            if (flankDist < 3) {
+                this._flankReached = true;
+            } else {
+                navGoal = { x: this._flankPoint.x, y: this._flankPoint.y };
+                // Fire at tower if already in range while flanking
+                if (objDist < fireRange + 5) {
+                    fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                }
             }
-        } else if (objDist < minRange) {
-            // Too close — back off toward sniper position or just away
-            const awayAngle = Math.atan2(me.y - objective.y, me.x - objective.x);
-            navGoal = {
-                x: objective.x + Math.cos(awayAngle) * fireRange,
-                y: objective.y + Math.sin(awayAngle) * fireRange,
-            };
-            // Still fire while retreating
-            fireTarget = { x: objective.x, y: objective.y, dist: objDist };
-        } else {
-            // Navigate to firing position
-            navGoal = this._sniperPos || { x: objective.x, y: objective.y };
-            // Fire at tower if already in range
-            if (objDist < fireRange + 5) {
+        }
+
+        // ── Phase 2: navigate to firing position or hold
+        if (!navGoal) {
+            if (posReached) {
+                // Hold position — fire at tower
+                navGoal = { x: me.x, y: me.y };
+                if (objDist < fireRange + 5) {
+                    fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                }
+            } else if (objDist < minRange) {
+                // Too close — back off
+                const awayAngle = Math.atan2(me.y - objective.y, me.x - objective.x);
+                navGoal = {
+                    x: objective.x + Math.cos(awayAngle) * fireRange,
+                    y: objective.y + Math.sin(awayAngle) * fireRange,
+                };
                 fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+            } else {
+                navGoal = this._sniperPos || { x: objective.x, y: objective.y };
+                if (objDist < fireRange + 5) {
+                    fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                }
             }
         }
 
         // Self-defence: engage enemies only when very close
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
     }
 
+    /* ════════════════════════════════════════════════════════ *
+     *  Position scoring — shared by sniper & scout              *
+     * ════════════════════════════════════════════════════════ */
+
     /**
-     * Find a passable position at sniper range from the objective.
-     * Tries the angle from the bot's current position first, then samples.
+     * Evaluate candidate positions around the objective and return
+     * the best one according to weighted scoring criteria.
+     *
+     * Criteria (all normalised to 0–1 before weighting):
+     *   cover — projectile-blocking tiles within POSITION_COVER_RADIUS
+     *   flank — perpendicular offset from the direct me→objective line
+     *   range — closeness to idealRange from the objective
+     *   los   — clear line-of-sight to the objective
+     *
+     * @param {object}  me         bot's current position
+     * @param {object}  objective  target position
+     * @param {object}  map        GameMap
+     * @param {object}  weights    { cover, flank, range, los }
+     * @param {number}  idealRange distance from objective to sample candidates
+     * @returns {{ x: number, y: number }}
      */
-    _findSniperPosition(me, objective, map) {
-        const range = CONFIG.SNIPER_FIRE_RANGE;
-        // Prefer the angle from objective toward our current position
-        const baseAngle = Math.atan2(me.y - objective.y, me.x - objective.x);
-        for (let i = 0; i < 12; i++) {
-            const a = baseAngle + (i % 2 === 0 ? 1 : -1) * Math.floor((i + 1) / 2) * 0.4;
-            const px = objective.x + Math.cos(a) * range;
-            const py = objective.y + Math.sin(a) * range;
-            if (map.isPassable(px, py)) return { x: px, y: py };
+    _findBestPosition(me, objective, map, weights, idealRange) {
+        const samples = CONFIG.POSITION_SAMPLES;
+        const coverR = CONFIG.POSITION_COVER_RADIUS;
+
+        // Direct line from me to objective (for flank scoring)
+        const dirX = objective.x - me.x;
+        const dirY = objective.y - me.y;
+        const dirLen = Math.hypot(dirX, dirY) || 1;
+        // Unit perpendicular vector
+        const perpX = -dirY / dirLen;
+        const perpY = dirX / dirLen;
+
+        let bestPos = null;
+        let bestScore = -Infinity;
+
+        // Find the max possible cover in the area for normalisation
+        let maxCover = 1;
+        const candidateList = [];
+
+        for (let i = 0; i < samples; i++) {
+            const angle = (i / samples) * Math.PI * 2;
+            // Try multiple radii: ideal range, and slightly closer/farther
+            for (const rFactor of [1.0, 0.85, 1.15]) {
+                const r = idealRange * rFactor;
+                const cx = objective.x + Math.cos(angle) * r;
+                const cy = objective.y + Math.sin(angle) * r;
+
+                // Clamp to map bounds
+                const px = Math.max(3, Math.min(map.width - 4, cx));
+                const py = Math.max(3, Math.min(map.height - 4, cy));
+                if (!map.isPassable(px, py)) continue;
+
+                const cover = weights.cover > 0 ? map.countCoverTiles(px, py, coverR) : 0;
+                if (cover > maxCover) maxCover = cover;
+                candidateList.push({ x: px, y: py, cover, rFactor });
+            }
         }
-        // Fallback: just use the base angle
-        return {
-            x: objective.x + Math.cos(baseAngle) * range,
-            y: objective.y + Math.sin(baseAngle) * range,
-        };
+
+        if (candidateList.length === 0) {
+            // Fallback: angle from objective toward us
+            const a = Math.atan2(me.y - objective.y, me.x - objective.x);
+            return {
+                x: objective.x + Math.cos(a) * idealRange,
+                y: objective.y + Math.sin(a) * idealRange,
+            };
+        }
+
+        for (const c of candidateList) {
+            // ── Cover score (0–1): nearby blocking tiles
+            const coverScore = maxCover > 0 ? c.cover / maxCover : 0;
+
+            // ── Flank score (0–1): perpendicular distance from the
+            //    direct me→objective line, normalised by idealRange
+            const relX = c.x - me.x;
+            const relY = c.y - me.y;
+            const perpDist = Math.abs(relX * perpX + relY * perpY);
+            const flankScore = Math.min(1, perpDist / (idealRange * 0.8));
+
+            // ── Range score (0–1): 1.0 at ideal range, falls off
+            const distToObj = Math.hypot(c.x - objective.x, c.y - objective.y);
+            const rangeError = Math.abs(distToObj - idealRange) / idealRange;
+            const rangeScore = Math.max(0, 1 - rangeError);
+
+            // ── LOS score (0 or 1): can we see the objective?
+            const losScore = weights.los > 0 ? (this._los(c.x, c.y, objective.x, objective.y, map) ? 1 : 0) : 0;
+
+            const score =
+                coverScore * (weights.cover || 0) +
+                flankScore * (weights.flank || 0) +
+                rangeScore * (weights.range || 0) +
+                losScore * (weights.los || 0);
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestPos = { x: c.x, y: c.y };
+            }
+        }
+
+        return bestPos;
     }
 
     /* ── Defender: patrol and guard friendly tower ────────── */
@@ -392,9 +492,9 @@ export class AIController {
         let navGoal = null;
         let fireTarget = null;
 
-        const ft = this.friendlyTower;
+        const ft = this.friendlyBase;
         if (!ft?.alive) {
-            // Friendly tower destroyed — fall back to cavalry rush
+            // Friendly base destroyed — fall back to cavalry rush
             return this._cavalryGoal(me, enemies, objective);
         }
 
@@ -405,7 +505,7 @@ export class AIController {
             closestDist = Infinity;
         for (const e of enemies) {
             if (!e.alive) continue;
-            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
+            if ((priorities[e.targetType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - ft.x, e.y - ft.y);
             if (d < engageRange && d < closestDist) {
                 closestThreat = e;
@@ -437,7 +537,7 @@ export class AIController {
             // Fire at any enemy within personal range
             const bestEnemy = this._bestTarget(me, enemies);
             if (bestEnemy && bestEnemy.dist < 10) {
-                fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+                fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             }
         }
 
@@ -483,55 +583,32 @@ export class AIController {
         // Only engage enemies that are very close (self-defence)
         const bestEnemy = this._bestTarget(me, enemies);
         if (bestEnemy && bestEnemy.dist < 6) {
-            fireTarget = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         return { navGoal, fireTarget };
     }
 
     /**
-     * Compute a flank waypoint that's offset perpendicular to the
-     * direct line between the bot and the objective.
+     * Compute a flank waypoint using the position scoring system.
+     * The midpoint distance is used as the ideal range so candidates
+     * form a ring around the midpoint between bot and objective.
      */
-    _computeFlankPoint(me, objective, map) {
-        const dx = objective.x - me.x;
-        const dy = objective.y - me.y;
-        const dist = Math.hypot(dx, dy);
+    _computeFlankPoint(me, objective, map, weights = null) {
+        const dist = Math.hypot(objective.x - me.x, objective.y - me.y);
         if (dist < 1) return { x: objective.x, y: objective.y };
 
-        // Midpoint between start and objective
-        const mx = (me.x + objective.x) / 2;
-        const my = (me.y + objective.y) / 2;
+        // Use midpoint as the "objective" for candidate ring, with
+        // half the distance as the ideal range — this places candidates
+        // in a ring perpendicular to the approach line.
+        const mid = {
+            x: (me.x + objective.x) / 2,
+            y: (me.y + objective.y) / 2,
+        };
+        const w = weights || CONFIG.SCOUT_POSITION_WEIGHTS;
+        const idealRange = dist * 0.4;
 
-        // Perpendicular direction
-        const px = -dy / dist;
-        const py = dx / dist;
-
-        // Pick a random side (left or right of the direct line)
-        const side = this._rng() > 0.5 ? 1 : -1;
-        const offset = CONFIG.SCOUT_FLANK_OFFSET;
-
-        // Try the ideal offset, then shrink if it's off the map or impassable
-        for (let f = 1.0; f >= 0.3; f -= 0.15) {
-            const fx = mx + px * offset * side * f;
-            const fy = my + py * offset * side * f;
-            // Clamp to map bounds with margin
-            const cx = Math.max(3, Math.min(map.width - 4, fx));
-            const cy = Math.max(3, Math.min(map.height - 4, fy));
-            if (map.isPassable(cx, cy)) return { x: cx, y: cy };
-        }
-
-        // Fallback: try the other side
-        for (let f = 1.0; f >= 0.3; f -= 0.15) {
-            const fx = mx + px * offset * -side * f;
-            const fy = my + py * offset * -side * f;
-            const cx = Math.max(3, Math.min(map.width - 4, fx));
-            const cy = Math.max(3, Math.min(map.height - 4, fy));
-            if (map.isPassable(cx, cy)) return { x: cx, y: cy };
-        }
-
-        // Last resort: head straight for objective
-        return { x: objective.x, y: objective.y };
+        return this._findBestPosition(me, mid, map, w, idealRange);
     }
 
     /* ════════════════════════════════════════════════════════ *
@@ -584,7 +661,7 @@ export class AIController {
         const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
         for (const e of enemies) {
             if (!e.alive) continue;
-            if ((priorities[e.vehicleType] ?? 1) <= 0) continue;
+            if ((priorities[e.targetType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             if (d < detonateRange) {
                 this.keys[this.keyMap.fire] = true;
@@ -594,7 +671,7 @@ export class AIController {
         // Check objective (tower)
         if (objective?.alive) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (d < detonateRange + CONFIG.TOWER_RADIUS) {
+            if (d < detonateRange + BASE_STRUCTURES.baseHQ.size) {
                 this.keys[this.keyMap.fire] = true;
             }
         }
@@ -613,12 +690,12 @@ export class AIController {
         let target = null;
 
         if (bestEnemy && bestEnemy.dist < 15) {
-            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         } else if (objective) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
             target = { x: objective.x, y: objective.y, dist: d };
         } else if (bestEnemy) {
-            target = { x: bestEnemy.tank.x, y: bestEnemy.tank.y, dist: bestEnemy.dist };
+            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
         }
 
         if (!target) return;
@@ -904,13 +981,20 @@ export class AIController {
      * @param {object[]} enemies array of enemy Tank objects
      * @returns {{ tank: object, dist: number } | null}
      */
+    /**
+     * Pick the best target from enemies + enemy structures using
+     * priority-weighted scoring:  weight / distance.
+     *
+     * Returns { target, dist } or null.
+     */
     _bestTarget(me, enemies) {
         const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
+        const allTargets = [...enemies, ...this._enemyStructures];
         let best = null;
         let bestScore = -1;
-        for (const e of enemies) {
+        for (const e of allTargets) {
             if (!e.alive) continue;
-            const w = priorities[e.vehicleType] ?? 1;
+            const w = priorities[e.targetType] ?? 1;
             if (w <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             const score = w / Math.max(d, 0.5);
@@ -919,7 +1003,7 @@ export class AIController {
                 bestScore = score;
             }
         }
-        return best ? { tank: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
+        return best ? { target: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
     }
 
     _updateWobble(dt) {

@@ -6,7 +6,7 @@
  * correctly occludes entities behind it.
  */
 
-import { CONFIG, TILES as T, VEHICLES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "./config.js";
 import { clamp, distance, worldToScreen } from "./utils.js";
 
 const TW = CONFIG.TILE_WIDTH;
@@ -189,8 +189,8 @@ export class Renderer {
                 addEntity(1, t, t.x, t.y, depthBonus);
             }
         }
-        for (const tw of game.towers) {
-            if (tw.alive) addEntity(4, tw, tw.x, tw.y);
+        for (const s of game.baseStructures) {
+            if (s.alive) addEntity(4, s, s.x, s.y);
         }
         for (const b of game.bullets) {
             if (b.alive) addEntity(2, b, b.x, b.y);
@@ -220,7 +220,7 @@ export class Renderer {
                         this._drawParticle(ctx, item.entity, item.sx, item.sy);
                         break;
                     case 4:
-                        this._drawTower(ctx, item.entity, item.sx, item.sy);
+                        this._drawBaseStructure(ctx, item.entity, item.sx, item.sy, game.gameTime);
                         break;
                 }
                 ctx.restore();
@@ -918,9 +918,9 @@ export class Renderer {
         const mountTop = -(WHEEL_H + HULL_H + MOUNT_H);
         const barrTop = -(WHEEL_H + HULL_H + BARR_H);
 
-        // Olive-tinted hull: mix team colour with khaki
-        const hullColor = tank.color;
-        const hullDark = tank.darkColor;
+        // Darken hull colour when damaged
+        const hullColor = tank.damaged ? tank.darkColor : tank.color;
+        const hullDark = tank.damaged ? "#1a1a1a" : tank.darkColor;
 
         /* ── 1. Shadow ──────────────────────────────────── */
         fill(
@@ -941,31 +941,34 @@ export class Renderer {
         const wheelR = 4.5; // much larger than before (was 3.2)
         for (const wx of wheelXs) {
             for (const side of [-1, 1]) {
+                const sideDisabled = side < 0 ? tank.leftTrackDisabled : tank.rightTrackDisabled;
                 const wc = lift([P(wx, SWO * side)], wheelTop)[0];
-                // Tyre (dark)
-                ctx.fillStyle = "#1a1a1a";
+                // Tyre (dark, red-brown if track disabled)
+                ctx.fillStyle = sideDisabled ? "#5a2a1a" : "#1a1a1a";
                 ctx.beginPath();
                 ctx.arc(wc[0], wc[1], wheelR, 0, Math.PI * 2);
                 ctx.fill();
                 // Rim (lighter)
-                ctx.fillStyle = "#555";
+                ctx.fillStyle = sideDisabled ? "#6a3a2a" : "#555";
                 ctx.beginPath();
                 ctx.arc(wc[0], wc[1], wheelR * 0.5, 0, Math.PI * 2);
                 ctx.fill();
-                // Spinning hub cross
-                const spA = tank.treadPhase * Math.PI * 2;
-                ctx.strokeStyle = "#777";
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                const dx1 = Math.cos(spA) * wheelR * 0.35;
-                const dy1 = Math.sin(spA) * wheelR * 0.35;
-                ctx.moveTo(wc[0] - dx1, wc[1] - dy1 * 0.5);
-                ctx.lineTo(wc[0] + dx1, wc[1] + dy1 * 0.5);
-                const dx2 = Math.cos(spA + Math.PI / 2) * wheelR * 0.35;
-                const dy2 = Math.sin(spA + Math.PI / 2) * wheelR * 0.35;
-                ctx.moveTo(wc[0] - dx2, wc[1] - dy2 * 0.5);
-                ctx.lineTo(wc[0] + dx2, wc[1] + dy2 * 0.5);
-                ctx.stroke();
+                // Spinning hub cross (skip if disabled)
+                if (!sideDisabled) {
+                    const spA = tank.treadPhase * Math.PI * 2;
+                    ctx.strokeStyle = "#777";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    const dx1 = Math.cos(spA) * wheelR * 0.35;
+                    const dy1 = Math.sin(spA) * wheelR * 0.35;
+                    ctx.moveTo(wc[0] - dx1, wc[1] - dy1 * 0.5);
+                    ctx.lineTo(wc[0] + dx1, wc[1] + dy1 * 0.5);
+                    const dx2 = Math.cos(spA + Math.PI / 2) * wheelR * 0.35;
+                    const dy2 = Math.sin(spA + Math.PI / 2) * wheelR * 0.35;
+                    ctx.moveTo(wc[0] - dx2, wc[1] - dy2 * 0.5);
+                    ctx.lineTo(wc[0] + dx2, wc[1] + dy2 * 0.5);
+                    ctx.stroke();
+                }
             }
         }
 
@@ -1144,9 +1147,9 @@ export class Renderer {
         const oliveDark = [50, 58, 32];
         const mix = (a, b, t) =>
             `rgb(${(a[0] * (1 - t) + b[0] * t) | 0},${(a[1] * (1 - t) + b[1] * t) | 0},${(a[2] * (1 - t) + b[2] * t) | 0})`;
-        const hullColor = mix(teamRGB, olive, 0.45);
-        const hullDark = mix(teamDarkRGB, oliveDark, 0.45);
-        const hullAccent = mix(teamRGB, olive, 0.6);
+        const hullColor = tank.damaged ? mix(teamDarkRGB, oliveDark, 0.45) : mix(teamRGB, olive, 0.45);
+        const hullDark = tank.damaged ? "#1a1a1a" : mix(teamDarkRGB, oliveDark, 0.45);
+        const hullAccent = tank.damaged ? mix(teamDarkRGB, oliveDark, 0.6) : mix(teamRGB, olive, 0.6);
 
         /* ── SPG dimensions — MUCH longer chassis, rear turret ── */
         const THL = 0.5; // track half-length (much longer than tank 0.38)
@@ -1193,11 +1196,15 @@ export class Renderer {
             "rgba(0,0,0,0.2)",
         );
 
-        /* ── 2. Tracks (wider, heavier) ── */
+        /* ── 2. Tracks (wider, heavier — red-brown if disabled) ── */
+        const lTrackColor = tank.leftTrackDisabled ? "#5a2a1a" : "#282828";
+        const lTrackWall = tank.leftTrackDisabled ? "#3a1a0a" : "#0e0e0e";
         const lTrack = lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop);
-        slab(lTrack, TRACK_H, "#282828", "#0e0e0e");
+        slab(lTrack, TRACK_H, lTrackColor, lTrackWall);
+        const rTrackColor = tank.rightTrackDisabled ? "#5a2a1a" : "#282828";
+        const rTrackWall = tank.rightTrackDisabled ? "#3a1a0a" : "#0e0e0e";
         const rTrack = lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop);
-        slab(rTrack, TRACK_H, "#282828", "#0e0e0e");
+        slab(rTrack, TRACK_H, rTrackColor, rTrackWall);
 
         // Tread marks (more treads = heavier vehicle)
         const TREAD_N = 14;
@@ -1354,8 +1361,14 @@ export class Renderer {
                 [PT(x1, BHW)[0], PT(x1, BHW)[1] + elev1],
                 [PT(x0, BHW)[0], PT(x0, BHW)[1] + elev0],
             ];
-            const shade = i % 2 === 0 ? "#5a5a5a" : "#606060";
-            slab(seg, BARR_H, shade, "#333");
+            const shade = tank.turretDisabled
+                ? i % 2 === 0
+                    ? "#3a3a3a"
+                    : "#404040"
+                : i % 2 === 0
+                  ? "#5a5a5a"
+                  : "#606060";
+            slab(seg, BARR_H, shade, tank.turretDisabled ? "#222" : "#333");
         }
 
         // Muzzle brake (wide, distinctive)
@@ -1392,8 +1405,10 @@ export class Renderer {
             ],
             turrTop,
         );
-        slab(tPts, TURR_H, mix(teamRGB, olive, 0.3), hullDark);
-        outline(tPts, hullDark, 0.7);
+        const turretCol = tank.turretDisabled ? "#555" : mix(teamRGB, olive, 0.3);
+        const turretDark = tank.turretDisabled ? "#333" : hullDark;
+        slab(tPts, TURR_H, turretCol, turretDark);
+        outline(tPts, turretDark, 0.7);
 
         // Turret side armour plates (raised panels)
         for (const side of [-1, 1]) {
@@ -1618,19 +1633,36 @@ export class Renderer {
         }
     }
 
-    /* ── tower drawing ────────────────────────────────────── */
+    /* ── base structure drawing ────────────────────────────── */
 
-    _drawTower(ctx, tower, sx, sy) {
-        const frac = tower.hp / tower.maxHp;
-        const fullH = CONFIG.TOWER_VIS_HEIGHT;
-        const h = Math.round(fullH * frac); // shrinks with damage
-        if (h <= 0) return;
+    /** Dispatch to the appropriate draw method for a base structure. */
+    _drawBaseStructure(ctx, entity, sx, sy, time) {
+        switch (entity.entityType) {
+            case "baseWall":
+                this._drawBaseWall(ctx, entity, sx, sy, time);
+                break;
+            case "baseTower":
+                this._drawWatchTower(ctx, entity, sx, sy, time);
+                break;
+            case "baseHQ":
+                this._drawBaseHQ(ctx, entity, sx, sy, time);
+                break;
+        }
+    }
 
-        const S = 0.45; // half-size in world units (isometric block)
+    /**
+     * Draw a 1×1 fortification wall block.  Team-coloured, shrinks with damage.
+     */
+    _drawBaseWall(ctx, wall, sx, sy, time) {
+        const frac = wall.damageFraction;
+        const cfg = BASE_STRUCTURES.baseWall;
+        const fullH = cfg.visHeight;
+        const h = Math.max(2, Math.round(fullH * frac));
+
+        const S = 0.45;
         const bw = S * TW;
         const bd = S * TH;
 
-        // Darken colours based on damage
         const dmg = 1 - frac;
         const darken = (hex, amt) => {
             const r = parseInt(hex.slice(1, 3), 16);
@@ -1639,11 +1671,20 @@ export class Renderer {
             const f = 1 - amt * 0.5;
             return rgb(r * f, g * f, b * f);
         };
-        const topCol = darken(tower.color, dmg);
-        const leftCol = darken(tower.darkColor, dmg);
-        const rightCol = darken(tower.darkColor, dmg * 0.7);
 
-        // ── Left (SW) side wall ──
+        // Mix team colour with concrete grey
+        const mix = (hex, grey, t) => {
+            const r1 = parseInt(hex.slice(1, 3), 16),
+                g1 = parseInt(hex.slice(3, 5), 16),
+                b1 = parseInt(hex.slice(5, 7), 16);
+            return rgb(r1 * (1 - t) + grey * t, g1 * (1 - t) + grey * t, b1 * (1 - t) + grey * t);
+        };
+
+        const topCol = darken(mix(wall.color, 160, 0.5), dmg);
+        const leftCol = darken(mix(wall.darkColor, 100, 0.5), dmg);
+        const rightCol = darken(mix(wall.darkColor, 120, 0.5), dmg * 0.7);
+
+        // Left (SW) wall
         ctx.fillStyle = leftCol;
         ctx.beginPath();
         ctx.moveTo(sx - bw, sy - h);
@@ -1653,7 +1694,7 @@ export class Renderer {
         ctx.closePath();
         ctx.fill();
 
-        // ── Right (SE) side wall ──
+        // Right (SE) wall
         ctx.fillStyle = rightCol;
         ctx.beginPath();
         ctx.moveTo(sx + bw, sy - h);
@@ -1663,7 +1704,7 @@ export class Renderer {
         ctx.closePath();
         ctx.fill();
 
-        // ── Top face ──
+        // Top face
         ctx.fillStyle = topCol;
         ctx.beginPath();
         ctx.moveTo(sx, sy - bd - h);
@@ -1673,55 +1714,280 @@ export class Renderer {
         ctx.closePath();
         ctx.fill();
 
-        // ── Damage cracks on top face ──
-        if (dmg > 0) {
-            this._drawDamageOverlay(ctx, sx, sy, h, frac, 0);
+        // Horizontal mortar line on top
+        if (h >= 5) {
+            ctx.strokeStyle = leftCol;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - bw * 0.6, sy - h + 1);
+            ctx.lineTo(sx + bw * 0.6, sy - h + 1);
+            ctx.stroke();
         }
 
-        // ── Battlements (only at high HP) ──
-        if (frac > 0.4) {
-            const mH = 5;
-            const mw = bw * 0.3;
+        if (frac < 1) this._drawDamageOverlay(ctx, sx, sy, h, frac, time);
+    }
+
+    /**
+     * Draw a 1×1 watch tower — twice wall height, with a gun barrel.
+     */
+    _drawWatchTower(ctx, tower, sx, sy, time) {
+        const frac = tower.damageFraction;
+        const cfg = BASE_STRUCTURES.baseTower;
+        const fullH = cfg.visHeight;
+        const h = Math.max(3, Math.round(fullH * frac));
+
+        const S = 0.45;
+        const bw = S * TW;
+        const bd = S * TH;
+
+        const dmg = 1 - frac;
+        const darken = (hex, amt) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            const f = 1 - amt * 0.5;
+            return rgb(r * f, g * f, b * f);
+        };
+
+        const topCol = darken(tower.color, dmg);
+        const leftCol = darken(tower.darkColor, dmg);
+        const rightCol = darken(tower.darkColor, dmg * 0.7);
+
+        // Left (SW) wall
+        ctx.fillStyle = leftCol;
+        ctx.beginPath();
+        ctx.moveTo(sx - bw, sy - h);
+        ctx.lineTo(sx, sy + bd - h);
+        ctx.lineTo(sx, sy + bd);
+        ctx.lineTo(sx - bw, sy);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right (SE) wall
+        ctx.fillStyle = rightCol;
+        ctx.beginPath();
+        ctx.moveTo(sx + bw, sy - h);
+        ctx.lineTo(sx, sy + bd - h);
+        ctx.lineTo(sx, sy + bd);
+        ctx.lineTo(sx + bw, sy);
+        ctx.closePath();
+        ctx.fill();
+
+        // Top face (platform)
+        ctx.fillStyle = topCol;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - bd - h);
+        ctx.lineTo(sx + bw, sy - h);
+        ctx.lineTo(sx, sy + bd - h);
+        ctx.lineTo(sx - bw, sy - h);
+        ctx.closePath();
+        ctx.fill();
+
+        // Platform edge (darker line)
+        ctx.strokeStyle = leftCol;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - bd - h);
+        ctx.lineTo(sx + bw, sy - h);
+        ctx.lineTo(sx, sy + bd - h);
+        ctx.lineTo(sx - bw, sy - h);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Crenellations at top
+        if (frac > 0.3) {
+            const mH = 4;
+            const mw = bw * 0.25;
             ctx.fillStyle = leftCol;
-            // Four small merlon blocks at diamond corners
             const merlons = [
                 [sx, sy - bd - h - mH],
-                [sx + bw, sy - h - mH],
-                [sx, sy + bd - h - mH],
-                [sx - bw, sy - h - mH],
+                [sx + bw * 0.7, sy - h - mH + 2],
+                [sx - bw * 0.7, sy - h - mH + 2],
             ];
             for (const [mx, my] of merlons) {
                 ctx.fillRect(mx - mw / 2, my, mw, mH);
             }
         }
 
-        // ── Flag pole + flag ──
-        const flagX = sx,
-            flagY = sy - bd - h - 18;
-        ctx.strokeStyle = "#aaa";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - bd - h);
-        ctx.lineTo(flagX, flagY);
-        ctx.stroke();
+        // Gun barrel (rotates toward target)
+        if (frac > 0.2) {
+            const gunLen = 10;
+            const gunY = sy - h - 2;
+            const angle = tower.turretAngle;
+            // Project barrel tip through isometric transform
+            const dx = Math.cos(angle) * gunLen;
+            const dy = Math.sin(angle) * gunLen * 0.5; // iso squish
+            ctx.strokeStyle = "#555";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(sx, gunY);
+            ctx.lineTo(sx + dx, gunY + dy);
+            ctx.stroke();
+            // Muzzle
+            ctx.fillStyle = "#666";
+            ctx.beginPath();
+            ctx.arc(sx + dx, gunY + dy, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
-        ctx.fillStyle = tower.color;
-        ctx.beginPath();
-        ctx.moveTo(flagX, flagY);
-        ctx.lineTo(flagX + 10, flagY + 4);
-        ctx.lineTo(flagX, flagY + 8);
-        ctx.closePath();
-        ctx.fill();
-
-        // ── HP bar ──
-        const barW = 34,
-            barH = 5;
+        // HP bar
+        const barW = 30,
+            barH = 4;
         const barX = sx - barW / 2,
-            barY = flagY - 10;
+            barY = sy - h - 14;
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
         ctx.fillStyle = frac > 0.5 ? "#4a4" : frac > 0.25 ? "#da4" : "#d44";
         ctx.fillRect(barX, barY, barW * frac, barH);
+
+        if (frac < 1) this._drawDamageOverlay(ctx, sx, sy, h, frac, time);
+    }
+
+    /**
+     * Draw a 1×2 HQ army tent.  Peaked roof, team-coloured canvas.
+     */
+    /**
+     * Draw a 1x2 HQ building as a simple cuboid spanning 2 tiles.
+     * Same isometric block approach as walls but using the exact
+     * 2-tile diamond footprint.  Team-coloured, shrinks with damage.
+     */
+    _drawBaseHQ(ctx, hq, sx, sy, time) {
+        const frac = hq.damageFraction;
+        const fullH = BASE_STRUCTURES.baseHQ.visHeight;
+        const h = Math.max(3, Math.round(fullH * frac));
+
+        const dmg = 1 - frac;
+        const darken = (hex, amt) => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            const f = 1 - amt * 0.5;
+            return rgb(r * f, g * f, b * f);
+        };
+
+        // Exact 2-tile isometric diamond vertices relative to entity centre
+        const isHoriz = hq.tilePositions[1].gx !== hq.tilePositions[0].gx;
+        const hw = TW / 4,
+            hh = (3 * TH) / 4;
+        const lw = (3 * TW) / 4,
+            lh = TH / 4;
+        let N, E, S, W;
+        if (isHoriz) {
+            N = { x: sx - hw, y: sy - hh };
+            E = { x: sx + lw, y: sy + lh };
+            S = { x: sx + hw, y: sy + hh };
+            W = { x: sx - lw, y: sy - lh };
+        } else {
+            N = { x: sx + hw, y: sy - hh };
+            E = { x: sx + lw, y: sy - lh };
+            S = { x: sx - hw, y: sy + hh };
+            W = { x: sx - lw, y: sy + lh };
+        }
+
+        const topCol = darken(hq.color, dmg);
+        const leftCol = darken(hq.darkColor, dmg);
+        const rightCol = darken(hq.darkColor, dmg * 0.7);
+
+        // -- Back walls (fill behind the visible faces) --
+
+        // NE back wall (N->E)
+        ctx.fillStyle = rightCol;
+        ctx.beginPath();
+        ctx.moveTo(N.x, N.y - h);
+        ctx.lineTo(E.x, E.y - h);
+        ctx.lineTo(E.x, E.y);
+        ctx.lineTo(N.x, N.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // NW back wall (W->N)
+        ctx.fillStyle = leftCol;
+        ctx.beginPath();
+        ctx.moveTo(W.x, W.y - h);
+        ctx.lineTo(N.x, N.y - h);
+        ctx.lineTo(N.x, N.y);
+        ctx.lineTo(W.x, W.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // -- Front walls --
+
+        // Left (SW) wall: W->S
+        ctx.fillStyle = leftCol;
+        ctx.beginPath();
+        ctx.moveTo(W.x, W.y - h);
+        ctx.lineTo(S.x, S.y - h);
+        ctx.lineTo(S.x, S.y);
+        ctx.lineTo(W.x, W.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right (SE) wall: S->E
+        ctx.fillStyle = rightCol;
+        ctx.beginPath();
+        ctx.moveTo(S.x, S.y - h);
+        ctx.lineTo(E.x, E.y - h);
+        ctx.lineTo(E.x, E.y);
+        ctx.lineTo(S.x, S.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // -- Top face --
+        ctx.fillStyle = topCol;
+        ctx.beginPath();
+        ctx.moveTo(N.x, N.y - h);
+        ctx.lineTo(E.x, E.y - h);
+        ctx.lineTo(S.x, S.y - h);
+        ctx.lineTo(W.x, W.y - h);
+        ctx.closePath();
+        ctx.fill();
+
+        // -- Edge outlines --
+        ctx.strokeStyle = leftCol;
+        ctx.lineWidth = 0.7;
+        // Bottom visible edges
+        ctx.beginPath();
+        ctx.moveTo(W.x, W.y);
+        ctx.lineTo(S.x, S.y);
+        ctx.lineTo(E.x, E.y);
+        ctx.stroke();
+        // Top face outline
+        ctx.beginPath();
+        ctx.moveTo(N.x, N.y - h);
+        ctx.lineTo(E.x, E.y - h);
+        ctx.lineTo(S.x, S.y - h);
+        ctx.lineTo(W.x, W.y - h);
+        ctx.closePath();
+        ctx.stroke();
+        // Vertical corner edges
+        ctx.beginPath();
+        ctx.moveTo(W.x, W.y);
+        ctx.lineTo(W.x, W.y - h);
+        ctx.moveTo(S.x, S.y);
+        ctx.lineTo(S.x, S.y - h);
+        ctx.moveTo(E.x, E.y);
+        ctx.lineTo(E.x, E.y - h);
+        ctx.stroke();
+
+        // -- HP bar --
+        const topY = Math.min(N.y, W.y) - h;
+        const barW = 44,
+            barH = 5;
+        const barX = sx - barW / 2,
+            barY = topY - 12;
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        ctx.fillStyle = frac > 0.5 ? "#4a4" : frac > 0.25 ? "#da4" : "#d44";
+        ctx.fillRect(barX, barY, barW * frac, barH);
+        ctx.font = 'bold 9px "Courier New", monospace';
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText(`${Math.ceil(hq.hp)}/${hq.maxHp}`, sx, barY + barH + 9);
+
+        // -- Damage overlay --
+        if (frac < 1) {
+            this._drawDamageOverlay(ctx, sx, sy + hh, h, frac, time);
+        }
     }
 
     /* ── bullet drawing ───────────────────────────────────── */
@@ -1901,7 +2167,7 @@ export class Renderer {
 
     _drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
         const map = game.map;
-        const px = 2; // pixels per tile
+        const px = Math.max(1, Math.min(2, Math.floor(140 / Math.max(map.width, map.height)))); // scale to fit
         const mmW = map.width * px;
         const mmH = map.height * px;
         const pad = 10;
@@ -2006,16 +2272,25 @@ export class Renderer {
             }
         }
 
-        // Tower markers (larger)
-        for (const tw of game.towers) {
-            if (!tw.alive) continue;
-            ctx.fillStyle = tw.team === 1 ? "#ff6666" : "#6688ff";
-            const dx = mmX + tw.x * px;
-            const dy = mmY + tw.y * px;
-            ctx.fillRect(dx - 3, dy - 3, 7, 7);
-            ctx.strokeStyle = "#fff";
+        // Base compound markers
+        for (const base of game.bases) {
+            // Draw compound outline
+            const bOx = mmX + base.origin.x * px;
+            const bOy = mmY + base.origin.y * px;
+            ctx.strokeStyle = base.team === 1 ? "rgba(255,100,100,0.5)" : "rgba(100,140,255,0.5)";
             ctx.lineWidth = 0.5;
-            ctx.strokeRect(dx - 3, dy - 3, 7, 7);
+            ctx.strokeRect(bOx, bOy, 10 * px, 10 * px);
+
+            // HQ marker
+            if (base.hq?.alive) {
+                ctx.fillStyle = base.team === 1 ? "#ff6666" : "#6688ff";
+                const hx = mmX + base.hq.x * px;
+                const hy = mmY + base.hq.y * px;
+                ctx.fillRect(hx - 2, hy - 2, 5, 5);
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(hx - 2, hy - 2, 5, 5);
+            }
         }
 
         // Border highlight for this player
@@ -2038,16 +2313,17 @@ export class Renderer {
         ctx.textAlign = "center";
         const cx = vx + cw / 2;
 
-        // Tower HP for both teams
+        // HQ HP for both teams
         const barW = 150,
             barH = 14,
             gap = 20;
-        for (let i = 0; i < game.towers.length; i++) {
-            const tw = game.towers[i];
+        for (let i = 0; i < game.bases.length; i++) {
+            const base = game.bases[i];
+            const hq = base.hq;
             const x = i === 0 ? cx - barW - gap : cx + gap;
             const y = vy + 14;
-            const frac = tw.alive ? tw.hp / tw.maxHp : 0;
-            const label = tw.team === 1 ? "RED TOWER" : "BLUE TOWER";
+            const frac = hq?.alive ? hq.hp / hq.maxHp : 0;
+            const label = base.team === 1 ? "RED HQ" : "BLUE HQ";
 
             // Background
             ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -2055,7 +2331,7 @@ export class Renderer {
 
             // Label
             ctx.font = 'bold 11px "Courier New", monospace';
-            ctx.fillStyle = tw.color;
+            ctx.fillStyle = base.color;
             ctx.textAlign = i === 0 ? "right" : "left";
             ctx.fillText(label, i === 0 ? x + barW : x, y + 10);
 
@@ -2063,17 +2339,17 @@ export class Renderer {
             const barY = y + 14;
             ctx.fillStyle = "#222";
             ctx.fillRect(x, barY, barW, barH);
-            ctx.fillStyle = frac > 0.5 ? tw.color : frac > 0.25 ? "#da4" : "#d44";
+            ctx.fillStyle = frac > 0.5 ? base.color : frac > 0.25 ? "#da4" : "#d44";
             ctx.fillRect(x, barY, barW * frac, barH);
             ctx.strokeStyle = "#666";
             ctx.lineWidth = 1;
             ctx.strokeRect(x, barY, barW, barH);
 
-            // HP text (ceil for display when fractional from IFV bullets)
+            // HP text
             ctx.font = 'bold 10px "Courier New", monospace';
             ctx.fillStyle = "#fff";
             ctx.textAlign = "center";
-            ctx.fillText(`${Math.ceil(tw.hp)}/${tw.maxHp}`, x + barW / 2, barY + 11);
+            ctx.fillText(`${Math.ceil(hq?.hp ?? 0)}/${hq?.maxHp ?? 0}`, x + barW / 2, barY + 11);
         }
 
         // "VS" divider
@@ -2089,7 +2365,9 @@ export class Renderer {
                     ? "\u2716 DRONE"
                     : focusTank.vehicleType === "ifv"
                       ? "\u25C7 IFV"
-                      : "\u25C6 TANK";
+                      : focusTank.vehicleType === "spg"
+                        ? "\u25B2 SPG"
+                        : "\u25C6 TANK";
             ctx.font = 'bold 13px "Courier New", monospace';
             ctx.fillStyle = focusTank.color;
             ctx.textAlign = "center";
@@ -2105,10 +2383,10 @@ export class Renderer {
                     const dmg = Math.max(0, 1 - d / blastR);
                     if (dmg > bestDmg) bestDmg = dmg;
                 }
-                for (const tw of game.towers) {
-                    if (!tw.alive || tw.team === focusTank.team) continue;
-                    const d = distance(focusTank.x, focusTank.y, tw.x, tw.y);
-                    const edgeDist = Math.max(0, d - CONFIG.TOWER_RADIUS);
+                for (const s of game.baseStructures) {
+                    if (!s.alive || s.team === focusTank.team) continue;
+                    const d = distance(focusTank.x, focusTank.y, s.x, s.y);
+                    const edgeDist = Math.max(0, d - s.size);
                     const dmg = Math.max(0, 1 - edgeDist / blastR);
                     if (dmg > bestDmg) bestDmg = dmg;
                 }

@@ -81,12 +81,12 @@ describe("Pathfinder", () => {
         assert.ok(path, "should navigate the zigzag");
     });
 
-    it("paths between tower positions on random maps", () => {
+    it("paths between base compounds on random maps", () => {
         for (let i = 0; i < 5; i++) {
             const map = new GameMap();
-            const [tp1, tp2] = map.findTowerPositions();
+            const [l1, l2] = map.buildBaseCompounds();
             const pf = new Pathfinder(map);
-            const path = pf.findPath(tp1.x, tp1.y, tp2.x, tp2.y);
+            const path = pf.findPath(l1.hqCenter.x, l1.hqCenter.y, l2.hqCenter.x, l2.hqCenter.y);
             assert.ok(path, `map seed ${map.seed}: should find cross-map path`);
             assert.ok(path.length > 5, "path should have meaningful length");
         }

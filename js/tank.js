@@ -10,22 +10,26 @@
  * is  angle + turretAngle.  When the hull rotates, the turret rotates
  * with it automatically.
  *
- * Directional armour:
- *   - Front hit  → turret disabled (can still move and fire forward)
- *   - Side hit   → track on that side disabled (can only pivot)
- *   - Rear hit   → instant kill
- *   - Second hit → destroyed regardless of direction
+ * Directional armour (data-driven — see VEHICLES[type].armour):
+ *   Each vehicle type declares its own armour profile in config.js:
+ *     hp               — total damage to destroy
+ *     subsystemThreshold — damage at which first subsystem is disabled
+ *     rearInstantKill  — full-damage rear hit = instant kill
+ *     subsystems       — maps hit-zone → subsystem key
+ *
+ *   applyHit() reads this table generically — no vehicle-specific
+ *   branching.  Adding a new vehicle or changing durability is purely
+ *   a config change.
  *
  * Vehicle types:
- *   - 'tank'    — default, independent turret, 2-hit armour
- *   - 'ifv' — fixed forward gun, 1-hit kill, faster, rapid fire
- *   - 'drone'   — FPV kamikaze quadcopter, flies over terrain,
- *                  detonates on contact for 1.0 damage, 1-hit kill
- *   - 'spg'    — self-propelled gun, hold fire to charge range,
- *                  release to lob arcing shell over terrain, 1-hit kill
+ *   - 'tank'  — independent turret, 2 HP, subsystems at 1 HP
+ *   - 'ifv'   — fixed forward gun, 4 HP, track subsystems at 2 HP
+ *   - 'drone' — FPV kamikaze, 0.25 HP (one tower shot kills), no subsystems
+ *   - 'spg'   — hold-to-charge artillery, 5 HP, subsystems at 2 HP
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
+import { GameEntity } from "./entity.js";
 import { normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
@@ -37,31 +41,34 @@ export const HIT_ZONE = {
     REAR: "rear",
 };
 
-export class Tank {
-    constructor(playerNumber, color, darkColor) {
-        this.playerNumber = playerNumber;
-        this.color = color;
-        this.darkColor = darkColor;
+/* ── Subsystem key → Tank property mapping ────────────────── */
 
-        // World-space state
-        this.x = 0;
-        this.y = 0;
+const SUBSYSTEM_PROPS = {
+    turret: "turretDisabled",
+    leftTrack: "leftTrackDisabled",
+    rightTrack: "rightTrackDisabled",
+};
+
+export class Tank extends GameEntity {
+    constructor(playerNumber, color, darkColor) {
+        super("tank", 0, color, darkColor); // team set by Game later
+        this.playerNumber = playerNumber;
+
+        // Hull / turret rotation
         this.angle = 0; // hull angle (radians – 0 = east in world space)
         this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
-        this.team = 0; // 1 = red, 2 = blue (set by Game)
 
         // Vehicle type
-        this.vehicleType = "tank"; // 'tank' or 'ifv'
+        this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg'
 
         // Gameplay
-        this.alive = true;
         this.score = 0;
         this.fireCooldown = 0;
         this.respawnTimer = 0;
 
-        // Subsystem damage
-        this.damaged = false; // true after first non-rear hit
-        this.damageAccum = 0; // partial damage accumulator (for IFV bullets)
+        // Subsystem damage (set by the data-driven applyHit)
+        this.damaged = false; // true after subsystem threshold crossed
+        this.damageAccum = 0; // accumulated damage (unified HP pool)
         this.turretDisabled = false; // front hit: can't rotate turret
         this.leftTrackDisabled = false; // left-side hit: can't drive straight
         this.rightTrackDisabled = false; // right-side hit: can't drive straight
@@ -95,6 +102,30 @@ export class Tank {
     /** Collision radius — varies by vehicle type. */
     get size() {
         return VEHICLES[this.vehicleType].size;
+    }
+
+    /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed). */
+    get hpFraction() {
+        const armour = VEHICLES[this.vehicleType].armour;
+        return Math.max(0, 1 - this.damageAccum / armour.hp);
+    }
+
+    /* ── GameEntity capability overrides ──────────────────── */
+
+    get targetType() {
+        return this.vehicleType;
+    }
+    get isVehicle() {
+        return true;
+    }
+    get collidable() {
+        return true;
+    }
+    get mobile() {
+        return true;
+    }
+    get isShooter() {
+        return this.vehicleType !== "drone";
     }
 
     /* ── per-frame update ─────────────────────────────────── */
@@ -222,72 +253,72 @@ export class Tank {
     }
 
     /**
-     * Apply a hit to this tank.
+     * Apply a hit to this vehicle.  Behaviour is entirely data-driven
+     * by the armour profile in VEHICLES[vehicleType].armour.
      *
      * @param {string} zone    one of HIT_ZONE values
-     * @param {number} damage  damage amount (1.0 = tank bullet, 0.25 = IFV bullet)
-     * @returns {string}  'damaged' if subsystem knocked out,
-     *                     'destroyed' if killed,
-     *                     'absorbed' if partial damage accumulated
+     * @param {number} damage  damage amount (1.0 = tank shell, 0.25 = IFV burst, 0.1 = tower)
+     * @returns {string}  'damaged'   — subsystem knocked out (first time)
+     *                     'destroyed' — vehicle killed
+     *                     'absorbed'  — damage counted but no state change yet
      */
     applyHit(zone, damage = 1.0) {
-        // IFV / Drone: any hit kills instantly (1-hit armour)
-        if (this.vehicleType === "ifv" || this.vehicleType === "drone" || this.vehicleType === "spg") {
+        const armour = VEHICLES[this.vehicleType].armour;
+
+        // ── Rear instant kill (full-damage hit, e.g. ammo rack detonation)
+        if (armour.rearInstantKill && zone === HIT_ZONE.REAR && damage >= 1.0) {
             this.kill();
             return "destroyed";
         }
 
-        // Full-damage rear hit → instant kill
-        if (zone === HIT_ZONE.REAR && damage >= 1.0) {
+        // ── Already past subsystem phase + full-damage hit → kill
+        if (this.damaged && armour.subsystemThreshold != null && damage >= 1.0) {
             this.kill();
             return "destroyed";
         }
 
-        // Already damaged + full-damage hit → instant kill
-        if (this.damaged && damage >= 1.0) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // Accumulate damage
+        // ── Accumulate damage
         this.damageAccum += damage;
 
-        if (this.damageAccum >= 1.0) {
-            this.damageAccum -= 1.0;
+        // ── Destruction: total damage exceeds HP
+        if (this.damageAccum >= armour.hp) {
+            this.kill();
+            return "destroyed";
+        }
 
-            // Accumulated rear zone → kill
-            if (zone === HIT_ZONE.REAR) {
+        // ── Subsystem trigger (first time accumulated damage crosses threshold)
+        if (armour.subsystemThreshold != null && !this.damaged && this.damageAccum >= armour.subsystemThreshold) {
+            // Rear zone at threshold → kill (accumulated small-arms to rear)
+            if (armour.rearInstantKill && zone === HIT_ZONE.REAR) {
                 this.kill();
                 return "destroyed";
             }
 
-            if (this.damaged) {
-                // Second full hit → destroyed
-                this.kill();
-                return "destroyed";
-            }
-
-            // First full hit: apply subsystem damage
             this.damaged = true;
-
-            switch (zone) {
-                case HIT_ZONE.FRONT:
-                    this.turretDisabled = true;
-                    // Lock turret forward when disabled
-                    this.turretAngle = 0;
-                    break;
-                case HIT_ZONE.SIDE_LEFT:
-                    this.leftTrackDisabled = true;
-                    break;
-                case HIT_ZONE.SIDE_RIGHT:
-                    this.rightTrackDisabled = true;
-                    break;
-            }
-
+            this._applySubsystem(armour, zone);
             return "damaged";
         }
 
         return "absorbed";
+    }
+
+    /**
+     * Activate the subsystem effect for the given hit zone.
+     * Reads the armour.subsystems map to decide what to disable.
+     */
+    _applySubsystem(armour, zone) {
+        const key = armour.subsystems[zone];
+        if (!key) return; // zone has no subsystem mapping — damage only
+
+        const prop = SUBSYSTEM_PROPS[key];
+        if (prop) {
+            this[prop] = true;
+        }
+
+        // Side-effect: lock turret forward when turret is disabled
+        if (key === "turret") {
+            this.turretAngle = 0;
+        }
     }
 
     /* ── death / respawn ──────────────────────────────────── */

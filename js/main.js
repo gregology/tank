@@ -22,6 +22,7 @@ const menu = new Menu();
 let game = null;
 let state = "menu"; // 'menu' | 'playing'
 let lastMode = "duel_split"; // remember for rematch
+let lastSettings = {}; // remember settings for rematch
 
 /* ── Game loop ────────────────────────────────────────────── */
 
@@ -38,7 +39,8 @@ function loop(timestamp) {
         if (menu.confirmed) {
             menu.confirmed = false;
             lastMode = menu.selectedMode;
-            startGame(lastMode);
+            lastSettings = menu.settings ?? {};
+            startGame(lastMode, lastSettings);
         }
     } else {
         // ── Playing ──
@@ -69,9 +71,9 @@ function loop(timestamp) {
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
-function startGame(mode) {
+function startGame(mode, settings = {}) {
     audio.init();
-    game = new Game(input, mode);
+    game = new Game(input, mode, settings);
     audio.hookIntoGame(game);
     state = "playing";
 }
