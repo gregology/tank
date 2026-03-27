@@ -6,7 +6,7 @@
  * correctly occludes entities behind it.
  */
 
-import { CONFIG, TILES as T, VEHICLES, BASE_STRUCTURES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "./config.js";
 import { clamp, distance, worldToScreen } from "./utils.js";
 
 const TW = CONFIG.TILE_WIDTH;
@@ -918,9 +918,9 @@ export class Renderer {
         const mountTop = -(WHEEL_H + HULL_H + MOUNT_H);
         const barrTop = -(WHEEL_H + HULL_H + BARR_H);
 
-        // Olive-tinted hull: mix team colour with khaki
-        const hullColor = tank.color;
-        const hullDark = tank.darkColor;
+        // Darken hull colour when damaged
+        const hullColor = tank.damaged ? tank.darkColor : tank.color;
+        const hullDark = tank.damaged ? "#1a1a1a" : tank.darkColor;
 
         /* ── 1. Shadow ──────────────────────────────────── */
         fill(
@@ -941,31 +941,34 @@ export class Renderer {
         const wheelR = 4.5; // much larger than before (was 3.2)
         for (const wx of wheelXs) {
             for (const side of [-1, 1]) {
+                const sideDisabled = side < 0 ? tank.leftTrackDisabled : tank.rightTrackDisabled;
                 const wc = lift([P(wx, SWO * side)], wheelTop)[0];
-                // Tyre (dark)
-                ctx.fillStyle = "#1a1a1a";
+                // Tyre (dark, red-brown if track disabled)
+                ctx.fillStyle = sideDisabled ? "#5a2a1a" : "#1a1a1a";
                 ctx.beginPath();
                 ctx.arc(wc[0], wc[1], wheelR, 0, Math.PI * 2);
                 ctx.fill();
                 // Rim (lighter)
-                ctx.fillStyle = "#555";
+                ctx.fillStyle = sideDisabled ? "#6a3a2a" : "#555";
                 ctx.beginPath();
                 ctx.arc(wc[0], wc[1], wheelR * 0.5, 0, Math.PI * 2);
                 ctx.fill();
-                // Spinning hub cross
-                const spA = tank.treadPhase * Math.PI * 2;
-                ctx.strokeStyle = "#777";
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                const dx1 = Math.cos(spA) * wheelR * 0.35;
-                const dy1 = Math.sin(spA) * wheelR * 0.35;
-                ctx.moveTo(wc[0] - dx1, wc[1] - dy1 * 0.5);
-                ctx.lineTo(wc[0] + dx1, wc[1] + dy1 * 0.5);
-                const dx2 = Math.cos(spA + Math.PI / 2) * wheelR * 0.35;
-                const dy2 = Math.sin(spA + Math.PI / 2) * wheelR * 0.35;
-                ctx.moveTo(wc[0] - dx2, wc[1] - dy2 * 0.5);
-                ctx.lineTo(wc[0] + dx2, wc[1] + dy2 * 0.5);
-                ctx.stroke();
+                // Spinning hub cross (skip if disabled)
+                if (!sideDisabled) {
+                    const spA = tank.treadPhase * Math.PI * 2;
+                    ctx.strokeStyle = "#777";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    const dx1 = Math.cos(spA) * wheelR * 0.35;
+                    const dy1 = Math.sin(spA) * wheelR * 0.35;
+                    ctx.moveTo(wc[0] - dx1, wc[1] - dy1 * 0.5);
+                    ctx.lineTo(wc[0] + dx1, wc[1] + dy1 * 0.5);
+                    const dx2 = Math.cos(spA + Math.PI / 2) * wheelR * 0.35;
+                    const dy2 = Math.sin(spA + Math.PI / 2) * wheelR * 0.35;
+                    ctx.moveTo(wc[0] - dx2, wc[1] - dy2 * 0.5);
+                    ctx.lineTo(wc[0] + dx2, wc[1] + dy2 * 0.5);
+                    ctx.stroke();
+                }
             }
         }
 
@@ -1144,9 +1147,9 @@ export class Renderer {
         const oliveDark = [50, 58, 32];
         const mix = (a, b, t) =>
             `rgb(${(a[0] * (1 - t) + b[0] * t) | 0},${(a[1] * (1 - t) + b[1] * t) | 0},${(a[2] * (1 - t) + b[2] * t) | 0})`;
-        const hullColor = mix(teamRGB, olive, 0.45);
-        const hullDark = mix(teamDarkRGB, oliveDark, 0.45);
-        const hullAccent = mix(teamRGB, olive, 0.6);
+        const hullColor = tank.damaged ? mix(teamDarkRGB, oliveDark, 0.45) : mix(teamRGB, olive, 0.45);
+        const hullDark = tank.damaged ? "#1a1a1a" : mix(teamDarkRGB, oliveDark, 0.45);
+        const hullAccent = tank.damaged ? mix(teamDarkRGB, oliveDark, 0.6) : mix(teamRGB, olive, 0.6);
 
         /* ── SPG dimensions — MUCH longer chassis, rear turret ── */
         const THL = 0.5; // track half-length (much longer than tank 0.38)
@@ -1193,11 +1196,15 @@ export class Renderer {
             "rgba(0,0,0,0.2)",
         );
 
-        /* ── 2. Tracks (wider, heavier) ── */
+        /* ── 2. Tracks (wider, heavier — red-brown if disabled) ── */
+        const lTrackColor = tank.leftTrackDisabled ? "#5a2a1a" : "#282828";
+        const lTrackWall = tank.leftTrackDisabled ? "#3a1a0a" : "#0e0e0e";
         const lTrack = lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop);
-        slab(lTrack, TRACK_H, "#282828", "#0e0e0e");
+        slab(lTrack, TRACK_H, lTrackColor, lTrackWall);
+        const rTrackColor = tank.rightTrackDisabled ? "#5a2a1a" : "#282828";
+        const rTrackWall = tank.rightTrackDisabled ? "#3a1a0a" : "#0e0e0e";
         const rTrack = lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop);
-        slab(rTrack, TRACK_H, "#282828", "#0e0e0e");
+        slab(rTrack, TRACK_H, rTrackColor, rTrackWall);
 
         // Tread marks (more treads = heavier vehicle)
         const TREAD_N = 14;
@@ -1354,8 +1361,14 @@ export class Renderer {
                 [PT(x1, BHW)[0], PT(x1, BHW)[1] + elev1],
                 [PT(x0, BHW)[0], PT(x0, BHW)[1] + elev0],
             ];
-            const shade = i % 2 === 0 ? "#5a5a5a" : "#606060";
-            slab(seg, BARR_H, shade, "#333");
+            const shade = tank.turretDisabled
+                ? i % 2 === 0
+                    ? "#3a3a3a"
+                    : "#404040"
+                : i % 2 === 0
+                  ? "#5a5a5a"
+                  : "#606060";
+            slab(seg, BARR_H, shade, tank.turretDisabled ? "#222" : "#333");
         }
 
         // Muzzle brake (wide, distinctive)
@@ -1392,8 +1405,10 @@ export class Renderer {
             ],
             turrTop,
         );
-        slab(tPts, TURR_H, mix(teamRGB, olive, 0.3), hullDark);
-        outline(tPts, hullDark, 0.7);
+        const turretCol = tank.turretDisabled ? "#555" : mix(teamRGB, olive, 0.3);
+        const turretDark = tank.turretDisabled ? "#333" : hullDark;
+        slab(tPts, TURR_H, turretCol, turretDark);
+        outline(tPts, turretDark, 0.7);
 
         // Turret side armour plates (raised panels)
         for (const side of [-1, 1]) {
@@ -1659,7 +1674,9 @@ export class Renderer {
 
         // Mix team colour with concrete grey
         const mix = (hex, grey, t) => {
-            const r1 = parseInt(hex.slice(1, 3), 16), g1 = parseInt(hex.slice(3, 5), 16), b1 = parseInt(hex.slice(5, 7), 16);
+            const r1 = parseInt(hex.slice(1, 3), 16),
+                g1 = parseInt(hex.slice(3, 5), 16),
+                b1 = parseInt(hex.slice(5, 7), 16);
             return rgb(r1 * (1 - t) + grey * t, g1 * (1 - t) + grey * t, b1 * (1 - t) + grey * t);
         };
 
@@ -1814,8 +1831,10 @@ export class Renderer {
         }
 
         // HP bar
-        const barW = 30, barH = 4;
-        const barX = sx - barW / 2, barY = sy - h - 14;
+        const barW = 30,
+            barH = 4;
+        const barX = sx - barW / 2,
+            barY = sy - h - 14;
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
         ctx.fillStyle = frac > 0.5 ? "#4a4" : frac > 0.25 ? "#da4" : "#d44";
@@ -1848,8 +1867,10 @@ export class Renderer {
 
         // Exact 2-tile isometric diamond vertices relative to entity centre
         const isHoriz = hq.tilePositions[1].gx !== hq.tilePositions[0].gx;
-        const hw = TW / 4, hh = (3 * TH) / 4;
-        const lw = (3 * TW) / 4, lh = TH / 4;
+        const hw = TW / 4,
+            hh = (3 * TH) / 4;
+        const lw = (3 * TW) / 4,
+            lh = TH / 4;
         let N, E, S, W;
         if (isHoriz) {
             N = { x: sx - hw, y: sy - hh };
@@ -1863,8 +1884,8 @@ export class Renderer {
             W = { x: sx - lw, y: sy + lh };
         }
 
-        const topCol   = darken(hq.color, dmg);
-        const leftCol  = darken(hq.darkColor, dmg);
+        const topCol = darken(hq.color, dmg);
+        const leftCol = darken(hq.darkColor, dmg);
         const rightCol = darken(hq.darkColor, dmg * 0.7);
 
         // -- Back walls (fill behind the visible faces) --
@@ -1940,15 +1961,20 @@ export class Renderer {
         ctx.stroke();
         // Vertical corner edges
         ctx.beginPath();
-        ctx.moveTo(W.x, W.y); ctx.lineTo(W.x, W.y - h);
-        ctx.moveTo(S.x, S.y); ctx.lineTo(S.x, S.y - h);
-        ctx.moveTo(E.x, E.y); ctx.lineTo(E.x, E.y - h);
+        ctx.moveTo(W.x, W.y);
+        ctx.lineTo(W.x, W.y - h);
+        ctx.moveTo(S.x, S.y);
+        ctx.lineTo(S.x, S.y - h);
+        ctx.moveTo(E.x, E.y);
+        ctx.lineTo(E.x, E.y - h);
         ctx.stroke();
 
         // -- HP bar --
         const topY = Math.min(N.y, W.y) - h;
-        const barW = 44, barH = 5;
-        const barX = sx - barW / 2, barY = topY - 12;
+        const barW = 44,
+            barH = 5;
+        const barX = sx - barW / 2,
+            barY = topY - 12;
         ctx.fillStyle = "rgba(0,0,0,0.6)";
         ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
         ctx.fillStyle = frac > 0.5 ? "#4a4" : frac > 0.25 ? "#da4" : "#d44";
@@ -1964,7 +1990,7 @@ export class Renderer {
         }
     }
 
-        /* ── bullet drawing ───────────────────────────────────── */
+    /* ── bullet drawing ───────────────────────────────────── */
 
     _drawBullet(ctx, bullet, sx, sy, time) {
         if (bullet.arcing) {
@@ -2339,7 +2365,9 @@ export class Renderer {
                     ? "\u2716 DRONE"
                     : focusTank.vehicleType === "ifv"
                       ? "\u25C7 IFV"
-                      : "\u25C6 TANK";
+                      : focusTank.vehicleType === "spg"
+                        ? "\u25B2 SPG"
+                        : "\u25C6 TANK";
             ctx.font = 'bold 13px "Courier New", monospace';
             ctx.fillStyle = focusTank.color;
             ctx.textAlign = "center";

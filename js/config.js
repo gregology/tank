@@ -48,9 +48,6 @@ export const CONFIG = {
     BLDG_MEDIUM_HP: 5,
     BLDG_LARGE_HP: 8,
 
-    // ── Team ────────────────────────────────────────────────
-    TEAM_SIZE: 5, // tanks per team (including human)
-
     // ── Bullet ───────────────────────────────────────────────
     BULLET_RADIUS: 3, // screen-pixel radius
     BULLET_LIFETIME: 3.0,
@@ -176,6 +173,22 @@ export const MODE_DEFS = {
  *                 a nearby low-priority target can still beat a distant
  *                 high-priority one.  Adding a new vehicle type only
  *                 requires a new entry here with its own targetPriority.
+ *
+ * armour:         data-driven damage model.  Every vehicle declares:
+ *   hp               total damage required to destroy the vehicle
+ *   subsystemThreshold  accumulated damage at which the first subsystem
+ *                       is knocked out (null = no subsystem phase, damage
+ *                       goes straight to destruction)
+ *   rearInstantKill  if true, a full-damage (>=1.0) rear hit kills
+ *                    instantly regardless of remaining HP
+ *   subsystems       map of hit-zone name -> subsystem key:
+ *                       "turret"     -> turretDisabled
+ *                       "leftTrack"  -> leftTrackDisabled
+ *                       "rightTrack" -> rightTrackDisabled
+ *                    Zones not listed deal damage but disable nothing.
+ *
+ * The applyHit() method in tank.js reads this table generically --
+ * adding a new vehicle or tweaking durability is purely a config change.
  */
 export const VEHICLES = {
     tank: {
@@ -184,12 +197,22 @@ export const VEHICLES = {
         turretSpeed: 2.0,
         size: 0.45,
         bulletSpeed: 9.0,
-        bulletDamage: 1.0,
+        bulletDamage: 3.0,
         bulletCooldown: 0.45,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
         targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, baseWall: 5, baseTower: 10, baseHQ: 10 },
+        armour: {
+            hp: 6,
+            subsystemThreshold: 3,
+            rearInstantKill: true,
+            subsystems: {
+                front: "turret",
+                side_left: "leftTrack",
+                side_right: "rightTrack",
+            },
+        },
     },
     ifv: {
         speed: 4.5,
@@ -203,6 +226,15 @@ export const VEHICLES = {
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
         targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, baseWall: 3, baseTower: 5, baseHQ: 10 },
+        armour: {
+            hp: 4,
+            subsystemThreshold: 2,
+            rearInstantKill: false,
+            subsystems: {
+                side_left: "leftTrack",
+                side_right: "rightTrack",
+            },
+        },
     },
     drone: {
         speed: 6.0,
@@ -213,11 +245,17 @@ export const VEHICLES = {
         bulletDamage: 0,
         bulletCooldown: 0,
         blastRadius: 2.5,
-        blastDamage: 1.0,
+        blastDamage: 5.0,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
         targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, baseWall: 0, baseTower: 0, baseHQ: 10 },
+        armour: {
+            hp: 0.1,
+            subsystemThreshold: null,
+            rearInstantKill: false,
+            subsystems: {},
+        },
     },
     spg: {
         speed: 2.0,
@@ -225,7 +263,7 @@ export const VEHICLES = {
         turretSpeed: 1.0,
         size: 0.5,
         bulletSpeed: 7.0,
-        bulletDamage: 1.5,
+        bulletDamage: 3.0,
         bulletCooldown: 3.0,
         chargeRate: 8.0,
         minRange: 4.0,
@@ -236,13 +274,23 @@ export const VEHICLES = {
         cameraLookAhead: 10.0,
         roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
         targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, baseWall: 0, baseTower: 5, baseHQ: 10 },
+        armour: {
+            hp: 5,
+            subsystemThreshold: 2,
+            rearInstantKill: true,
+            subsystems: {
+                front: "turret",
+                side_left: "leftTrack",
+                side_right: "rightTrack",
+            },
+        },
     },
 };
 
 /**
  * Base structure definitions.
  *
- * Parallel to VEHICLES — every gameplay value that varies between
+ * Parallel to VEHICLES -- every gameplay value that varies between
  * structure types lives here.  targetPriority only appears on
  * structures that can shoot (baseTower).
  */
@@ -258,7 +306,7 @@ export const BASE_STRUCTURES = {
         visHeight: 20,
         fireRange: 15,
         bulletSpeed: 13.0,
-        bulletDamage: 0.25,
+        bulletDamage: 0.1,
         bulletCooldown: 0.15,
         targetPriority: { spg: 3, tank: 3, drone: 10, ifv: 3 },
     },

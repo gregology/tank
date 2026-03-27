@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HIT_ZONE } from "../js/tank.js";
-import { Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
+import { BASE_STRUCTURES, Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
 
 describe("Tank", () => {
     it("starts alive with default properties", () => {
@@ -127,7 +127,7 @@ describe("Directional armour – subsystem damage", () => {
     it("front hit disables turret, locks turret forward", () => {
         const t = new Tank(1, "#c33", "#822");
         t.turretAngle = 0.5;
-        const result = t.applyHit(HIT_ZONE.FRONT);
+        const result = t.applyHit(HIT_ZONE.FRONT, VEHICLES.tank.bulletDamage);
         assert.equal(result, "damaged");
         assert.ok(t.damaged);
         assert.ok(t.turretDisabled);
@@ -137,7 +137,7 @@ describe("Directional armour – subsystem damage", () => {
 
     it("left side hit disables left track", () => {
         const t = new Tank(1, "#c33", "#822");
-        const result = t.applyHit(HIT_ZONE.SIDE_LEFT);
+        const result = t.applyHit(HIT_ZONE.SIDE_LEFT, VEHICLES.tank.bulletDamage);
         assert.equal(result, "damaged");
         assert.ok(t.leftTrackDisabled);
         assert.ok(!t.rightTrackDisabled);
@@ -146,7 +146,7 @@ describe("Directional armour – subsystem damage", () => {
 
     it("right side hit disables right track", () => {
         const t = new Tank(1, "#c33", "#822");
-        const result = t.applyHit(HIT_ZONE.SIDE_RIGHT);
+        const result = t.applyHit(HIT_ZONE.SIDE_RIGHT, VEHICLES.tank.bulletDamage);
         assert.equal(result, "damaged");
         assert.ok(t.rightTrackDisabled);
         assert.ok(!t.leftTrackDisabled);
@@ -155,16 +155,16 @@ describe("Directional armour – subsystem damage", () => {
 
     it("rear hit kills instantly", () => {
         const t = new Tank(1, "#c33", "#822");
-        const result = t.applyHit(HIT_ZONE.REAR);
+        const result = t.applyHit(HIT_ZONE.REAR, VEHICLES.tank.bulletDamage);
         assert.equal(result, "destroyed");
         assert.ok(!t.alive);
     });
 
     it("second hit from any direction destroys", () => {
         const t = new Tank(1, "#c33", "#822");
-        t.applyHit(HIT_ZONE.FRONT);
+        t.applyHit(HIT_ZONE.FRONT, VEHICLES.tank.bulletDamage);
         assert.ok(t.alive);
-        const result = t.applyHit(HIT_ZONE.SIDE_LEFT);
+        const result = t.applyHit(HIT_ZONE.SIDE_LEFT, VEHICLES.tank.bulletDamage);
         assert.equal(result, "destroyed");
         assert.ok(!t.alive);
     });
@@ -274,22 +274,60 @@ describe("IFV vehicle type", () => {
         assert.equal(t.fixedGun, true);
     });
 
-    it("IFV dies on any hit regardless of zone", () => {
-        for (const zone of [HIT_ZONE.FRONT, HIT_ZONE.SIDE_LEFT, HIT_ZONE.SIDE_RIGHT, HIT_ZONE.REAR]) {
-            const t = new Tank(1, "#c33", "#822");
-            t.vehicleType = "ifv";
-            const result = t.applyHit(zone);
-            assert.equal(result, "destroyed", `IFV should die from ${zone} hit`);
-            assert.ok(!t.alive);
-        }
-    });
-
-    it("IFV dies even from partial damage (0.25)", () => {
+    it("IFV survives multiple hits before destruction", () => {
         const t = new Tank(1, "#c33", "#822");
         t.vehicleType = "ifv";
-        const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
-        assert.equal(result, "destroyed");
+        // First hit (1.0 damage) should be absorbed (below threshold of 2)
+        const r1 = t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.equal(r1, "absorbed");
+        assert.ok(t.alive, "IFV should survive first hit");
+        // Second hit crosses threshold → subsystem damage
+        const r2 = t.applyHit(HIT_ZONE.SIDE_LEFT, 1.0);
+        assert.equal(r2, "damaged");
+        assert.ok(t.alive, "IFV should survive subsystem hit");
+        assert.ok(t.leftTrackDisabled, "IFV left track should be disabled");
+        // Third hit: damaged=true + damage>=1.0 → kill
+        const r3 = t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.equal(r3, "destroyed");
         assert.ok(!t.alive);
+    });
+
+    it("IFV destroyed by accumulated small-arms fire", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "ifv";
+        const armour = VEHICLES.ifv.armour;
+        // Tower bullets (0.1 damage each) — need hp/0.1 = 40 to destroy
+        let hitCount = 0;
+        while (t.alive) {
+            t.applyHit(HIT_ZONE.FRONT, 0.1);
+            hitCount++;
+            if (hitCount > 100) break; // safety
+        }
+        assert.ok(!t.alive);
+        assert.equal(hitCount, 40, `IFV should take ${armour.hp / 0.1} tower shots to destroy`);
+    });
+
+    it("IFV gets track damage at threshold", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "ifv";
+        // Accumulate to threshold with small hits
+        for (let i = 0; i < 7; i++) t.applyHit(HIT_ZONE.SIDE_RIGHT, 0.25);
+        assert.ok(!t.damaged, "should not trigger subsystem yet");
+        const r = t.applyHit(HIT_ZONE.SIDE_RIGHT, 0.25);
+        assert.equal(r, "damaged");
+        assert.ok(t.rightTrackDisabled, "IFV right track should be disabled");
+        assert.ok(t.alive);
+    });
+
+    it("IFV has no turret subsystem (front hit disables nothing)", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "ifv";
+        // Cross threshold with a front hit
+        t.damageAccum = 1.75;
+        const r = t.applyHit(HIT_ZONE.FRONT, 0.25);
+        assert.equal(r, "damaged");
+        assert.ok(!t.turretDisabled, "IFV has no turret subsystem");
+        assert.ok(t.alive);
     });
 
     it("IFV turret is fixed forward (turretAngle stays 0)", () => {
@@ -360,15 +398,17 @@ describe("IFV vehicle type", () => {
 });
 
 describe("Partial damage (IFV bullets)", () => {
-    it("4 IFV bullets (0.25 each) equal one tank hit", () => {
+    it("IFV bullets accumulate to trigger subsystem damage", () => {
         const t = new Tank(1, "#c33", "#822");
-        // Three partial hits: no effect yet
-        for (let i = 0; i < 3; i++) {
+        const threshold = VEHICLES.tank.armour.subsystemThreshold;
+        const hitsNeeded = Math.ceil(threshold / 0.25);
+        // One fewer than needed: no effect yet
+        for (let i = 0; i < hitsNeeded - 1; i++) {
             const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
             assert.equal(result, "absorbed");
             assert.equal(t.damaged, false);
         }
-        // Fourth hit triggers subsystem damage
+        // Final hit triggers subsystem damage
         const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
         assert.equal(result, "damaged");
         assert.ok(t.damaged);
@@ -376,46 +416,41 @@ describe("Partial damage (IFV bullets)", () => {
         assert.ok(t.alive);
     });
 
-    it("8 IFV bullets destroy a tank (4 to damage + 4 to kill)", () => {
+    it("IFV bullets destroy a tank (subsystem then kill)", () => {
         const t = new Tank(1, "#c33", "#822");
-        // First 4: subsystem damage
-        for (let i = 0; i < 4; i++) t.applyHit(HIT_ZONE.FRONT, 0.25);
+        const hp = VEHICLES.tank.armour.hp;
+        const totalHits = Math.ceil(hp / 0.25);
+        // Fire all but the last
+        for (let i = 0; i < totalHits - 1; i++) t.applyHit(HIT_ZONE.FRONT, 0.25);
         assert.ok(t.alive);
-        assert.ok(t.damaged);
-        // Next 4: kill
-        for (let i = 0; i < 3; i++) {
-            const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
-            assert.equal(result, "absorbed");
-        }
+        // Final hit kills
         const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
         assert.equal(result, "destroyed");
         assert.ok(!t.alive);
     });
 
-    it("4 IFV bullets to rear kills instantly", () => {
+    it("IFV bullets to rear kill at threshold", () => {
         const t = new Tank(1, "#c33", "#822");
-        for (let i = 0; i < 3; i++) {
+        const threshold = VEHICLES.tank.armour.subsystemThreshold;
+        const hitsNeeded = Math.ceil(threshold / 0.25);
+        for (let i = 0; i < hitsNeeded - 1; i++) {
             const result = t.applyHit(HIT_ZONE.REAR, 0.25);
             assert.equal(result, "absorbed");
         }
-        // Fourth rear hit should trigger rear kill
+        // Hit that crosses threshold on rear zone → kill
         const result = t.applyHit(HIT_ZONE.REAR, 0.25);
         assert.equal(result, "destroyed");
         assert.ok(!t.alive);
     });
 
-    it("mixed damage: 2 IFV hits + 1 tank hit triggers subsystem damage", () => {
+    it("mixed damage: IFV hits + tank shell triggers subsystem damage", () => {
         const t = new Tank(1, "#c33", "#822");
-        t.applyHit(HIT_ZONE.FRONT, 0.25); // 0.25
-        t.applyHit(HIT_ZONE.FRONT, 0.25); // 0.50
+        // Soften up with IFV fire (not enough to trigger subsystem alone)
+        t.applyHit(HIT_ZONE.FRONT, 0.25);
+        t.applyHit(HIT_ZONE.FRONT, 0.25);
         assert.equal(t.damaged, false);
-        // Tank hit (1.0) — total becomes 1.5, triggers subsystem damage
-        const result = t.applyHit(HIT_ZONE.FRONT, 1.0);
-        // damageAccum was 0.50, adding 1.0 → 1.50 ≥ 1.0 → trigger damage
-        // But wait, the fast path: damage >= 1.0 and !damaged → goes through accum
-        // Actually no: the code checks "damage >= 1.0 && rear" and "damaged && damage >= 1.0" first
-        // Neither applies (not rear, not damaged), so it accumulates: 0.5 + 1.0 = 1.5 >= 1.0
-        // Triggers first hit, damageAccum = 0.5
+        // Tank shell pushes past threshold (0.50 + 3.0 = 3.50 ≥ 3)
+        const result = t.applyHit(HIT_ZONE.FRONT, VEHICLES.tank.bulletDamage);
         assert.equal(result, "damaged");
         assert.ok(t.damaged);
         assert.ok(t.turretDisabled);
@@ -528,10 +563,11 @@ describe("Drone vehicle type", () => {
         }
     });
 
-    it("drone dies even from partial damage (0.25)", () => {
+    it("drone dies from a single tower bullet", () => {
         const t = new Tank(1, "#c33", "#822");
         t.vehicleType = "drone";
-        const result = t.applyHit(HIT_ZONE.FRONT, 0.25);
+        const towerDmg = BASE_STRUCTURES.baseTower.bulletDamage;
+        const result = t.applyHit(HIT_ZONE.FRONT, towerDmg);
         assert.equal(result, "destroyed");
         assert.ok(!t.alive);
     });
@@ -677,19 +713,19 @@ describe("Drone vehicle type", () => {
 });
 
 describe("Drone detonation – distance-based damage", () => {
-    it("point-blank detonation deals full damage (1.0)", () => {
-        // Damage at distance 0 = DRONE_ATTACK_DAMAGE * (1 - 0/BLAST_RADIUS) = 1.0
+    it("point-blank detonation deals full blast damage", () => {
         const dmg = VEHICLES.drone.blastDamage * Math.max(0, 1 - 0 / VEHICLES.drone.blastRadius);
-        assert.equal(dmg, 1.0);
+        assert.equal(dmg, VEHICLES.drone.blastDamage);
     });
 
     it("damage falls off linearly to 0 at blast radius edge", () => {
         const r = VEHICLES.drone.blastRadius;
-        const atEdge = VEHICLES.drone.blastDamage * Math.max(0, 1 - r / r);
+        const maxDmg = VEHICLES.drone.blastDamage;
+        const atEdge = maxDmg * Math.max(0, 1 - r / r);
         assert.equal(atEdge, 0);
 
-        const atHalf = VEHICLES.drone.blastDamage * Math.max(0, 1 - r / 2 / r);
-        assert.ok(Math.abs(atHalf - 0.5) < 0.01, `Half-radius should deal ~0.5 damage (got ${atHalf})`);
+        const atHalf = maxDmg * Math.max(0, 1 - r / 2 / r);
+        assert.ok(Math.abs(atHalf - maxDmg / 2) < 0.01, `Half-radius should deal ~50% damage (got ${atHalf})`);
     });
 
     it("detonation with no enemies nearby still kills the drone", () => {
@@ -701,9 +737,9 @@ describe("Drone detonation – distance-based damage", () => {
         assert.ok(drone.canFire());
     });
 
-    it("DRONE_BLAST_RADIUS > 0 and DRONE_ATTACK_DAMAGE === 1.0", () => {
+    it("drone blast radius and damage are configured", () => {
         assert.ok(VEHICLES.drone.blastRadius > 0);
-        assert.equal(VEHICLES.drone.blastDamage, 1.0);
+        assert.ok(VEHICLES.drone.blastDamage > 0);
     });
 });
 
@@ -714,14 +750,57 @@ describe("SPG vehicle type", () => {
         assert.equal(t.fixedGun, false);
     });
 
-    it("SPG dies on any hit regardless of zone (1-hit armour)", () => {
-        for (const zone of [HIT_ZONE.FRONT, HIT_ZONE.SIDE_LEFT, HIT_ZONE.SIDE_RIGHT, HIT_ZONE.REAR]) {
-            const t = new Tank(1, "#c33", "#822");
-            t.vehicleType = "spg";
-            const result = t.applyHit(zone);
-            assert.equal(result, "destroyed", `SPG should die from ${zone} hit`);
-            assert.ok(!t.alive);
+    it("SPG survives multiple hits before destruction", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        // First hit: accum=1.0, below threshold 2 → absorbed
+        const r1 = t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.equal(r1, "absorbed");
+        assert.ok(t.alive);
+        // Second hit: accum=2.0, crosses threshold → damaged
+        const r2 = t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.equal(r2, "damaged");
+        assert.ok(t.alive);
+        assert.ok(t.turretDisabled);
+        // Third hit: damaged=true + damage>=1.0 → destroyed
+        const r3 = t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.equal(r3, "destroyed");
+        assert.ok(!t.alive);
+    });
+
+    it("SPG rear hit kills instantly", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        const result = t.applyHit(HIT_ZONE.REAR, 1.0);
+        assert.equal(result, "destroyed");
+        assert.ok(!t.alive);
+    });
+
+    it("SPG destroyed by accumulated small-arms fire", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        const armour = VEHICLES.spg.armour;
+        let hitCount = 0;
+        while (t.alive) {
+            t.applyHit(HIT_ZONE.FRONT, 0.1);
+            hitCount++;
+            if (hitCount > 200) break;
         }
+        assert.ok(!t.alive);
+        // Allow ±1 for floating-point accumulation (50×0.1 ≈ 5.0)
+        const expected = Math.round(armour.hp / 0.1);
+        assert.ok(Math.abs(hitCount - expected) <= 1, `SPG should take ~${expected} tower shots, got ${hitCount}`);
+    });
+
+    it("SPG gets track damage at threshold", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.vehicleType = "spg";
+        // Accumulate just below threshold
+        t.damageAccum = 1.75;
+        const r = t.applyHit(HIT_ZONE.SIDE_LEFT, 0.25);
+        assert.equal(r, "damaged");
+        assert.ok(t.leftTrackDisabled);
+        assert.ok(t.alive);
     });
 
     it("SPG has larger collision radius than tank", () => {
@@ -736,8 +815,8 @@ describe("SPG vehicle type", () => {
         assert.ok(VEHICLES.spg.bulletCooldown > VEHICLES.tank.bulletCooldown);
     });
 
-    it("SPG has higher bullet damage than tank", () => {
-        assert.ok(VEHICLES.spg.bulletDamage > VEHICLES.tank.bulletDamage);
+    it("SPG has bullet damage >= tank", () => {
+        assert.ok(VEHICLES.spg.bulletDamage >= VEHICLES.tank.bulletDamage);
     });
 
     it("SPG turret rotates (not fixed like IFV)", () => {
@@ -882,13 +961,64 @@ describe("SPG splash damage", () => {
         assert.ok(VEHICLES.spg.splashRadius > 0);
     });
 
-    it("SPG bullet damage is 1.5 (kills IFV/drone/SPG on splash hit)", () => {
-        assert.equal(VEHICLES.spg.bulletDamage, 1.5);
+    it("SPG shell two-shots a tank (subsystem then kill)", () => {
+        const t = new Tank(1, "#c33", "#822");
+        t.applyHit(HIT_ZONE.FRONT, VEHICLES.spg.bulletDamage);
+        assert.ok(t.alive, "tank should survive first SPG shell");
+        assert.ok(t.damaged, "first SPG shell should trigger subsystem");
+        const r = t.applyHit(HIT_ZONE.FRONT, VEHICLES.spg.bulletDamage);
+        assert.equal(r, "destroyed", "second SPG shell should kill");
     });
 
     it("SPG charge rate and range are configured", () => {
         assert.ok(VEHICLES.spg.chargeRate > 0);
         assert.ok(VEHICLES.spg.minRange > 0);
         assert.ok(VEHICLES.spg.maxRange > VEHICLES.spg.minRange);
+    });
+});
+
+describe("Data-driven armour system", () => {
+    it("every vehicle has an armour config", () => {
+        for (const [name, v] of Object.entries(VEHICLES)) {
+            assert.ok(v.armour, `${name} should have armour config`);
+            assert.ok(typeof v.armour.hp === "number", `${name}.armour.hp should be a number`);
+            assert.ok(
+                typeof v.armour.rearInstantKill === "boolean",
+                `${name}.armour.rearInstantKill should be boolean`,
+            );
+            assert.ok(typeof v.armour.subsystems === "object", `${name}.armour.subsystems should be an object`);
+        }
+    });
+
+    it("hpFraction starts at 1.0 and decreases with damage", () => {
+        const t = new Tank(1, "#c33", "#822");
+        assert.equal(t.hpFraction, 1.0);
+        t.applyHit(HIT_ZONE.FRONT, 1.0);
+        assert.ok(t.hpFraction < 1.0);
+        assert.ok(t.hpFraction > 0);
+    });
+
+    it("drone hp is low enough that one tower shot kills", () => {
+        assert.ok(VEHICLES.drone.armour.hp <= BASE_STRUCTURES.baseTower.bulletDamage);
+    });
+
+    it("IFV and SPG survive a tank shell (1.0 damage)", () => {
+        for (const type of ["ifv", "spg"]) {
+            const t = new Tank(1, "#c33", "#822");
+            t.vehicleType = type;
+            t.applyHit(HIT_ZONE.FRONT, 1.0);
+            assert.ok(t.alive, `${type} should survive a 1.0 damage hit`);
+        }
+    });
+
+    it("subsystem keys map to valid Tank properties", () => {
+        for (const [name, v] of Object.entries(VEHICLES)) {
+            for (const [zone, key] of Object.entries(v.armour.subsystems)) {
+                assert.ok(
+                    key in { turret: 1, leftTrack: 1, rightTrack: 1 },
+                    `${name}.armour.subsystems.${zone} = "${key}" should be a known subsystem`,
+                );
+            }
+        }
     });
 });

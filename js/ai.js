@@ -36,7 +36,7 @@
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
-import { CONFIG, VEHICLES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 
 /* ── Role names ───────────────────────────────────────────── */
@@ -596,7 +596,7 @@ export class AIController {
         // Check objective (tower)
         if (objective?.alive) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (d < detonateRange + CONFIG.TOWER_RADIUS) {
+            if (d < detonateRange + BASE_STRUCTURES.baseHQ.size) {
                 this.keys[this.keyMap.fire] = true;
             }
         }

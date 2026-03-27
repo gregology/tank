@@ -16,8 +16,8 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { CONFIG, MODE_DEFS, VEHICLES, BASE_STRUCTURES, TILES as T } from "./config.js";
-import { Base, BaseWall, BaseHQ, BaseWatchTower } from "./entity.js";
+import { BASE_STRUCTURES, CONFIG, MODE_DEFS, TILES as T, VEHICLES } from "./config.js";
+import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
 import { GameMap } from "./map.js";
 import { ParticleSystem } from "./particles.js";
 import { Tank } from "./tank.js";
@@ -48,8 +48,6 @@ function pickVehicleType(allowed) {
     }
     return entries[entries.length - 1][0];
 }
-
-
 
 /* ================================================================== */
 
@@ -212,10 +210,7 @@ export class Game {
                 this._buildBase(layout1, 1, "#cc3333", "#882222"),
                 this._buildBase(layout2, 2, "#3366dd", "#223399"),
             ];
-            this._allStructures = [
-                ...this._bases[0].allStructures,
-                ...this._bases[1].allStructures,
-            ];
+            this._allStructures = [...this._bases[0].allStructures, ...this._bases[1].allStructures];
             // Populate tile → structure lookup
             for (const s of this._allStructures) {
                 for (const pos of s.tilePositions) {
@@ -696,8 +691,6 @@ export class Game {
         }
     }
 
-
-
     _pushFromStructures() {
         for (const t of this._allTanks) {
             if (!t.alive || t.vehicleType === "drone") continue;
@@ -844,6 +837,7 @@ export class Game {
                     if (w <= 0) continue;
                     const d = distance(tower.x, tower.y, e.x, e.y);
                     if (d > cfg.fireRange) continue;
+                    if (!this._hasLineOfSight(tower.x, tower.y, e.x, e.y)) continue;
                     const score = w / Math.max(d, 0.5);
                     if (score > bestScore) {
                         best = e;
@@ -856,11 +850,7 @@ export class Game {
                 const angle = Math.atan2(best.y - tower.y, best.x - tower.x);
                 tower.turretAngle = angle;
                 tower.fireCooldown = cfg.bulletCooldown;
-                const b = new Bullet(
-                    tower.x, tower.y, angle,
-                    0, tower.team,
-                    cfg.bulletDamage, cfg.bulletSpeed,
-                );
+                const b = new Bullet(tower.x, tower.y, angle, 0, tower.team, cfg.bulletDamage, cfg.bulletSpeed);
                 this.bullets.push(b);
                 const tipX = tower.x + Math.cos(angle) * 0.3;
                 const tipY = tower.y + Math.sin(angle) * 0.3;
@@ -880,6 +870,24 @@ export class Game {
         );
     }
 
+    /** Check if a straight line between two points is clear of projectile-blocking terrain.
+     *  Skips the shooter's own tile so structures (e.g. watch towers) don't block themselves. */
+    _hasLineOfSight(x1, y1, x2, y2) {
+        const dx = x2 - x1,
+            dy = y2 - y1;
+        const d = Math.hypot(dx, dy);
+        const n = Math.ceil(d * 3);
+        const originGx = Math.floor(x1),
+            originGy = Math.floor(y1);
+        for (let i = 1; i < n; i++) {
+            const t = i / n;
+            const sx = x1 + dx * t,
+                sy = y1 + dy * t;
+            if (Math.floor(sx) === originGx && Math.floor(sy) === originGy) continue;
+            if (this.map.blocksProjectile(sx, sy)) return false;
+        }
+        return true;
+    }
     _updateCamera(cam, tank, dt) {
         if (tank.alive) {
             const s = worldToScreen(tank.x, tank.y);
