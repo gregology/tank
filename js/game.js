@@ -52,11 +52,17 @@ function pickVehicleType(allowed) {
 /* ================================================================== */
 
 export class Game {
-    constructor(input, mode = "duel_split") {
+    constructor(input, mode = "duel_split", settings = {}) {
         this.input = input;
         this.mode = mode;
         this.modeDef = MODE_DEFS[mode];
-        this.map = new GameMap();
+        this.settings = settings;
+
+        // Build map with settings-driven dimensions and density
+        const mapW = settings.mapSize?.w;
+        const mapH = settings.mapSize?.h;
+        const density = settings.buildingDensity;
+        this.map = new GameMap(mapW, mapH, density);
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
         this.bullets = [];
@@ -141,7 +147,8 @@ export class Game {
         this.particles = new ParticleSystem();
         this.gameOver = false;
         this.winner = null;
-        this.map = new GameMap();
+        const s = this.settings;
+        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity);
         this._init();
     }
 
@@ -151,8 +158,16 @@ export class Game {
 
     _init() {
         const def = this.modeDef;
-        const [t1Humans, t1Bots] = def.teams[0];
-        const [t2Humans, t2Bots] = def.teams[1];
+        const s = this.settings;
+
+        // Compute team composition: if teamSize setting is present,
+        // adjust bot counts while keeping human counts from the mode def.
+        let [t1Humans, t1Bots] = def.teams[0];
+        let [t2Humans, t2Bots] = def.teams[1];
+        if (s.teamSize != null) {
+            t1Bots = Math.max(0, s.teamSize - t1Humans);
+            t2Bots = Math.max(0, s.teamSize - t2Humans);
+        }
         const keyMaps = [CONFIG.PLAYER1_KEYS, CONFIG.PLAYER2_KEYS];
 
         this._redTeam = [];
@@ -205,7 +220,8 @@ export class Game {
 
         // ── Base compounds (base modes only) ──
         if (def.bases) {
-            const [layout1, layout2] = this.map.buildBaseCompounds();
+            const baseType = this.settings.baseType ?? "compound";
+            const [layout1, layout2] = this.map.buildBaseCompounds(baseType);
             this._bases = [
                 this._buildBase(layout1, 1, "#cc3333", "#882222"),
                 this._buildBase(layout2, 2, "#3366dd", "#223399"),

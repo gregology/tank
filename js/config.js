@@ -100,6 +100,8 @@ export const CONFIG = {
  * Game mode definitions.
  *
  * Each mode describes:
+ *   category: 'duel' | 'skirmish' | 'battle' — determines which
+ *             game options are shown on the pre-game settings screen
  *   teams:    [[humans, bots], [humans, bots]]  — team 1 (red) and team 2 (blue)
  *   split:    true = split screen (requires 2 humans total)
  *   bases:    true = towers + tower-destruction win condition
@@ -107,9 +109,12 @@ export const CONFIG = {
  *   vehicles: array of allowed vehicle type keys from VEHICLES
  *             Humans always spawn as the first entry; bots pick randomly
  *             using spawnWeight from the allowed subset.
+ *   defaults: optional overrides for GAME_OPTIONS default indices/values
+ *             (e.g. { mapSize: 0 } to default to Small for duels)
  */
 export const MODE_DEFS = {
     duel_split: {
+        category: "duel",
         teams: [
             [1, 0],
             [1, 0],
@@ -117,8 +122,10 @@ export const MODE_DEFS = {
         split: true,
         bases: false,
         vehicles: ["tank"],
+        defaults: { mapSize: 0 },
     },
     duel_bot: {
+        category: "duel",
         teams: [
             [1, 0],
             [0, 1],
@@ -126,8 +133,10 @@ export const MODE_DEFS = {
         split: false,
         bases: false,
         vehicles: ["tank"],
+        defaults: { mapSize: 0 },
     },
     skirmish_coop: {
+        category: "skirmish",
         teams: [
             [2, 0],
             [0, 2],
@@ -135,8 +144,10 @@ export const MODE_DEFS = {
         split: true,
         bases: false,
         vehicles: ["tank"],
+        defaults: { mapSize: 0 },
     },
     battle_split: {
+        category: "battle",
         teams: [
             [1, 4],
             [1, 4],
@@ -146,6 +157,7 @@ export const MODE_DEFS = {
         vehicles: ["tank", "ifv", "drone", "spg"],
     },
     battle_coop: {
+        category: "battle",
         teams: [
             [2, 3],
             [0, 5],
@@ -155,6 +167,7 @@ export const MODE_DEFS = {
         vehicles: ["tank", "ifv", "drone", "spg"],
     },
     battle_solo: {
+        category: "battle",
         teams: [
             [1, 4],
             [0, 5],
@@ -164,6 +177,136 @@ export const MODE_DEFS = {
         vehicles: ["tank", "ifv", "drone", "spg"],
     },
 };
+
+/* ═══════════════════════════════════════════════════════════ *
+ *  Pre-game options                                           *
+ *                                                             *
+ *  GAME_OPTIONS     — master list of every option, defined    *
+ *                     once with type, labels, and defaults    *
+ *  CATEGORY_OPTIONS — which options each mode category shows  *
+ *  resolveSettings() — merge defaults + user overrides into   *
+ *                      a flat object with concrete values     *
+ * ═══════════════════════════════════════════════════════════ */
+
+/**
+ * Available game options.  Each defines its UI type, labels, allowed
+ * values, and a global default.
+ *
+ * 'enum' type:
+ *   choices[]       — { label, value } pairs shown in the UI
+ *   defaultIndex    — index into choices[] used when no override exists
+ *
+ * 'range' type:
+ *   min, max, step  — numeric range
+ *   default         — initial value when no override exists
+ */
+export const GAME_OPTIONS = [
+    {
+        key: "mapSize",
+        label: "MAP SIZE",
+        type: "enum",
+        choices: [
+            { label: "Small  (64\u00d764)", value: { w: 64, h: 64 } },
+            { label: "Medium (100\u00d7100)", value: { w: 100, h: 100 } },
+            { label: "Large  (140\u00d7140)", value: { w: 140, h: 140 } },
+        ],
+        defaultIndex: 1,
+    },
+    {
+        key: "buildingDensity",
+        label: "BUILDING DENSITY",
+        type: "enum",
+        choices: [
+            { label: "Sparse", value: 0.5 },
+            { label: "Normal", value: 1.0 },
+            { label: "Dense", value: 1.5 },
+        ],
+        defaultIndex: 1,
+    },
+    {
+        key: "baseType",
+        label: "BASE TYPE",
+        type: "enum",
+        choices: [
+            { label: "HQ Only", value: "hq_only" },
+            { label: "Compound", value: "compound" },
+        ],
+        defaultIndex: 1,
+    },
+    {
+        key: "teamSize",
+        label: "TEAM SIZE",
+        type: "range",
+        min: 2,
+        max: 16,
+        step: 1,
+        default: 5,
+    },
+];
+
+/** Which options are shown per mode category. */
+export const CATEGORY_OPTIONS = {
+    duel: ["mapSize", "buildingDensity"],
+    skirmish: ["mapSize", "buildingDensity"],
+    battle: ["mapSize", "buildingDensity", "baseType", "teamSize"],
+};
+
+/** Look up an option definition by key. */
+function _optionDef(key) {
+    return GAME_OPTIONS.find((o) => o.key === key);
+}
+
+/**
+ * Build the initial option indices/values for a mode, merging:
+ *   1. global GAME_OPTIONS defaults
+ *   2. per-mode MODE_DEFS[mode].defaults overrides
+ *
+ * Returns a Map<string, number> where:
+ *   enum  options → current choice index
+ *   range options → current numeric value
+ */
+export function getDefaultOptionValues(mode) {
+    const def = MODE_DEFS[mode];
+    const category = def?.category ?? "duel";
+    const keys = CATEGORY_OPTIONS[category] ?? [];
+    const modeDefaults = def?.defaults ?? {};
+    const values = new Map();
+
+    for (const key of keys) {
+        const opt = _optionDef(key);
+        if (!opt) continue;
+        if (key in modeDefaults) {
+            values.set(key, modeDefaults[key]);
+        } else if (opt.type === "enum") {
+            values.set(key, opt.defaultIndex);
+        } else {
+            values.set(key, opt.default);
+        }
+    }
+    return values;
+}
+
+/**
+ * Resolve a Map<string, index/value> into a flat settings object
+ * with concrete gameplay values.
+ *
+ * Example output:
+ *   { mapSize: { w: 100, h: 100 }, buildingDensity: 1.0,
+ *     baseType: 'compound', teamSize: 5 }
+ */
+export function resolveSettings(optionValues) {
+    const settings = {};
+    for (const [key, val] of optionValues) {
+        const opt = _optionDef(key);
+        if (!opt) continue;
+        if (opt.type === "enum") {
+            settings[key] = opt.choices[val].value;
+        } else {
+            settings[key] = val;
+        }
+    }
+    return settings;
+}
 
 /**
  * Per-vehicle-type stats.  Every gameplay value that varies between

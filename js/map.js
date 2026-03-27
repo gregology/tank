@@ -13,9 +13,16 @@ import { CONFIG, TILES as T, VEHICLES } from "./config.js";
 import { distance, randomInt } from "./utils.js";
 
 export class GameMap {
-    constructor() {
-        this.width = CONFIG.MAP_WIDTH;
-        this.height = CONFIG.MAP_HEIGHT;
+    /**
+     * @param {number} [width]           map width (defaults to CONFIG.MAP_WIDTH)
+     * @param {number} [height]          map height (defaults to CONFIG.MAP_HEIGHT)
+     * @param {number} [villageDensity]  multiplier for village generation (default 1.0)
+     */
+    constructor(width, height, villageDensity) {
+        this.width = width ?? CONFIG.MAP_WIDTH;
+        this.height = height ?? CONFIG.MAP_HEIGHT;
+        /** Village density multiplier (0.5 = sparse, 1.0 = normal, 1.5 = dense). */
+        this.villageDensity = villageDensity ?? 1.0;
         /** Flat Uint8 array – index with `y * width + x`. */
         this.tiles = new Uint8Array(this.width * this.height);
         /** Per-tile hit-points (0 = full health / not destructible). */
@@ -179,7 +186,11 @@ export class GameMap {
      * @returns {[CompoundLayout, CompoundLayout]}  layout data for
      *          game.js to create entity objects from.
      */
-    buildBaseCompounds() {
+    /**
+     * @param {string} [baseType='compound']  'compound' = walls+towers+HQ,
+     *                                        'hq_only'  = just HQ building
+     */
+    buildBaseCompounds(baseType) {
         const cx = this.width / 2,
             cy = this.height / 2;
         const maxR = Math.min(this.width, this.height) / 2 - 1;
@@ -206,8 +217,8 @@ export class GameMap {
         const dir2 = this._angleToCardinal(angle2);
 
         // Stamp compounds onto the map
-        const layout1 = this._stampCompound(Math.floor(p1.x), Math.floor(p1.y), dir1);
-        const layout2 = this._stampCompound(Math.floor(p2.x), Math.floor(p2.y), dir2);
+        const layout1 = this._stampCompound(Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
+        const layout2 = this._stampCompound(Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
 
         // Carve a wide path between the two bases
         this._clearPath(p1, p2, pathHW);
@@ -268,10 +279,11 @@ export class GameMap {
      * Stamp a 10×10 compound centred at grid (cx, cy).
      * Returns layout data (tile positions for each structure type).
      */
-    _stampCompound(cx, cy, dir) {
+    _stampCompound(cx, cy, dir, baseType) {
         const SIZE = 10;
         const ox = cx - 5,
             oy = cy - 5;
+        const hqOnly = baseType === "hq_only";
 
         // Fill compound area with sand (force land — overwrite water too)
         for (let dy = 0; dy < SIZE; dy++) {
@@ -283,35 +295,37 @@ export class GameMap {
         const walls = [];
         const towers = [];
 
-        // Helper: classify a perimeter tile on the entrance side.
-        // Returns 'gap', 'tower', or 'wall'.
-        const entranceRole = (dx, dy) => {
-            let edgePos = -1;
-            if (dir === "N" && dy === 0) edgePos = dx;
-            else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
-            else if (dir === "W" && dx === 0) edgePos = dy;
-            else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
-            else return "wall"; // not the entrance side
-            if (edgePos === 4 || edgePos === 5) return "gap";
-            if (edgePos === 3 || edgePos === 6) return "tower";
-            return "wall";
-        };
+        if (!hqOnly) {
+            // Helper: classify a perimeter tile on the entrance side.
+            // Returns 'gap', 'tower', or 'wall'.
+            const entranceRole = (dx, dy) => {
+                let edgePos = -1;
+                if (dir === "N" && dy === 0) edgePos = dx;
+                else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
+                else if (dir === "W" && dx === 0) edgePos = dy;
+                else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
+                else return "wall"; // not the entrance side
+                if (edgePos === 4 || edgePos === 5) return "gap";
+                if (edgePos === 3 || edgePos === 6) return "tower";
+                return "wall";
+            };
 
-        // Place perimeter structures
-        for (let dy = 0; dy < SIZE; dy++) {
-            for (let dx = 0; dx < SIZE; dx++) {
-                if (dx > 0 && dx < SIZE - 1 && dy > 0 && dy < SIZE - 1) continue;
-                const role = entranceRole(dx, dy);
-                const gx = ox + dx,
-                    gy = oy + dy;
-                if (role === "gap") {
-                    this.setTile(gx, gy, T.DIRT); // entrance road
-                } else if (role === "tower") {
-                    towers.push({ gx, gy });
-                    this.setTile(gx, gy, T.BASE_STRUCTURE);
-                } else {
-                    walls.push({ gx, gy });
-                    this.setTile(gx, gy, T.BASE_STRUCTURE);
+            // Place perimeter structures
+            for (let dy = 0; dy < SIZE; dy++) {
+                for (let dx = 0; dx < SIZE; dx++) {
+                    if (dx > 0 && dx < SIZE - 1 && dy > 0 && dy < SIZE - 1) continue;
+                    const role = entranceRole(dx, dy);
+                    const gx = ox + dx,
+                        gy = oy + dy;
+                    if (role === "gap") {
+                        this.setTile(gx, gy, T.DIRT); // entrance road
+                    } else if (role === "tower") {
+                        towers.push({ gx, gy });
+                        this.setTile(gx, gy, T.BASE_STRUCTURE);
+                    } else {
+                        walls.push({ gx, gy });
+                        this.setTile(gx, gy, T.BASE_STRUCTURE);
+                    }
                 }
             }
         }
@@ -568,11 +582,12 @@ export class GameMap {
      * roads, then scatter roadside buildings along the connecting roads.
      */
     _placeVillages(cx, cy, maxR) {
-        // Scale village density with map size
+        // Scale village density with map size and density multiplier
         const mapScale = Math.min(this.width, this.height) / 64;
-        const MIN_VILLAGE_DIST = Math.round(14 * mapScale);
+        const density = this.villageDensity;
+        const MIN_VILLAGE_DIST = Math.max(6, Math.round((14 * mapScale) / density));
         const villageCentres = [];
-        const attempts = Math.round((20 + Math.floor(this._hash(77, 88) * 10)) * mapScale * mapScale);
+        const attempts = Math.round((20 + Math.floor(this._hash(77, 88) * 10)) * mapScale * mapScale * density);
 
         // Step 1: pick village positions, enforcing minimum separation
         for (let i = 0; i < attempts; i++) {

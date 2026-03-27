@@ -7,15 +7,28 @@
  *   BATTLE (5v5)    — battle_split, battle_coop, battle_solo
  *
  * Sub-screens:
- *   • main   — mode selection with vehicle showcase
- *   • about  — scrollable vehicle info cards
+ *   • main    — mode selection with vehicle showcase
+ *   • options — per-game settings (map size, density, etc.)
+ *   • about   — scrollable vehicle info cards
+ *
+ * After selecting a mode the player sees the options screen.
+ * Press Enter/Space to accept defaults and start immediately,
+ * or adjust values with ←/→ then confirm.
  *
  * Vehicle previews use the EXACT same geometry as the in-game
  * renderer (renderer.js _drawTank / _drawIFV / _drawDrone / _drawSPG),
  * projected at a configurable scale.
  */
 
-import { CONFIG, MODE_DEFS, VEHICLES } from "./config.js";
+import {
+    CATEGORY_OPTIONS,
+    CONFIG,
+    GAME_OPTIONS,
+    getDefaultOptionValues,
+    MODE_DEFS,
+    resolveSettings,
+    VEHICLES,
+} from "./config.js";
 
 const TW = CONFIG.TILE_WIDTH;
 const TH = CONFIG.TILE_HEIGHT;
@@ -127,10 +140,17 @@ export class Menu {
         this._selCursor = 0; // index into _selectableIndices
         this.confirmed = false;
         this.selectedMode = "duel_split";
+        /** Resolved settings object (populated when confirmed). */
+        this.settings = {};
 
         // Sub-screen state
-        this._screen = "main"; // 'main' | 'about'
+        this._screen = "main"; // 'main' | 'options' | 'about'
         this._aboutIndex = 0;
+
+        // Options screen state
+        this._optionKeys = []; // keys visible for current mode
+        this._optionValues = null; // Map<string, number> of current values
+        this._optionCursor = 0; // which option row is highlighted
 
         // decorative
         this._time = 0;
@@ -145,6 +165,7 @@ export class Menu {
         this.confirmed = false;
         this._screen = "main";
         this._aboutIndex = 0;
+        this._optionCursor = 0;
     }
 
     update(dt, input, audio) {
@@ -152,6 +173,10 @@ export class Menu {
 
         if (this._screen === "about") {
             this._updateAbout(input, audio);
+            return;
+        }
+        if (this._screen === "options") {
+            this._updateOptions(input, audio);
             return;
         }
 
@@ -183,8 +208,9 @@ export class Menu {
                     audio.playConfirm();
                 }
             } else {
+                // Transition to options screen
                 this.selectedMode = chosen.mode;
-                this.confirmed = true;
+                this._enterOptions(chosen.mode);
                 if (audio) {
                     audio.init();
                     audio.playConfirm();
@@ -226,7 +252,176 @@ export class Menu {
 
     render(ctx, canvas) {
         if (this._screen === "about") this._renderAbout(ctx, canvas);
+        else if (this._screen === "options") this._renderOptions(ctx, canvas);
         else this._renderMain(ctx, canvas);
+    }
+
+    /* ── OPTIONS sub-screen ────────────────────────────────── */
+
+    /** Initialise the options screen for the given mode. */
+    _enterOptions(mode) {
+        const def = MODE_DEFS[mode];
+        const category = def?.category ?? "duel";
+        this._optionKeys = CATEGORY_OPTIONS[category] ?? [];
+        this._optionValues = getDefaultOptionValues(mode);
+        this._optionCursor = 0;
+        this._screen = "options";
+    }
+
+    _updateOptions(input, audio) {
+        const up = input.wasPressed("ArrowUp") || input.wasPressed("KeyW");
+        const down = input.wasPressed("ArrowDown") || input.wasPressed("KeyS");
+        const left = input.wasPressed("ArrowLeft") || input.wasPressed("KeyA");
+        const right = input.wasPressed("ArrowRight") || input.wasPressed("KeyD");
+        const go = input.wasPressed("Enter") || input.wasPressed("Space");
+        const back = input.wasPressed("Escape") || input.wasPressed("Backspace") || input.wasPressed("KeyR");
+
+        const keys = this._optionKeys;
+        if (!keys.length) {
+            // No options for this mode — confirm immediately
+            this.settings = {};
+            this.confirmed = true;
+            return;
+        }
+
+        if (up) {
+            this._optionCursor = (this._optionCursor - 1 + keys.length) % keys.length;
+            if (audio) {
+                audio.init();
+                audio.playSelect();
+            }
+        }
+        if (down) {
+            this._optionCursor = (this._optionCursor + 1) % keys.length;
+            if (audio) {
+                audio.init();
+                audio.playSelect();
+            }
+        }
+        if (left || right) {
+            const key = keys[this._optionCursor];
+            const opt = GAME_OPTIONS.find((o) => o.key === key);
+            if (opt) {
+                const cur = this._optionValues.get(key);
+                if (opt.type === "enum") {
+                    const n = opt.choices.length;
+                    const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
+                    this._optionValues.set(key, next);
+                } else if (opt.type === "range") {
+                    const delta = right ? opt.step : -opt.step;
+                    const next = Math.min(opt.max, Math.max(opt.min, cur + delta));
+                    this._optionValues.set(key, next);
+                }
+                if (audio) {
+                    audio.init();
+                    audio.playSelect();
+                }
+            }
+        }
+        if (go) {
+            this.settings = resolveSettings(this._optionValues);
+            this.confirmed = true;
+            if (audio) {
+                audio.init();
+                audio.playConfirm();
+            }
+        }
+        if (back) {
+            this._screen = "main";
+            if (audio) {
+                audio.init();
+                audio.playConfirm();
+            }
+        }
+    }
+
+    _renderOptions(ctx, canvas) {
+        const W = canvas.width,
+            H = canvas.height;
+        const cx = W / 2;
+        const t = this._time;
+        const keys = this._optionKeys;
+
+        ctx.fillStyle = "#080810";
+        ctx.fillRect(0, 0, W, H);
+        this._drawGrid(ctx, W, H, t);
+        ctx.textAlign = "center";
+
+        // Title
+        const modeItem = this._items[this.selectedIndex];
+        ctx.font = 'bold 36px "Courier New", monospace';
+        ctx.fillStyle = "#777";
+        ctx.fillText("GAME  OPTIONS", cx, 60);
+
+        ctx.font = '14px "Courier New", monospace';
+        ctx.fillStyle = "#555";
+        const modeLabel = modeItem ? modeItem.label : this.selectedMode;
+        ctx.fillText(modeLabel, cx, 85);
+
+        // Options list
+        const startY = 140;
+        const rowH = 48;
+
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const opt = GAME_OPTIONS.find((o) => o.key === key);
+            if (!opt) continue;
+            const y = startY + i * rowH;
+            const sel = i === this._optionCursor;
+            const cur = this._optionValues.get(key);
+
+            // Highlight bar
+            if (sel) {
+                const pulse = 0.06 + Math.sin(t * 4) * 0.02;
+                ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+                this._roundedRect(ctx, cx - 240, y - 6, 480, 38, 4);
+                ctx.fill();
+            }
+
+            // Label
+            ctx.font = 'bold 15px "Courier New", monospace';
+            ctx.fillStyle = sel ? "#ccc" : "#666";
+            ctx.textAlign = "left";
+            ctx.fillText(opt.label, cx - 220, y + 16);
+
+            // Value display
+            ctx.textAlign = "center";
+            let valueText = "";
+            if (opt.type === "enum") {
+                valueText = opt.choices[cur].label;
+            } else if (opt.type === "range") {
+                valueText = String(cur);
+            }
+
+            if (sel) {
+                // Arrows + value
+                const arrowPulse = Math.sin(t * 4) * 2;
+                ctx.font = 'bold 18px "Courier New", monospace';
+                ctx.fillStyle = "#888";
+                ctx.fillText("\u25C4", cx + 60 - arrowPulse, y + 17);
+                ctx.fillText("\u25BA", cx + 220 + arrowPulse, y + 17);
+
+                ctx.font = 'bold 16px "Courier New", monospace';
+                ctx.fillStyle = "#fff";
+                ctx.fillText(valueText, cx + 140, y + 17);
+            } else {
+                ctx.font = '15px "Courier New", monospace';
+                ctx.fillStyle = "#888";
+                ctx.fillText(valueText, cx + 140, y + 17);
+            }
+        }
+
+        // Hints
+        const hintY = startY + keys.length * rowH + 30;
+        ctx.textAlign = "center";
+        ctx.font = '14px "Courier New", monospace';
+        ctx.fillStyle = "#444";
+        ctx.fillText("\u2191 \u2193  Select     \u25C4 \u25BA  Change     Enter  Start     Esc  Back", cx, hintY);
+
+        // Bottom note
+        ctx.font = '12px "Courier New", monospace';
+        ctx.fillStyle = "#333";
+        ctx.fillText("Press Enter / Space to accept defaults and start", cx, H - 30);
     }
 
     /* ── MAIN MENU screen ─────────────────────────────────── */
