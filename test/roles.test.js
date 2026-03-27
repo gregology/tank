@@ -8,6 +8,7 @@ import {
     customMap,
     GameMap,
     pickRoleForVehicle,
+    T,
     Tank,
     VEHICLES,
 } from "./helpers.js";
@@ -187,6 +188,55 @@ describe("AI Roles – Sniper", () => {
         }
         // Sniper fires (at tower, not chasing enemy)
         assert.ok(shotsFired >= 0, "sniper should not chase distant enemies");
+    });
+
+    it("takes a flanking path (not a straight line to position)", () => {
+        const map = customMap([]);
+        const objective = { x: 50.5, y: 32.5, alive: true };
+        const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.SNIPER);
+
+        let maxOffset = 0;
+        const dt = 0.016;
+        for (let f = 0; f < 2000; f++) {
+            bot.ai.think(dt, bot.tank, [], map, objective);
+            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+            const offset = Math.abs(bot.tank.y - 32.5);
+            if (offset > maxOffset) maxOffset = offset;
+        }
+        // Sniper should deviate from the direct line (y=32.5) during flanking
+        assert.ok(maxOffset > 2, `sniper should flank, max offset was ${maxOffset.toFixed(1)}`);
+    });
+
+    it("prefers positions near cover (buildings)", () => {
+        // Place buildings on one side of the objective to create cover
+        const obstacles = [];
+        for (let x = 35; x <= 38; x++) {
+            for (let y = 25; y <= 28; y++) {
+                obstacles.push({ x, y, tile: T.BLDG_MEDIUM });
+            }
+        }
+        const map = customMap(obstacles);
+        const objective = { x: 50.5, y: 32.5, alive: true };
+
+        // Run multiple trials — sniper should tend toward the cover side
+        let nearCoverCount = 0;
+        const trials = 10;
+        for (let trial = 0; trial < trials; trial++) {
+            const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.SNIPER);
+            // Just compute the position, don't simulate
+            bot.ai.think(0.016, bot.tank, [], map, objective);
+            const pos = bot.ai._sniperPos;
+            if (!pos) continue;
+            // Check if position is closer to buildings than the opposite side
+            const distToBuildings = Math.hypot(pos.x - 36.5, pos.y - 26.5);
+            // Opposite side of the objective would be around y=38.5
+            const distToOpposite = Math.hypot(pos.x - 36.5, pos.y - 38.5);
+            if (distToBuildings < distToOpposite) nearCoverCount++;
+        }
+        assert.ok(
+            nearCoverCount >= 4,
+            `sniper should prefer cover side in >=4/${trials} trials, got ${nearCoverCount}`,
+        );
     });
 });
 

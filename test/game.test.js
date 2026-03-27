@@ -296,7 +296,8 @@ describe("IFV vehicle type", () => {
         const t = new Tank(1, "#c33", "#822");
         t.vehicleType = "ifv";
         const armour = VEHICLES.ifv.armour;
-        // Tower bullets (0.1 damage each) — need hp/0.1 = 40 to destroy
+        const expectedShots = armour.hp / 0.1;
+        // Tower bullets (0.1 damage each) — need hp/0.1 shots to destroy
         let hitCount = 0;
         while (t.alive) {
             t.applyHit(HIT_ZONE.FRONT, 0.1);
@@ -304,7 +305,7 @@ describe("IFV vehicle type", () => {
             if (hitCount > 100) break; // safety
         }
         assert.ok(!t.alive);
-        assert.equal(hitCount, 40, `IFV should take ${armour.hp / 0.1} tower shots to destroy`);
+        assert.equal(hitCount, expectedShots, `IFV should take ${expectedShots} tower shots to destroy`);
     });
 
     it("IFV gets track damage at threshold", () => {

@@ -53,12 +53,21 @@ export const CONFIG = {
     BULLET_LIFETIME: 3.0,
 
     // ── AI Roles (team mode) ─────────────────────────────────
-    SNIPER_FIRE_RANGE: 12, // preferred distance from enemy tower
-    SNIPER_MIN_RANGE: 8, // won't get closer than this
+    SNIPER_FIRE_RANGE: 15, // preferred distance from enemy tower
+    SNIPER_MIN_RANGE: 10, // won't get closer than this
     SNIPER_ENGAGE_RANGE: 6, // only fights enemies this close
-    DEFENDER_PATROL_RADIUS: 8, // patrol radius around friendly tower
-    DEFENDER_ENGAGE_RANGE: 14, // intercepts enemies this close to tower
+    DEFENDER_PATROL_RADIUS: 10, // patrol radius around friendly tower
+    DEFENDER_ENGAGE_RANGE: 18, // intercepts enemies this close to tower
     SCOUT_FLANK_OFFSET: 20, // perpendicular offset for flanking route
+    SNIPER_FLANK_OFFSET: 15, // perpendicular offset for sniper flanking route
+
+    // Position scoring weights: { cover, flank, range, los }
+    // Each role scores candidate positions with these weights.
+    // 0 = don't care, higher = more important.
+    SNIPER_POSITION_WEIGHTS: { cover: 3, flank: 2, range: 2, los: 4 },
+    SCOUT_POSITION_WEIGHTS: { cover: 0, flank: 5, range: 0, los: 0 },
+    POSITION_COVER_RADIUS: 3, // tile radius to count cover around a candidate
+    POSITION_SAMPLES: 24, // number of candidate positions to evaluate
 
     // ── Particles ────────────────────────────────────────────
     MAX_PARTICLES: 300,
@@ -201,7 +210,7 @@ export const VEHICLES = {
         bulletCooldown: 0.45,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 3, sniper: 2, defender: 2, scout: 1 },
+        roleWeights: { cavalry: 3, sniper: 2, defender: 1, scout: 1 },
         targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, baseWall: 5, baseTower: 10, baseHQ: 10 },
         armour: {
             hp: 6,
@@ -224,10 +233,10 @@ export const VEHICLES = {
         bulletCooldown: 0.15,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 1, sniper: 1, defender: 2, scout: 4 },
+        roleWeights: { cavalry: 2, sniper: 2, defender: 1, scout: 5 },
         targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, baseWall: 3, baseTower: 5, baseHQ: 10 },
         armour: {
-            hp: 4,
+            hp: 3,
             subsystemThreshold: 2,
             rearInstantKill: false,
             subsystems: {
@@ -245,7 +254,7 @@ export const VEHICLES = {
         bulletDamage: 0,
         bulletCooldown: 0,
         blastRadius: 2.5,
-        blastDamage: 5.0,
+        blastDamage: 7.5,
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
@@ -272,10 +281,10 @@ export const VEHICLES = {
         splashRadius: 1.5,
         spawnWeight: 3,
         cameraLookAhead: 10.0,
-        roleWeights: { cavalry: 0, sniper: 5, defender: 2, scout: 0 },
-        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, baseWall: 0, baseTower: 5, baseHQ: 10 },
+        roleWeights: { cavalry: 0, sniper: 5, defender: 0, scout: 0 },
+        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, baseWall: 0, baseTower: 10, baseHQ: 10 },
         armour: {
-            hp: 5,
+            hp: 3,
             subsystemThreshold: 2,
             rearInstantKill: true,
             subsystems: {

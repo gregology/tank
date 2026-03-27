@@ -102,6 +102,29 @@ export class GameMap {
     }
 
     /**
+     * Count projectile-blocking tiles within a radius of a world position.
+     * Used by AI to evaluate how much cover a position offers.
+     *
+     * @param {number} wx  world X
+     * @param {number} wy  world Y
+     * @param {number} radius  search radius in tiles (default 3)
+     * @returns {number}  count of blocking tiles in the area
+     */
+    countCoverTiles(wx, wy, radius = 3) {
+        const gx = Math.floor(wx);
+        const gy = Math.floor(wy);
+        const r = Math.ceil(radius);
+        let count = 0;
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (dx * dx + dy * dy > radius * radius) continue;
+                if (this.blocksProjectile(gx + dx + 0.5, gy + dy + 0.5)) count++;
+            }
+        }
+        return count;
+    }
+
+    /**
      * Apply one hit of damage to the tile at (gx, gy).
      * @returns {boolean} true if the tile was destroyed.
      */
