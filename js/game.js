@@ -540,19 +540,7 @@ export class Game {
             const dmg = b.damage * Math.max(0, 1 - effectiveDist / splashR);
             if (dmg <= 0) continue;
 
-            const zone = t.getHitZone(b.x, b.y);
-            const result = t.applyHit(zone, dmg);
-
-            if (result === "destroyed") {
-                this.particles.emitExplosion(t.x, t.y);
-                this.emit("destroy", { tank: t });
-                this._onKill(b.team, t);
-            } else if (result === "damaged") {
-                this.particles.emitImpact(b.x, b.y);
-                this.emit("hit", { tank: t, zone });
-            } else if (result === "absorbed") {
-                this.particles.emitTinyImpact(b.x, b.y);
-            }
+            this._applyHitToTank(b, t, dmg);
         }
 
         for (const s of this._allStructures) {
@@ -599,19 +587,7 @@ export class Game {
             const dmg = maxDmg * Math.max(0, 1 - d / blastR);
             if (dmg <= 0) continue;
 
-            const zone = t.getHitZone(drone.x, drone.y);
-            const result = t.applyHit(zone, dmg);
-
-            if (result === "destroyed") {
-                this.particles.emitExplosion(t.x, t.y);
-                this.emit("destroy", { tank: t });
-                this._onKill(drone.team, t);
-            } else if (result === "damaged") {
-                this.particles.emitImpact(drone.x, drone.y);
-                this.emit("hit", { tank: t, zone });
-            } else if (result === "absorbed") {
-                this.particles.emitTinyImpact(drone.x, drone.y);
-            }
+            this._applyHitToTank(drone, t, dmg);
         }
 
         for (const s of this._allStructures) {
@@ -634,6 +610,28 @@ export class Game {
         this.particles.emitDroneExplosion(drone.x, drone.y);
         this.emit("drone_strike", { drone });
         drone.kill();
+    }
+
+    /**
+     * Apply a hit to a tank and emit the appropriate particles/events.
+     * @param {{x:number, y:number, team:number}} source - bullet or explosion origin
+     * @param {Tank} tank - target tank
+     * @param {number} damage - damage amount
+     */
+    _applyHitToTank(source, tank, damage) {
+        const zone = tank.getHitZone(source.x, source.y);
+        const result = tank.applyHit(zone, damage);
+
+        if (result === "destroyed") {
+            this.particles.emitExplosion(tank.x, tank.y);
+            this.emit("destroy", { tank });
+            this._onKill(source.team, tank);
+        } else if (result === "damaged") {
+            this.particles.emitImpact(source.x, source.y);
+            this.emit("hit", { tank, zone });
+        } else {
+            this.particles.emitTinyImpact(source.x, source.y);
+        }
     }
 
     /**
@@ -688,19 +686,7 @@ export class Game {
                 if (distance(b.x, b.y, t.x, t.y) < t.size) {
                     b.alive = false;
 
-                    const zone = t.getHitZone(b.x, b.y);
-                    const result = t.applyHit(zone, b.damage);
-
-                    if (result === "destroyed") {
-                        this.particles.emitExplosion(t.x, t.y);
-                        this.emit("destroy", { tank: t });
-                        this._onKill(b.team, t);
-                    } else if (result === "damaged") {
-                        this.particles.emitImpact(b.x, b.y);
-                        this.emit("hit", { tank: t, zone });
-                    } else {
-                        this.particles.emitTinyImpact(b.x, b.y);
-                    }
+                    this._applyHitToTank(b, t, b.damage);
                     break;
                 }
             }

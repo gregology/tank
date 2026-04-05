@@ -7,6 +7,7 @@
  */
 
 import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "./config.js";
+import { createDrawHelpers } from "./draw-helpers.js";
 import { clamp, distance, worldToScreen } from "./utils.js";
 
 const TW = CONFIG.TILE_WIDTH;
@@ -564,6 +565,7 @@ export class Renderer {
      * and barrel use the world-space turretWorld (hull angle + turret offset).
      */
     _drawTank(ctx, tank, sx, sy) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -590,40 +592,10 @@ export class Renderer {
         };
 
         // Fill polygon helper
-        const fill = (pts, color) => {
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
 
         // Stroke polygon outline
-        const outline = (pts, color, width) => {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
 
         // Shift every point down by d pixels
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-
-        // Draw a 3-D extruded slab: side wall of height h, then top face.
-        // `wallColor` is for the visible side wall, `topColor` for the top.
-        const slab = (topPts, h, topColor, wallColor) => {
-            const bot = drop(topPts, h);
-            // Draw side wall: connect each top edge to its corresponding
-            // bottom edge, but only the segments whose normals face "down"
-            // on screen (i.e. the viewer-facing sides).
-            // Simplified: draw bottom then top is sufficient for convex shapes.
-            fill(bot, wallColor);
-            fill(topPts, topColor);
-        };
 
         /* ── local-space dimensions (world units) ─────────
          *  Scaled up ~60 % from the previous version so the
@@ -655,7 +627,6 @@ export class Renderer {
         const barrTop = -(TRACK_H + HULL_H + BARR_H); // barrel on hull
 
         // Apply a vertical offset to projected points
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
 
         /* ── 1. Shadow ──────────────────────────────────── */
         fill(
@@ -859,6 +830,7 @@ export class Renderer {
      *   - White chevron marking on hull top
      */
     _drawIFV(ctx, tank, sx, sy) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -871,29 +843,6 @@ export class Renderer {
             const wx = lx * ca - ly * sa;
             const wy = lx * sa + ly * ca;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
-        };
-        const fill = (pts, color) => {
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const outline = (pts, color, width) => {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
-        const slab = (topPts, h, topColor, wallColor) => {
-            fill(drop(topPts, h), wallColor);
-            fill(topPts, topColor);
         };
 
         /* ── IFV is WIDER and FLATTER than a tank ───── */
@@ -1089,6 +1038,7 @@ export class Renderer {
      *   - Olive-tinted hull colour mixed with team colour
      */
     _drawSPG(ctx, tank, sx, sy) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -1109,29 +1059,6 @@ export class Renderer {
             const wx = lx * ta - ly * tb;
             const wy = lx * tb + ly * ta;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
-        };
-        const fill = (pts, color) => {
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const outline = (pts, color, width) => {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
-        const slab = (topPts, h, topColor, wallColor) => {
-            fill(drop(topPts, h), wallColor);
-            fill(topPts, topColor);
         };
 
         // Olive drab tint: mix team colour with military green
@@ -1523,6 +1450,7 @@ export class Renderer {
      *   - White LED indicator on the front
      */
     _drawDrone(ctx, tank, sx, sy) {
+        const { fill, lift } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -1537,15 +1465,6 @@ export class Renderer {
             const wy = lx * sa + ly * ca;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
         };
-        const fill = (pts, color) => {
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
 
         // Hover height (bobbing)
         const hoverH = 20 + Math.sin(performance.now() / 300) * 2;

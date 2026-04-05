@@ -29,6 +29,7 @@ import {
     resolveSettings,
     VEHICLES,
 } from "./config.js";
+import { createDrawHelpers } from "./draw-helpers.js";
 
 const TW = CONFIG.TILE_WIDTH;
 const TH = CONFIG.TILE_HEIGHT;
@@ -773,6 +774,7 @@ export class Menu {
      * ──────────────────────────────────────────────────────── */
 
     _drawMenuTank(ctx, sx, sy, angle, color, dark, sc) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
         const HTW = (TW / 2) * sc,
@@ -785,30 +787,6 @@ export class Menu {
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
         };
         const PT = P;
-
-        const fill = (pts, c) => {
-            ctx.fillStyle = c;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const outline = (pts, c, w) => {
-            ctx.strokeStyle = c;
-            ctx.lineWidth = w;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
-        const slab = (topPts, h, topC, wallC) => {
-            fill(drop(topPts, h), wallC);
-            fill(topPts, topC);
-        };
 
         const THL = 0.38,
             TYO = 0.3,
@@ -940,6 +918,7 @@ export class Menu {
     }
 
     _drawMenuIFV(ctx, sx, sy, angle, color, dark, sc) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         // Simplified — same geometry as original, just compacted
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
@@ -950,29 +929,6 @@ export class Menu {
             const wx = lx * ca - ly * sa;
             const wy = lx * sa + ly * ca;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
-        };
-        const fill = (pts, c) => {
-            ctx.fillStyle = c;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const outline = (pts, c, w) => {
-            ctx.strokeStyle = c;
-            ctx.lineWidth = w;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
-        const slab = (topPts, h, topC, wallC) => {
-            fill(drop(topPts, h), wallC);
-            fill(topPts, topC);
         };
 
         const SHL = 0.36,
@@ -1103,6 +1059,7 @@ export class Menu {
     }
 
     _drawMenuDrone(ctx, sx, sy, angle, color, dark, sc) {
+        const { fill, lift } = createDrawHelpers(ctx);
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
         const HTW = (TW / 2) * sc,
@@ -1113,15 +1070,6 @@ export class Menu {
             const wy = lx * sa + ly * ca;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
         };
-        const fill = (pts, c) => {
-            ctx.fillStyle = c;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
 
         const hoverH = (20 + Math.sin(t * 3) * 2) * sc;
         ctx.fillStyle = "rgba(0,0,0,0.15)";
@@ -1189,6 +1137,7 @@ export class Menu {
     }
 
     _drawMenuSPG(ctx, sx, sy, angle, color, dark, sc) {
+        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
         const ca = Math.cos(angle),
             sa = Math.sin(angle);
         const ta = ca,
@@ -1205,29 +1154,6 @@ export class Menu {
             const wx = lx * ta - ly * tb;
             const wy = lx * tb + ly * ta;
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
-        };
-        const fill = (pts, c) => {
-            ctx.fillStyle = c;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.fill();
-        };
-        const outline = (pts, c, w) => {
-            ctx.strokeStyle = c;
-            ctx.lineWidth = w;
-            ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.closePath();
-            ctx.stroke();
-        };
-        const drop = (pts, d) => pts.map(([x, y]) => [x, y + d]);
-        const lift = (pts, dy) => pts.map(([x, y]) => [x, y + dy]);
-        const slab = (topPts, h, topC, wallC) => {
-            fill(drop(topPts, h), wallC);
-            fill(topPts, topC);
         };
 
         const parseHex = (hex) => [

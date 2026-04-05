@@ -13,7 +13,6 @@ import { distance } from "../js/utils.js";
 
 export {
     AI_ROLES,
-    AIController,
     BASE_STRUCTURES,
     Base,
     BaseHQ,
@@ -21,7 +20,6 @@ export {
     BaseWatchTower,
     Bullet,
     CONFIG,
-    distance,
     GameEntity,
     GameMap,
     Pathfinder,
@@ -93,11 +91,6 @@ export function wallV(x, y1, y2, tile = T.HILL) {
     const obs = [];
     for (let y = y1; y <= y2; y++) obs.push({ x, y, tile });
     return obs;
-}
-
-/** Build an L-shaped wall. */
-export function wallL(cx, cy, armH, armV, tile = T.HILL) {
-    return [...wallH(cy, cx, cx + armH, tile), ...wallV(cx, cy - armV, cy, tile)];
 }
 
 /** Build a U-shaped wall (open at the top). */
