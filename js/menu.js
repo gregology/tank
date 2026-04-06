@@ -269,6 +269,26 @@ export class Menu {
         this._screen = "options";
     }
 
+    /** Effective max for a range option, accounting for maxByMapSize. */
+    _effectiveMax(opt) {
+        if (opt.maxByMapSize) {
+            const msIdx = this._optionValues.get("mapSize") ?? 0;
+            return opt.maxByMapSize[msIdx] ?? opt.max;
+        }
+        return opt.max;
+    }
+
+    /** Clamp range options whose max depends on another option (e.g. mapSize). */
+    _clampDependentOptions(keys) {
+        for (const k of keys) {
+            const o = GAME_OPTIONS.find((d) => d.key === k);
+            if (!o || o.type !== "range" || !o.maxByMapSize) continue;
+            const cur = this._optionValues.get(k);
+            const effMax = this._effectiveMax(o);
+            if (cur > effMax) this._optionValues.set(k, effMax);
+        }
+    }
+
     _updateOptions(input, audio) {
         const up = input.wasPressed("ArrowUp") || input.wasPressed("KeyW");
         const down = input.wasPressed("ArrowDown") || input.wasPressed("KeyS");
@@ -308,9 +328,11 @@ export class Menu {
                     const n = opt.choices.length;
                     const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
                     this._optionValues.set(key, next);
+                    this._clampDependentOptions(keys);
                 } else if (opt.type === "range") {
                     const delta = right ? opt.step : -opt.step;
-                    const next = Math.min(opt.max, Math.max(opt.min, cur + delta));
+                    const effMax = this._effectiveMax(opt);
+                    const next = Math.min(effMax, Math.max(opt.min, cur + delta));
                     this._optionValues.set(key, next);
                 }
                 if (audio) {
@@ -391,7 +413,8 @@ export class Menu {
             if (opt.type === "enum") {
                 valueText = opt.choices[cur].label;
             } else if (opt.type === "range") {
-                valueText = String(cur);
+                const effMax = this._effectiveMax(opt);
+                valueText = `${cur} / ${effMax}`;
             }
 
             if (sel) {

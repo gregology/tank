@@ -31,6 +31,8 @@ export class GameMap {
         this.maxHp = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions (new island every game). */
         this.seed = Math.floor(Math.random() * 2147483647);
+        /** Compound tier — set by buildBaseCompounds(). */
+        this._compoundTier = null;
         this.generate();
     }
 
@@ -179,22 +181,25 @@ export class GameMap {
     /**
      * Build two base compounds on opposite sides of the island.
      *
-     * Each compound is 10×10 tiles with walls around the perimeter,
-     * a 2-tile entrance gap facing the enemy, watch towers flanking
-     * the gap, and a 1×2 HQ tent in the centre.
+     * Compound size scales with the map:
+     *   Small  (<=80):  10x10 square, 2 entrance towers
+     *   Medium (<=160): 14x14 square, 4 corner towers
+     *   Large  (>160):  circular r=10, 6 towers (2 entrance + 4 distributed)
      *
-     * @returns {[CompoundLayout, CompoundLayout]}  layout data for
-     *          game.js to create entity objects from.
-     */
-    /**
      * @param {string} [baseType='compound']  'compound' = walls+towers+HQ,
      *                                        'hq_only'  = just HQ building
+     * @returns {[CompoundLayout, CompoundLayout]}  layout data for
+     *          game.js to create entity objects from.
      */
     buildBaseCompounds(baseType) {
         const cx = this.width / 2,
             cy = this.height / 2;
         const maxR = Math.min(this.width, this.height) / 2 - 1;
-        const compoundR = 7; // half-extent needed for 10x10 compound + buffer
+
+        // Pick compound tier based on map size
+        const mapMin = Math.min(this.width, this.height);
+        this._compoundTier = mapMin <= 80 ? "small" : mapMin <= 160 ? "medium" : "large";
+        const compoundR = this._compoundTier === "small" ? 7 : this._compoundTier === "medium" ? 10 : 14;
 
         // Scale spatial parameters from island radius
         const clearR = Math.round(maxR * 0.25); // clear terrain radius around base
@@ -202,7 +207,7 @@ export class GameMap {
 
         // Place bases by searching inward from the coast on opposite sides.
         // This adapts automatically to any map size or island shape.
-        const baseAngle = Math.PI * 1.25; // SW → NE diagonal
+        const baseAngle = Math.PI * 1.25; // SW -> NE diagonal
         const p1 = this._findCoastalSpot(cx, cy, maxR, baseAngle, compoundR);
         const p2 = this._findCoastalSpot(cx, cy, maxR, baseAngle + Math.PI, compoundR);
 
@@ -216,9 +221,15 @@ export class GameMap {
         const dir1 = this._angleToCardinal(angle1);
         const dir2 = this._angleToCardinal(angle2);
 
-        // Stamp compounds onto the map
-        const layout1 = this._stampCompound(Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
-        const layout2 = this._stampCompound(Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
+        // Stamp compounds onto the map (size scales with map)
+        const stampFn =
+            this._compoundTier === "large"
+                ? "_stampCompoundLarge"
+                : this._compoundTier === "medium"
+                  ? "_stampCompoundMedium"
+                  : "_stampCompoundSmall";
+        const layout1 = this[stampFn](Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
+        const layout2 = this[stampFn](Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
 
         // Carve a wide path between the two bases
         this._clearPath(p1, p2, pathHW);
@@ -232,7 +243,7 @@ export class GameMap {
 
     /**
      * Search inward from the coast along `angle` to find a spot with
-     * enough dry land for a compound.  Only rejects water tiles — hills
+     * enough dry land for a compound.  Only rejects water tiles -- hills
      * and buildings are ignored because _clearAroundBase removes them.
      *
      * Works for any map size because it walks from the actual island
@@ -275,51 +286,156 @@ export class GameMap {
         return dy > 0 ? "S" : "N";
     }
 
-    /**
-     * Stamp a 10×10 compound centred at grid (cx, cy).
-     * Returns layout data (tile positions for each structure type).
-     */
-    _stampCompound(cx, cy, dir, baseType) {
+    /* -- Small compound (64x64): 10x10 square, 2 entrance towers -- */
+
+    _stampCompoundSmall(cx, cy, dir, baseType) {
         const SIZE = 10;
-        const ox = cx - 5,
-            oy = cy - 5;
+        const half = 5;
+        const ox = cx - half,
+            oy = cy - half;
         const hqOnly = baseType === "hq_only";
 
-        // Fill compound area with sand (force land — overwrite water too)
-        for (let dy = 0; dy < SIZE; dy++) {
-            for (let dx = 0; dx < SIZE; dx++) {
-                this.setTile(ox + dx, oy + dy, T.SAND);
-            }
-        }
-
-        const walls = [];
-        const towers = [];
+        this._fillSand(ox, oy, SIZE);
+        const walls = [],
+            towers = [];
 
         if (!hqOnly) {
-            // Helper: classify a perimeter tile on the entrance side.
-            // Returns 'gap', 'tower', or 'wall'.
             const entranceRole = (dx, dy) => {
                 let edgePos = -1;
                 if (dir === "N" && dy === 0) edgePos = dx;
                 else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
                 else if (dir === "W" && dx === 0) edgePos = dy;
                 else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
-                else return "wall"; // not the entrance side
+                else return "wall";
                 if (edgePos === 4 || edgePos === 5) return "gap";
                 if (edgePos === 3 || edgePos === 6) return "tower";
                 return "wall";
             };
+            this._placePerimeter(ox, oy, SIZE, entranceRole, walls, towers);
+        }
 
-            // Place perimeter structures
+        const hqTiles = this._hqTiles(ox, oy, half, dir);
+        return this._finishLayout(ox, oy, half, SIZE, walls, towers, hqTiles, dir);
+    }
+
+    /* -- Medium compound (128x128): 14x14 square, 4 corner towers -- */
+
+    _stampCompoundMedium(cx, cy, dir, baseType) {
+        const SIZE = 14;
+        const half = 7;
+        const ox = cx - half,
+            oy = cy - half;
+        const hqOnly = baseType === "hq_only";
+
+        this._fillSand(ox, oy, SIZE);
+        const walls = [],
+            towers = [];
+
+        if (!hqOnly) {
+            // Corner positions for 4 towers
+            const corners = new Set(["0,0", `${SIZE - 1},0`, `0,${SIZE - 1}`, `${SIZE - 1},${SIZE - 1}`]);
+
+            const entranceRole = (dx, dy) => {
+                // Check if this is a corner tower first
+                if (corners.has(`${dx},${dy}`)) return "tower";
+                let edgePos = -1;
+                if (dir === "N" && dy === 0) edgePos = dx;
+                else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
+                else if (dir === "W" && dx === 0) edgePos = dy;
+                else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
+                else return "wall";
+                // Entrance gap: middle 2 tiles
+                const mid = SIZE / 2;
+                if (edgePos === mid - 1 || edgePos === mid) return "gap";
+                return "wall";
+            };
+            this._placePerimeter(ox, oy, SIZE, entranceRole, walls, towers);
+        }
+
+        const hqTiles = this._hqTiles(ox, oy, half, dir);
+        return this._finishLayout(ox, oy, half, SIZE, walls, towers, hqTiles, dir);
+    }
+
+    /* -- Large compound (192x192): circular r=10, 6 towers -- */
+
+    _stampCompoundLarge(cx, cy, dir, baseType) {
+        const RADIUS = 10; // circle radius in tiles
+        const SIZE = RADIUS * 2 + 1; // bounding box
+        const half = RADIUS;
+        const ox = cx - half,
+            oy = cy - half;
+        const hqOnly = baseType === "hq_only";
+
+        // Fill circular area with sand
+        for (let dy = 0; dy < SIZE; dy++) {
+            for (let dx = 0; dx < SIZE; dx++) {
+                const ddx = dx - half,
+                    ddy = dy - half;
+                if (ddx * ddx + ddy * ddy <= (RADIUS + 0.5) * (RADIUS + 0.5)) {
+                    this.setTile(ox + dx, oy + dy, T.SAND);
+                }
+            }
+        }
+
+        const walls = [],
+            towers = [];
+
+        if (!hqOnly) {
+            // Entrance direction angle
+            const dirAngle = dir === "E" ? 0 : dir === "S" ? Math.PI / 2 : dir === "W" ? Math.PI : -Math.PI / 2;
+
+            // Place 6 tower angles: 2 flanking entrance, 4 evenly around rest
+            const entranceSpread = Math.PI / 12; // 15 degrees
+            const towerAngles = [dirAngle - entranceSpread, dirAngle + entranceSpread];
+            // 4 more towers evenly distributed in the remaining arc
+            for (let i = 1; i <= 4; i++) {
+                towerAngles.push(dirAngle + entranceSpread + (i * (2 * Math.PI - 2 * entranceSpread)) / 5);
+            }
+
+            // Entrance towers (first 2) sit on the wall ring;
+            // the other 4 are placed just outside so they have
+            // clear line-of-sight over the wall.
+            const entranceTowerSet = new Set();
+            for (let ti = 0; ti < 2; ti++) {
+                const a = towerAngles[ti];
+                const tx = half + Math.round(Math.cos(a) * RADIUS);
+                const ty = half + Math.round(Math.sin(a) * RADIUS);
+                entranceTowerSet.add(`${tx},${ty}`);
+            }
+
+            // Outer towers: RADIUS + 2 so they sit outside the wall
+            const outerTowerPositions = [];
+            for (let ti = 2; ti < towerAngles.length; ti++) {
+                const a = towerAngles[ti];
+                const tx = ox + half + Math.round(Math.cos(a) * (RADIUS + 2));
+                const ty = oy + half + Math.round(Math.sin(a) * (RADIUS + 2));
+                outerTowerPositions.push({ gx: tx, gy: ty });
+            }
+
+            // Entrance gap: tiles within +/-gapAngle of entrance direction
+            const gapAngle = Math.PI / 16; // ~11 degrees gap on each side
+
+            // Walk the circular perimeter — walls + entrance towers
             for (let dy = 0; dy < SIZE; dy++) {
                 for (let dx = 0; dx < SIZE; dx++) {
-                    if (dx > 0 && dx < SIZE - 1 && dy > 0 && dy < SIZE - 1) continue;
-                    const role = entranceRole(dx, dy);
+                    const ddx = dx - half,
+                        ddy = dy - half;
+                    const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+                    // Only perimeter tiles (ring at RADIUS +/- 0.7)
+                    if (dist < RADIUS - 0.7 || dist > RADIUS + 0.7) continue;
+
                     const gx = ox + dx,
                         gy = oy + dy;
-                    if (role === "gap") {
-                        this.setTile(gx, gy, T.DIRT); // entrance road
-                    } else if (role === "tower") {
+                    const tileAngle = Math.atan2(ddy, ddx);
+                    let angleDiff = tileAngle - dirAngle;
+                    // Normalise to [-pi, pi]
+                    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+                    if (Math.abs(angleDiff) < gapAngle) {
+                        // Entrance gap
+                        this.setTile(gx, gy, T.DIRT);
+                    } else if (entranceTowerSet.has(`${dx},${dy}`)) {
                         towers.push({ gx, gy });
                         this.setTile(gx, gy, T.BASE_STRUCTURE);
                     } else {
@@ -328,38 +444,78 @@ export class GameMap {
                     }
                 }
             }
+
+            // Place outer towers on sand just outside the wall
+            for (const pos of outerTowerPositions) {
+                this.setTile(pos.gx, pos.gy, T.BASE_STRUCTURE);
+                towers.push(pos);
+            }
         }
 
-        // HQ placement — 1×2, perpendicular to entrance direction
-        let hqTiles;
+        const hqTiles = this._hqTiles(ox, oy, half, dir);
+        return this._finishLayout(ox, oy, half, SIZE, walls, towers, hqTiles, dir);
+    }
+
+    /* -- Shared compound helpers -- */
+
+    /** Fill a square area with sand. */
+    _fillSand(ox, oy, size) {
+        for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) this.setTile(ox + dx, oy + dy, T.SAND);
+    }
+
+    /** Place perimeter wall/tower/gap tiles for a square compound. */
+    _placePerimeter(ox, oy, size, roleFn, walls, towers) {
+        for (let dy = 0; dy < size; dy++) {
+            for (let dx = 0; dx < size; dx++) {
+                if (dx > 0 && dx < size - 1 && dy > 0 && dy < size - 1) continue;
+                const role = roleFn(dx, dy);
+                const gx = ox + dx,
+                    gy = oy + dy;
+                if (role === "gap") {
+                    this.setTile(gx, gy, T.DIRT);
+                } else if (role === "tower") {
+                    towers.push({ gx, gy });
+                    this.setTile(gx, gy, T.BASE_STRUCTURE);
+                } else {
+                    walls.push({ gx, gy });
+                    this.setTile(gx, gy, T.BASE_STRUCTURE);
+                }
+            }
+        }
+    }
+
+    /** HQ tile pair, perpendicular to entrance direction, centred in compound. */
+    _hqTiles(ox, oy, half, dir) {
+        const mid = half;
         if (dir === "E" || dir === "W") {
-            hqTiles = [
-                { gx: ox + 4, gy: oy + 4 },
-                { gx: ox + 4, gy: oy + 5 },
-            ];
-        } else {
-            hqTiles = [
-                { gx: ox + 4, gy: oy + 4 },
-                { gx: ox + 5, gy: oy + 4 },
+            return [
+                { gx: ox + mid, gy: oy + mid - 1 },
+                { gx: ox + mid, gy: oy + mid },
             ];
         }
-        for (const t of hqTiles) this.setTile(t.gx, t.gy, T.BASE_STRUCTURE);
+        return [
+            { gx: ox + mid, gy: oy + mid },
+            { gx: ox + mid + 1, gy: oy + mid },
+        ];
+    }
 
-        // HQ centre in world space (midpoint of two tile centres)
+    /** Build the final layout object and stamp HQ tiles. */
+    _finishLayout(ox, oy, half, size, walls, towers, hqTiles, dir) {
+        for (const t of hqTiles) this.setTile(t.gx, t.gy, T.BASE_STRUCTURE);
         const hqCenter = {
             x: (hqTiles[0].gx + hqTiles[1].gx) / 2 + 0.5,
             y: (hqTiles[0].gy + hqTiles[1].gy) / 2 + 0.5,
         };
-
         return {
             walls,
             towers,
             hqTiles,
             hqCenter,
-            center: { x: ox + 5, y: oy + 5 },
+            center: { x: ox + half, y: oy + half },
             dir,
             ox,
             oy,
+            size,
         };
     }
 
@@ -367,20 +523,21 @@ export class GameMap {
      * Connect a compound entrance to the nearest road tile.
      */
     _connectCompoundToRoad(layout) {
-        const { ox, oy, dir } = layout;
+        const { ox, oy, dir, size } = layout;
+        const half = Math.floor(size / 2);
         let ex, ey;
         if (dir === "N") {
-            ex = ox + 4;
+            ex = ox + half;
             ey = oy - 1;
         } else if (dir === "S") {
-            ex = ox + 5;
-            ey = oy + 10;
+            ex = ox + half;
+            ey = oy + size;
         } else if (dir === "E") {
-            ex = ox + 10;
-            ey = oy + 4;
+            ex = ox + size;
+            ey = oy + half;
         } else {
             ex = ox - 1;
-            ey = oy + 5;
+            ey = oy + half;
         }
 
         // Find nearest road tile
@@ -410,13 +567,15 @@ export class GameMap {
      */
     getBaseSpawnPoint(cx, cy) {
         const s = VEHICLES.tank.size * 0.85;
-        const ox = Math.floor(cx) - 5,
-            oy = Math.floor(cy) - 5;
+        const tier = this._compoundTier ?? "small";
+        const half = tier === "small" ? 5 : tier === "medium" ? 7 : 10;
+        const interior = (half - 1) * 2;
+        const ox = Math.floor(cx) - half,
+            oy = Math.floor(cy) - half;
 
         for (let attempt = 0; attempt < 100; attempt++) {
-            // Random tile inside the 8×8 interior
-            const gx = ox + 1 + Math.floor(Math.random() * 8);
-            const gy = oy + 1 + Math.floor(Math.random() * 8);
+            const gx = ox + 1 + Math.floor(Math.random() * interior);
+            const gy = oy + 1 + Math.floor(Math.random() * interior);
             const wx = gx + 0.5,
                 wy = gy + 0.5;
             if (
@@ -451,8 +610,8 @@ export class GameMap {
 
     /**
      * Carve a straight passable corridor of half-width `hw` tiles
-     * between two points.  Removes hills/rocks → grass, and
-     * converts water → sand so the path is always walkable.
+     * between two points.  Removes hills/rocks -> grass, and
+     * converts water -> sand so the path is always walkable.
      */
     _clearPath(p1, p2, hw) {
         const dx = p2.x - p1.x,
@@ -561,7 +720,7 @@ export class GameMap {
         this._placeVillages(cx, cy, maxR);
     }
 
-    /** Water / sand / grass only — no structures. */
+    /** Water / sand / grass only -- no structures. */
     _baseTile(gx, gy, cx, cy, maxR) {
         const d = distance(gx, gy, cx, cy);
         const coastNoise = this._fbm(gx * 0.06, gy * 0.06, 3, 0) - 0.5;
@@ -575,7 +734,7 @@ export class GameMap {
         return grassN > 0.52 ? T.DARK_GRASS : T.GRASS;
     }
 
-    /* ── Village placement ────────────────────────────────── */
+    /* -- Village placement -- */
 
     /**
      * Place village clusters (min 14 tiles apart), connect with dirt
@@ -657,7 +816,7 @@ export class GameMap {
     /**
      * Lay a 1-tile-wide dirt road between two points using only
      * cardinal steps (up/down/left/right).  Every tile shares a
-     * full edge with the next — no diagonal-only connections.
+     * full edge with the next -- no diagonal-only connections.
      */
     _layDirtRoad(a, b) {
         let x = Math.floor(a.x),
@@ -680,7 +839,7 @@ export class GameMap {
             } else if (Math.abs(dy) > Math.abs(dx)) {
                 y += dy > 0 ? 1 : -1;
             } else {
-                // Equal — random pick for variety
+                // Equal -- random pick for variety
                 if (this._hash(x * 31 + y * 47, 1050) > 0.5) x += dx > 0 ? 1 : -1;
                 else y += dy > 0 ? 1 : -1;
             }
@@ -715,7 +874,7 @@ export class GameMap {
             const cx = a.x + dx * t;
             const cy = a.y + dy * t;
 
-            // Offset 1–2 tiles to one side
+            // Offset 1-2 tiles to one side
             const side = this._hash(seed * 19 + i * 31, 1300) > 0.5 ? 1 : -1;
             const off = 1 + Math.floor(this._hash(seed * 23 + i * 37, 1400) * 1.5);
             const bx = Math.round(cx + px * side * off);
@@ -734,8 +893,8 @@ export class GameMap {
     /**
      * Stamp a single village at (vx, vy).
      *
-     * 1. Lay 1–2 paved roads through the village
-     * 2. Place buildings along both sides — NEVER on a road tile
+     * 1. Lay 1-2 paved roads through the village
+     * 2. Place buildings along both sides -- NEVER on a road tile
      */
     _stampVillage(vx, vy, seed) {
         const roadCount = this._hash(seed * 31, 400) > 0.4 ? 2 : 1;
@@ -811,7 +970,7 @@ export class GameMap {
      *  Noise primitives                                       *
      * ═══════════════════════════════════════════════════════ */
 
-    /** Integer hash → [0, 1). Deterministic for a given seed + position. */
+    /** Integer hash -> [0, 1). Deterministic for a given seed + position. */
     _hash(x, y) {
         let h = (x * 374761393 + y * 668265263 + this.seed) | 0;
         h = ((h ^ (h >>> 13)) * 1274126177) | 0;
@@ -836,7 +995,7 @@ export class GameMap {
         return top + (bot - top) * sy;
     }
 
-    /** Fractal Brownian Motion – layered noise for natural textures. */
+    /** Fractal Brownian Motion -- layered noise for natural textures. */
     _fbm(x, y, octaves, off) {
         let value = 0,
             amp = 1,

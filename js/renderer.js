@@ -2198,7 +2198,7 @@ export class Renderer {
             const bOy = mmY + base.origin.y * px;
             ctx.strokeStyle = base.team === 1 ? "rgba(255,100,100,0.5)" : "rgba(100,140,255,0.5)";
             ctx.lineWidth = 0.5;
-            ctx.strokeRect(bOx, bOy, 10 * px, 10 * px);
+            ctx.strokeRect(bOx, bOy, (base.compoundSize ?? 10) * px, (base.compoundSize ?? 10) * px);
 
             // HQ marker
             if (base.hq?.alive) {

@@ -26,8 +26,8 @@ export const CONFIG = {
     TILE_DEPTH: 20, // pixel height of elevated tiles
 
     // ── Map ──────────────────────────────────────────────────
-    MAP_WIDTH: 100,
-    MAP_HEIGHT: 100,
+    MAP_WIDTH: 128,
+    MAP_HEIGHT: 128,
 
     // ── Shared vehicle defaults ──────────────────────────────
     TANK_REVERSE_FACTOR: 0.4, // backward speed multiplier
@@ -207,8 +207,8 @@ export const GAME_OPTIONS = [
         type: "enum",
         choices: [
             { label: "Small  (64\u00d764)", value: { w: 64, h: 64 } },
-            { label: "Medium (100\u00d7100)", value: { w: 100, h: 100 } },
-            { label: "Large  (140\u00d7140)", value: { w: 140, h: 140 } },
+            { label: "Medium (128\u00d7128)", value: { w: 128, h: 128 } },
+            { label: "Large  (192\u00d7192)", value: { w: 192, h: 192 } },
         ],
         defaultIndex: 1,
     },
@@ -238,7 +238,8 @@ export const GAME_OPTIONS = [
         label: "TEAM SIZE",
         type: "range",
         min: 2,
-        max: 16,
+        max: 32,
+        maxByMapSize: [16, 24, 32],
         step: 1,
         default: 5,
     },
@@ -304,6 +305,13 @@ export function resolveSettings(optionValues) {
         } else {
             settings[key] = val;
         }
+    }
+    // Clamp teamSize to the per-map-size maximum
+    const tsOpt = _optionDef("teamSize");
+    if (tsOpt?.maxByMapSize && settings.teamSize != null) {
+        const msIdx = optionValues.get("mapSize") ?? 0;
+        const cap = tsOpt.maxByMapSize[msIdx] ?? tsOpt.max;
+        if (settings.teamSize > cap) settings.teamSize = cap;
     }
     return settings;
 }

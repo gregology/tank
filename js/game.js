@@ -774,6 +774,7 @@ export class Game {
         base.center = layout.center;
         base.origin = { x: layout.ox, y: layout.oy };
         base.entranceDir = layout.dir;
+        base.compoundSize = layout.size;
 
         // HQ
         const hq = new BaseHQ(team, color, darkColor);

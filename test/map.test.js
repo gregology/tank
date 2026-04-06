@@ -5,8 +5,8 @@ import { GameMap, T, VEHICLES } from "./helpers.js";
 describe("Map generation", () => {
     it("creates a map matching CONFIG dimensions", () => {
         const map = new GameMap();
-        assert.equal(map.width, 100);
-        assert.equal(map.height, 100);
+        assert.equal(map.width, 128);
+        assert.equal(map.height, 128);
     });
 
     it("generates different maps each time (different seeds)", () => {
@@ -141,8 +141,9 @@ describe("Base compounds", () => {
         const [l1] = map.buildBaseCompounds();
         let sandCount = 0;
         let structCount = 0;
-        for (let dy = 0; dy < 10; dy++) {
-            for (let dx = 0; dx < 10; dx++) {
+        const size = l1.size;
+        for (let dy = 0; dy < size; dy++) {
+            for (let dx = 0; dx < size; dx++) {
                 const t = map.getTile(l1.ox + dx, l1.oy + dy);
                 if (t === T.SAND) sandCount++;
                 if (t === T.BASE_STRUCTURE) structCount++;
@@ -169,12 +170,29 @@ describe("Base compounds", () => {
         }
     });
 
-    it("compound has 2 watch tower positions and entrance gap", () => {
-        const map = new GameMap();
+    it("small compound (64x64) has 2 watch towers", () => {
+        const map = new GameMap(64, 64);
         const [l1] = map.buildBaseCompounds();
         assert.equal(l1.towers.length, 2, "should have 2 watch tower positions");
         assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
         assert.ok(l1.walls.length > 20, `should have many walls, got ${l1.walls.length}`);
+    });
+
+    it("medium compound (128x128) has 4 corner towers", () => {
+        const map = new GameMap(128, 128);
+        const [l1] = map.buildBaseCompounds();
+        assert.equal(l1.towers.length, 4, "should have 4 watch tower positions");
+        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(l1.size, 14, "compound size should be 14");
+    });
+
+    it("large compound (192x192) has 6 towers and is circular", () => {
+        const map = new GameMap(192, 192);
+        const [l1] = map.buildBaseCompounds();
+        assert.equal(l1.towers.length, 6, "should have 6 watch tower positions");
+        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(l1.size, 21, "compound size should be 21 (diameter of r=10 circle)");
+        assert.ok(l1.walls.length > 30, `circular compound should have many walls, got ${l1.walls.length}`);
     });
 
     it("base spawn points are fully passable", () => {
@@ -190,6 +208,24 @@ describe("Base compounds", () => {
                     map.isPassable(sp.x + s, sp.y + s),
                 `spawn (${sp.x.toFixed(1)},${sp.y.toFixed(1)}) should have full clearance`,
             );
+        }
+    });
+
+    it("base spawn points work for all map sizes", () => {
+        const s = VEHICLES.tank.size * 0.85;
+        for (const sz of [64, 128, 192]) {
+            const map = new GameMap(sz, sz);
+            const [l1] = map.buildBaseCompounds();
+            for (let i = 0; i < 10; i++) {
+                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+                assert.ok(
+                    map.isPassable(sp.x - s, sp.y - s) &&
+                        map.isPassable(sp.x + s, sp.y - s) &&
+                        map.isPassable(sp.x - s, sp.y + s) &&
+                        map.isPassable(sp.x + s, sp.y + s),
+                    `spawn on ${sz}x${sz} map should be passable`,
+                );
+            }
         }
     });
 });
