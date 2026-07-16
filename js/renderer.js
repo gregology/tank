@@ -39,6 +39,40 @@ function rgb(r, g, b) {
     return `rgb(${r | 0},${g | 0},${b | 0})`;
 }
 
+/** Parse "#rrggbb" into [r, g, b]. */
+function hexToRgb(hex) {
+    return [
+        Number.parseInt(hex.slice(1, 3), 16),
+        Number.parseInt(hex.slice(3, 5), 16),
+        Number.parseInt(hex.slice(5, 7), 16),
+    ];
+}
+
+/** Darken (f < 1) or lighten (f > 1) a hex colour, clamped to 0-255. */
+function shadeHex(hex, f) {
+    const [r, g, b] = hexToRgb(hex);
+    const c = (v) => Math.max(0, Math.min(255, v * f));
+    return rgb(c(r), c(g), c(b));
+}
+
+/** Blend two hex colours: t = 0 → a, t = 1 → b. */
+function mixHex(a, b, t) {
+    const ca = hexToRgb(a),
+        cb = hexToRgb(b);
+    return rgb(ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t);
+}
+
+/** Scale a palette {r,g,b} colour, clamped. */
+function scaleRgb(c, f) {
+    const cl = (v) => Math.max(0, Math.min(255, v * f));
+    return rgb(cl(c.r), cl(c.g), cl(c.b));
+}
+
+/** Linear interpolation between two [x, y] points. */
+function lerpPt(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
 /* ================================================================== */
 
 export class Renderer {
@@ -426,111 +460,341 @@ export class Renderer {
     /* ── building drawing ─────────────────────────────────── */
 
     /**
-     * Draw an isometric building with walls, roof, and details.
-     * Height shrinks with damage just like terrain.
+     * Draw an isometric building with realistic detail:
+     *   - Ground contact shadow and ambient occlusion at the wall base
+     *   - Pitched gable roofs with ridge, tile rows, and eave overhang
+     *     (small + medium; ridge direction varies for village variety)
+     *   - Flat parapet roof with clutter for large buildings
+     *   - In-plane windows (frame, glass, reflection, mullion) and doors
+     *   - Chimney drawn as a small 3-D box sitting on the roof slope
+     * Height shrinks with damage; below 55 % the roof has collapsed
+     * (dark rubble top, no windows).
      */
     _drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time) {
+        const { fill } = createDrawHelpers(ctx);
         const pal =
             tile === T.BLDG_SMALL ? PALETTE.bldgSmall : tile === T.BLDG_MEDIUM ? PALETTE.bldgMedium : PALETTE.bldgLarge;
 
         const fullH = tile === T.BLDG_SMALL ? 14 : tile === T.BLDG_MEDIUM ? 22 : 32;
         const h = Math.max(2, Math.round(fullH * frac));
         const v = ((gx * 7 + gy * 13) % 3) - 1;
+        const dmg = 1 - frac;
+        const intact = frac > 0.55;
 
         const w = pal.wall,
             rf = pal.roof,
             tr = pal.trim;
 
-        // ── Left (SW) wall ──
-        ctx.fillStyle = rgb(tr.r + v * 3, tr.g + v * 3, tr.b + v * 3);
-        ctx.beginPath();
-        ctx.moveTo(sx - TW / 2, sy + TH / 2 - h);
-        ctx.lineTo(sx, sy + TH - h);
-        ctx.lineTo(sx, sy + TH);
-        ctx.lineTo(sx - TW / 2, sy + TH / 2);
-        ctx.closePath();
-        ctx.fill();
+        // Soot: walls darken as damage accumulates
+        const soot = 1 - dmg * 0.35;
+        const wallR = scaleRgb(w, soot); // right (SE) wall — lit side
+        const wallL = scaleRgb(tr, soot); // left (SW) wall — shadow side
+        const roofC = scaleRgb(rf, (1 - dmg * 0.25) * (1 + v * 0.04));
 
-        // ── Right (SE) wall ──
-        ctx.fillStyle = rgb(w.r + v * 3, w.g + v * 3, w.b + v * 3);
-        ctx.beginPath();
-        ctx.moveTo(sx + TW / 2, sy + TH / 2 - h);
-        ctx.lineTo(sx, sy + TH - h);
-        ctx.lineTo(sx, sy + TH);
-        ctx.lineTo(sx + TW / 2, sy + TH / 2);
-        ctx.closePath();
-        ctx.fill();
+        // Wall-top diamond corners; wall-base corners are the tile diamond
+        const N = [sx, sy - h];
+        const E = [sx + TW / 2, sy + TH / 2 - h];
+        const S = [sx, sy + TH - h];
+        const Wp = [sx - TW / 2, sy + TH / 2 - h];
+        const Eb = [sx + TW / 2, sy + TH / 2];
+        const Sb = [sx, sy + TH];
+        const Wb = [sx - TW / 2, sy + TH / 2];
 
-        // ── Roof (top face) ──
-        ctx.fillStyle = rgb(rf.r + v * 4, rf.g + v * 4, rf.b + v * 4);
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - h);
-        ctx.lineTo(sx + TW / 2, sy + TH / 2 - h);
-        ctx.lineTo(sx, sy + TH - h);
-        ctx.lineTo(sx - TW / 2, sy + TH / 2 - h);
-        ctx.closePath();
-        ctx.fill();
+        /* ── 1. Ground contact shadow ── */
+        fill(
+            [
+                [sx, sy + 2],
+                [sx + TW / 2 + 3, sy + TH / 2 + 2],
+                [sx, sy + TH + 4],
+                [sx - TW / 2 - 3, sy + TH / 2 + 2],
+            ],
+            "rgba(0,0,0,0.14)",
+        );
 
-        // ── Roof ridge line (gives depth) ──
-        ctx.strokeStyle = rgb(rf.r - 20, rf.g - 20, rf.b - 20);
-        ctx.lineWidth = 1;
+        /* ── 2. Walls ── */
+        fill([Wp, S, Sb, Wb], wallL); // left (SW) wall
+        fill([S, E, Eb, Sb], wallR); // right (SE) wall
+
+        // Ambient occlusion band near the ground
+        const aoH = Math.min(4, Math.max(0.5, h * 0.25));
+        fill([[Wp[0], Wp[1] + h - aoH], [S[0], S[1] + h - aoH], Sb, Wb], "rgba(0,0,0,0.18)");
+        fill([[S[0], S[1] + h - aoH], [E[0], E[1] + h - aoH], Eb, Sb], "rgba(0,0,0,0.13)");
+
+        // Crisp silhouette edges
+        ctx.strokeStyle = "rgba(0,0,0,0.25)";
+        ctx.lineWidth = 0.75;
         ctx.beginPath();
-        ctx.moveTo(sx - TW * 0.2, sy + TH / 2 - h);
-        ctx.lineTo(sx + TW * 0.2, sy + TH / 2 - h);
+        ctx.moveTo(Wp[0], Wp[1]);
+        ctx.lineTo(S[0], S[1]);
+        ctx.lineTo(E[0], E[1]);
+        ctx.moveTo(S[0], S[1]);
+        ctx.lineTo(Sb[0], Sb[1]);
         ctx.stroke();
 
-        // ── Window on right wall (if tall enough) ──
-        if (h >= 14) {
-            const winW = TW * 0.12,
-                winH = h * 0.25;
-            const winX = sx + TW * 0.15;
-            const winY = sy + TH * 0.25 - h * 0.2;
-            ctx.fillStyle = "#3a4a5a";
-            ctx.fillRect(winX, winY, winW, winH);
-            // Window frame
-            ctx.strokeStyle = rgb(tr.r, tr.g, tr.b);
-            ctx.lineWidth = 0.5;
-            ctx.strokeRect(winX, winY, winW, winH);
+        /* ── 3. Roof ── */
+        if (!intact) {
+            // Collapsed roof: dark rubble at wall top with jagged beams
+            fill([N, E, S, Wp], scaleRgb(tr, 0.45));
+            ctx.strokeStyle = "rgba(40,28,16,0.7)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const b1 = lerpPt(N, S, 0.3),
+                b2 = lerpPt(Wp, E, 0.45);
+            ctx.moveTo(b1[0], b1[1]);
+            ctx.lineTo(b2[0], b2[1]);
+            const b3 = lerpPt(N, S, 0.6),
+                b4 = lerpPt(Wp, E, 0.7);
+            ctx.moveTo(b3[0], b3[1]);
+            ctx.lineTo(b4[0], b4[1]);
+            ctx.stroke();
+        } else if (tile === T.BLDG_LARGE) {
+            this._drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot);
+        } else {
+            const roofDark = scaleRgb(rf, (1 - dmg * 0.25) * 0.8);
+            this._drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr);
         }
 
-        // ── Second window (medium + large) ──
-        if (h >= 20) {
-            const winW = TW * 0.1,
-                winH = h * 0.2;
-            const winX = sx + TW * 0.02;
-            const winY = sy + TH * 0.4 - h * 0.15;
-            ctx.fillStyle = "#3a4a5a";
-            ctx.fillRect(winX, winY, winW, winH);
-            ctx.strokeStyle = rgb(tr.r, tr.g, tr.b);
-            ctx.lineWidth = 0.5;
-            ctx.strokeRect(winX, winY, winW, winH);
+        /* ── 4. Windows and doors (intact buildings only) ── */
+        if (intact && h >= 10) {
+            const frameL = scaleRgb(tr, 1.15),
+                frameR = scaleRgb(w, 0.82);
+            if (tile === T.BLDG_SMALL) {
+                this._wallWindow(ctx, E, S, 3, 0.3, 0.62, 5, frameR);
+                this._wallDoor(ctx, Wp, S, h, 0.52, 0.8, frameL);
+            } else if (tile === T.BLDG_MEDIUM) {
+                this._wallWindow(ctx, E, S, 4, 0.14, 0.38, 6, frameR);
+                this._wallWindow(ctx, E, S, 4, 0.58, 0.84, 6, frameR);
+                this._wallWindow(ctx, Wp, S, 4, 0.14, 0.38, 6, frameL);
+                this._wallDoor(ctx, Wp, S, h, 0.56, 0.84, frameL);
+            } else {
+                // Large: two storeys of windows
+                const row2 = Math.min(h - 9, h * 0.55);
+                for (const y0 of [5, row2]) {
+                    this._wallWindow(ctx, E, S, y0, 0.16, 0.4, 6.5, frameR);
+                    this._wallWindow(ctx, E, S, y0, 0.56, 0.82, 6.5, frameR);
+                    this._wallWindow(ctx, Wp, S, y0, 0.16, 0.4, 6.5, frameL);
+                }
+                this._wallDoor(ctx, Wp, S, h, 0.58, 0.86, frameL);
+            }
         }
 
-        // ── Door on left wall ──
-        if (h >= 10) {
-            const doorW = TW * 0.08,
-                doorH = Math.min(h * 0.45, 10);
-            const doorX = sx - TW * 0.22;
-            const doorY = sy + TH / 2 - doorH;
-            ctx.fillStyle = "#5a3a22";
-            ctx.fillRect(doorX, doorY, doorW, doorH);
-        }
-
-        // ── Chimney (large buildings only) ──
-        if (tile === T.BLDG_LARGE && frac > 0.5) {
-            const chX = sx + TW * 0.12;
-            const chY = sy - h - 6;
-            ctx.fillStyle = rgb(tr.r - 10, tr.g - 10, tr.b - 10);
-            ctx.fillRect(chX, chY, 4, 8);
-            // Chimney top
-            ctx.fillStyle = rgb(tr.r + 5, tr.g + 5, tr.b + 5);
-            ctx.fillRect(chX - 1, chY, 6, 2);
-        }
-
-        // ── Damage overlay ──
+        /* ── 5. Damage overlay ── */
         if (frac < 1) {
             this._drawDamageOverlay(ctx, sx, sy, h, frac, time);
         }
+    }
+
+    /**
+     * Pitched roof with two triangular slopes meeting at a centre
+     * crease — the classic isometric cottage roof.  The back (N) corner
+     * of the footprint is raised by the roof rise, so both slopes face
+     * the viewer and the roof always reads as a complete surface (no
+     * hidden far side).  The SE slope is lit, the SW slope shaded;
+     * includes tile rows, eave overhang with shadow, and a small 3-D
+     * chimney on the lit slope.
+     */
+    _drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr) {
+        const { fill } = createDrawHelpers(ctx);
+        const rh = tile === T.BLDG_SMALL ? 7 : 9; // peak rise above wall top
+        const ov = 2.5; // eave overhang (px)
+
+        const peak = [N[0], N[1] - rh]; // raised back corner
+        const Eo = [E[0] + ov, E[1]]; // eave corners with overhang
+        const So = [S[0], S[1] + ov];
+        const Wo = [Wp[0] - ov, Wp[1]];
+
+        // Eave shadow cast onto the walls below the overhang
+        ctx.strokeStyle = "rgba(0,0,0,0.22)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(Wp[0], Wp[1] + 1);
+        ctx.lineTo(S[0], S[1] + 1);
+        ctx.lineTo(E[0], E[1] + 1);
+        ctx.stroke();
+
+        // Left (SW) slope — shaded; right (SE) slope — lit
+        fill([peak, So, Wo], roofDark);
+        fill([peak, Eo, So], roofC);
+
+        // Tile rows parallel to each slope's eave edge
+        ctx.strokeStyle = "rgba(0,0,0,0.15)";
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        for (const t of [0.38, 0.7]) {
+            const r0 = lerpPt(peak, Eo, t);
+            const r1 = lerpPt(peak, So, t);
+            ctx.moveTo(r0[0], r0[1]);
+            ctx.lineTo(r1[0], r1[1]);
+            const l0 = lerpPt(peak, Wo, t);
+            const l1 = lerpPt(peak, So, t);
+            ctx.moveTo(l0[0], l0[1]);
+            ctx.lineTo(l1[0], l1[1]);
+        }
+        ctx.stroke();
+
+        // Centre crease (hip fold from the peak to the front eave corner)
+        ctx.strokeStyle = "rgba(0,0,0,0.18)";
+        ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        ctx.moveTo(peak[0], peak[1]);
+        ctx.lineTo(So[0], So[1]);
+        ctx.stroke();
+
+        // Peak highlight
+        const hl = lerpPt(peak, So, 0.18);
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(peak[0], peak[1]);
+        ctx.lineTo(hl[0], hl[1]);
+        ctx.stroke();
+
+        // Eave edges (define the overhang) and back silhouette
+        ctx.strokeStyle = "rgba(0,0,0,0.3)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(Eo[0], Eo[1]);
+        ctx.lineTo(So[0], So[1]);
+        ctx.lineTo(Wo[0], Wo[1]);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        ctx.moveTo(peak[0], peak[1]);
+        ctx.lineTo(Eo[0], Eo[1]);
+        ctx.moveTo(peak[0], peak[1]);
+        ctx.lineTo(Wo[0], Wo[1]);
+        ctx.stroke();
+
+        // Chimney — small 3-D box sitting on the lit (right) slope
+        const bx = (peak[0] + Eo[0] + So[0]) / 3 + 1;
+        const by = (peak[1] + Eo[1] + So[1]) / 3;
+        const cw2 = 2.2,
+            chH = 5.5;
+        const cap = [
+            [bx, by - chH - cw2 * 0.5],
+            [bx + cw2, by - chH],
+            [bx, by - chH + cw2 * 0.5],
+            [bx - cw2, by - chH],
+        ];
+        const drop = 4.5;
+        fill([cap[3], cap[2], [cap[2][0], cap[2][1] + drop], [cap[3][0], cap[3][1] + drop]], scaleRgb(tr, 0.7));
+        fill([cap[2], cap[1], [cap[1][0], cap[1][1] + drop], [cap[2][0], cap[2][1] + drop]], scaleRgb(tr, 0.9));
+        fill(cap, scaleRgb(tr, 0.5));
+    }
+
+    /**
+     * Flat roof with a parapet rim and rooftop clutter (large buildings).
+     */
+    _drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot) {
+        const { fill, outline } = createDrawHelpers(ctx);
+        const lip = 2; // parapet height
+        const rim = [
+            [N[0], N[1] - lip],
+            [E[0], E[1] - lip],
+            [S[0], S[1] - lip],
+            [Wp[0], Wp[1] - lip],
+        ];
+        fill(rim, scaleRgb(tr, soot));
+        // Roof surface: inset diamond, slightly lower
+        const cx = (N[0] + S[0]) / 2,
+            cy = (N[1] + S[1]) / 2 - lip;
+        const inset = (p) => [p[0] + (cx - p[0]) * 0.14, p[1] + (cy + lip - p[1]) * 0.14 - lip];
+        const surf = [inset(rim[0]), inset(rim[1]), inset(rim[2]), inset(rim[3])];
+        fill(surf, scaleRgb(rf, soot * 0.9));
+        outline(surf, "rgba(0,0,0,0.3)", 0.5);
+
+        // Stair bulkhead (small box near the W corner)
+        const bx = (rim[0][0] + rim[3][0]) / 2 + 1,
+            by = (rim[0][1] + rim[3][1]) / 2 + 1;
+        const bw2 = 3.5,
+            bh2 = 1.8,
+            bH = 4;
+        const bTop = [
+            [bx, by - bH - bh2],
+            [bx + bw2, by - bH],
+            [bx, by - bH + bh2],
+            [bx - bw2, by - bH],
+        ];
+        fill([bTop[3], bTop[2], [bTop[2][0], bTop[2][1] + bH], [bTop[3][0], bTop[3][1] + bH]], scaleRgb(tr, 0.65));
+        fill([bTop[2], bTop[1], [bTop[1][0], bTop[1][1] + bH], [bTop[2][0], bTop[2][1] + bH]], scaleRgb(tr, 0.85));
+        fill(bTop, scaleRgb(tr, 1.05));
+
+        // Vent pipe near the E corner
+        const vx = (rim[1][0] + rim[2][0]) / 2,
+            vy = (rim[1][1] + rim[2][1]) / 2;
+        ctx.strokeStyle = scaleRgb(tr, 0.6);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(vx, vy);
+        ctx.lineTo(vx, vy - 5);
+        ctx.stroke();
+        fill(
+            [
+                [vx - 1.5, vy - 6],
+                [vx + 1.5, vy - 6],
+                [vx + 1.5, vy - 4.5],
+                [vx - 1.5, vy - 4.5],
+            ],
+            scaleRgb(tr, 0.75),
+        );
+    }
+
+    /**
+     * Draw a window lying in a wall plane (skewed parallelogram).
+     * a→b = wall top edge (screen points), y0 = px below the wall top,
+     * t0..t1 = window span as fractions along the edge, wh = height.
+     */
+    _wallWindow(ctx, a, b, y0, t0, t1, wh, frameCol) {
+        const { fill } = createDrawHelpers(ctx);
+        const topL = lerpPt(a, b, t0),
+            topR = lerpPt(a, b, t1);
+        const down = (p, d) => [p[0], p[1] + d];
+        // Frame
+        fill([down(topL, y0 - 1), down(topR, y0 - 1), down(topR, y0 + wh + 1), down(topL, y0 + wh + 1)], frameCol);
+        // Glass
+        fill([down(topL, y0), down(topR, y0), down(topR, y0 + wh), down(topL, y0 + wh)], "#2e3d46");
+        // Reflection streak
+        ctx.strokeStyle = "rgba(200,225,240,0.35)";
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        const r0 = down(lerpPt(a, b, t0 + (t1 - t0) * 0.18), y0 + 1);
+        const r1 = down(lerpPt(a, b, t0 + (t1 - t0) * 0.5), y0 + wh - 1);
+        ctx.moveTo(r0[0], r0[1]);
+        ctx.lineTo(r1[0], r1[1]);
+        ctx.stroke();
+        // Centre mullion
+        const m0 = down(lerpPt(a, b, (t0 + t1) / 2), y0);
+        ctx.strokeStyle = "rgba(10,15,20,0.55)";
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(m0[0], m0[1]);
+        ctx.lineTo(m0[0], m0[1] + wh);
+        ctx.stroke();
+    }
+
+    /**
+     * Draw a door lying in a wall plane, anchored at the wall base.
+     * a→b = wall top edge, h = wall height, t0..t1 = door span.
+     */
+    _wallDoor(ctx, a, b, h, t0, t1, frameCol) {
+        const { fill } = createDrawHelpers(ctx);
+        const doorH = Math.min(h * 0.55, 10),
+            y0 = h - doorH;
+        const topL = lerpPt(a, b, t0),
+            topR = lerpPt(a, b, t1);
+        const down = (p, d) => [p[0], p[1] + d];
+        // Frame
+        fill([down(topL, y0 - 1), down(topR, y0 - 1), down(topR, h), down(topL, h)], frameCol);
+        // Door panel
+        fill([down(topL, y0), down(topR, y0), down(topR, h), down(topL, h)], "#4a3020");
+        // Lintel highlight
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(topL[0], topL[1] + y0);
+        ctx.lineTo(topR[0], topR[1] + y0);
+        ctx.stroke();
     }
 
     /* ── vehicle drawing (dispatch) ───────────────────────── */
@@ -557,15 +821,20 @@ export class Renderer {
      * isometric transform.  Vertical height is faked by drawing each
      * layer at a screen-Y offset so the tank looks stacked:
      *
-     *   ground → tracks → hull → turret → barrel
+     *   ground → tracks → wheels → side skirts → hull → barrel → turret
      *
-     * Each layer has a dark "side wall" drawn below its top face.
+     * Walls are shaded per-face by `slabLit` (screen-space normals), so
+     * the lighting stays consistent as the tank rotates.  The hull and
+     * tracks use the hull angle; turret, mantlet and barrel use the
+     * world-space turretWorld (hull angle + turret offset).
      *
-     * The hull and tracks use the tank's hull angle, while the turret
-     * and barrel use the world-space turretWorld (hull angle + turret offset).
+     * Detail: sloped glacis highlight, engine deck vents, exhaust port,
+     * two-tone road wheels behind armoured side skirts, angular turret
+     * with gun mantlet, commander hatch, periscopes, stowage basket and
+     * antenna whip.
      */
     _drawTank(ctx, tank, sx, sy) {
-        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
+        const { drop, fill, lift, outline, slab, slabLit } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -591,15 +860,7 @@ export class Renderer {
             return [sx + (wx - wy) * HTW, sy + (wx + wy) * HTH];
         };
 
-        // Fill polygon helper
-
-        // Stroke polygon outline
-
-        // Shift every point down by d pixels
-
-        /* ── local-space dimensions (world units) ─────────
-         *  Scaled up ~60 % from the previous version so the
-         *  tank is clearly visible and has room for detail.  */
+        /* ── local-space dimensions (world units) ───────── */
         const THL = 0.38; // track half-length
         const TYO = 0.3; // track outer Y
         const TYI = 0.21; // track inner Y
@@ -619,14 +880,16 @@ export class Renderer {
         if (tank.recoilTimer > 0) BX1 -= (tank.recoilTimer / 0.1) * 0.1;
 
         // ── Vertical offsets (cumulative, lower = further down screen) ──
-        // We draw from ground up.  Each layer's "top" is shifted up by
-        // the sum of all layers below it.
         const trackTop = -TRACK_H; // tracks sit on ground
         const hullTop = -(TRACK_H + HULL_H); // hull sits on tracks
         const turrTop = -(TRACK_H + HULL_H + TURR_H); // turret on hull
         const barrTop = -(TRACK_H + HULL_H + BARR_H); // barrel on hull
 
-        // Apply a vertical offset to projected points
+        // Directional wall shades matching the terrain lighting
+        // (SW faces dark, SE faces bright).
+        const hullColor = tank.damaged ? tank.darkColor : tank.color;
+        const wallL = tank.damaged ? "#101010" : shadeHex(tank.darkColor, 0.7);
+        const wallR = tank.damaged ? "#1e1e1e" : tank.darkColor;
 
         /* ── 1. Shadow ──────────────────────────────────── */
         fill(
@@ -643,20 +906,18 @@ export class Renderer {
         );
 
         /* ── 2. Tracks (hull angle) ─────────────────────── */
-        // Left track: red-brown if disabled, normal dark grey otherwise
         const lTrackColor = tank.leftTrackDisabled ? "#5a2a1a" : "#2a2a2a";
         const lTrackWall = tank.leftTrackDisabled ? "#3a1a0a" : "#111";
         const lTrackTop = lift([P(-THL, -TYO), P(THL, -TYO), P(THL, -TYI), P(-THL, -TYI)], trackTop);
         slab(lTrackTop, TRACK_H, lTrackColor, lTrackWall);
 
-        // Right track
         const rTrackColor = tank.rightTrackDisabled ? "#5a2a1a" : "#2a2a2a";
         const rTrackWall = tank.rightTrackDisabled ? "#3a1a0a" : "#111";
         const rTrackTop = lift([P(-THL, TYI), P(THL, TYI), P(THL, TYO), P(-THL, TYO)], trackTop);
         slab(rTrackTop, TRACK_H, rTrackColor, rTrackWall);
 
-        // Tread marks (on the track top faces, scrolling)
-        // Skip tread marks on disabled tracks (visually broken)
+        // Tread marks on the track top faces (scroll with movement).
+        // Skipped on disabled tracks; outer part hides under the skirts.
         const TREAD_N = 8;
         ctx.strokeStyle = "#444";
         ctx.lineWidth = 1.5;
@@ -678,6 +939,31 @@ export class Renderer {
             }
         }
         ctx.stroke();
+
+        /* ── 3. Road wheels (two-tone, peeking beside the skirts) ── */
+        for (const side of [-1, 1]) {
+            const disabled = side < 0 ? tank.leftTrackDisabled : tank.rightTrackDisabled;
+            const cy = side * 0.235;
+            for (let i = 0; i < 4; i++) {
+                const lx = THL * (-0.72 + i * 0.48);
+                const c = lift([P(lx, cy)], trackTop)[0];
+                // Tyre
+                ctx.fillStyle = disabled ? "#2a150a" : "#131313";
+                ctx.beginPath();
+                ctx.arc(c[0], c[1], 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Rim
+                ctx.fillStyle = disabled ? "#452312" : "#3f3f3f";
+                ctx.beginPath();
+                ctx.arc(c[0], c[1], 1.4, 0, Math.PI * 2);
+                ctx.fill();
+                // Hub
+                ctx.fillStyle = disabled ? "#2a150a" : "#666";
+                ctx.beginPath();
+                ctx.arc(c[0], c[1], 0.55, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
 
         // Damage cracks on disabled tracks
         if (tank.leftTrackDisabled) {
@@ -701,61 +987,78 @@ export class Renderer {
             ctx.stroke();
         }
 
-        // Track wheel detail (small circles inside tracks)
-        ctx.fillStyle = "#1a1a1a";
-        for (let i = 0; i < 3; i++) {
-            const lx = -THL * 0.6 + i * THL * 0.6;
-            if (!tank.leftTrackDisabled) {
-                const cL = lift([P(lx, -(TYO + TYI) / 2)], trackTop)[0];
-                ctx.beginPath();
-                ctx.arc(cL[0], cL[1], 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            if (!tank.rightTrackDisabled) {
-                const cR = lift([P(lx, (TYO + TYI) / 2)], trackTop)[0];
-                ctx.beginPath();
-                ctx.arc(cR[0], cR[1], 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
+        /* ── 4. Side skirts (armour plates over the tracks) ── */
+        const skirtIn = 0.27;
+        const mkSkirt = (side) =>
+            lift(
+                [
+                    P(-THL * 0.96, side * (TYO + 0.012)),
+                    P(THL * 0.92, side * (TYO + 0.012)),
+                    P(THL * 0.92, side * skirtIn),
+                    P(-THL * 0.96, side * skirtIn),
+                ],
+                trackTop - 1,
+            );
+        const skirtTopL = tank.leftTrackDisabled ? "#4a2a18" : mixHex(hullColor, "#000000", 0.25);
+        const skirtWallL = tank.leftTrackDisabled ? "#2a150a" : mixHex(hullColor, "#000000", 0.55);
+        slab(mkSkirt(-1), 3, skirtTopL, skirtWallL);
+        const skirtTopR = tank.rightTrackDisabled ? "#4a2a18" : mixHex(hullColor, "#000000", 0.25);
+        const skirtWallR = tank.rightTrackDisabled ? "#2a150a" : mixHex(hullColor, "#000000", 0.55);
+        slab(mkSkirt(1), 3, skirtTopR, skirtWallR);
 
-        /* ── 3. Hull (hull angle) ───────────────────────── */
-        // Darken hull colour when damaged
-        const hullColor = tank.damaged ? tank.darkColor : tank.color;
-        const hullDark = tank.damaged ? "#1a1a1a" : tank.darkColor;
+        /* ── 5. Hull (hull angle) ───────────────────────── */
         const hullPts = lift([P(HR, -HW), P(HF, -HW), P(HT, 0), P(HF, HW), P(HR, HW)], hullTop);
-        slab(hullPts, HULL_H, hullColor, hullDark);
-        outline(hullPts, hullDark, 0.5);
+        slabLit(hullPts, HULL_H, hullColor, wallL, wallR);
+        outline(hullPts, wallL, 0.5);
 
-        // Rear panel (darker accent)
-        const rearW = HW - 0.03;
-        fill(lift([P(HR, -rearW), P(HR + 0.05, -rearW), P(HR + 0.05, rearW), P(HR, rearW)], hullTop), hullDark);
+        // Sloped glacis plate highlight (front wedge)
+        fill(
+            lift([P(HF, -HW * 0.9), P(HT - 0.01, 0), P(HF, HW * 0.9)], hullTop - 0.4),
+            mixHex(hullColor, "#ffffff", 0.12),
+        );
 
-        // Hull centre ridge
-        ctx.strokeStyle = hullDark;
-        ctx.lineWidth = 1;
-        const rg1 = lift([P(HR + 0.08, 0)], hullTop)[0];
-        const rg2 = lift([P(HF - 0.04, 0)], hullTop)[0];
+        // Engine deck vents (rear)
+        ctx.strokeStyle = wallL;
+        ctx.lineWidth = 0.75;
         ctx.beginPath();
-        ctx.moveTo(rg1[0], rg1[1]);
-        ctx.lineTo(rg2[0], rg2[1]);
+        for (let i = 0; i < 3; i++) {
+            const v0 = lift([P(HR + 0.05 + i * 0.04, -HW * 0.72)], hullTop)[0];
+            const v1 = lift([P(HR + 0.05 + i * 0.04, HW * 0.72)], hullTop)[0];
+            ctx.moveTo(v0[0], v0[1]);
+            ctx.lineTo(v1[0], v1[1]);
+        }
         ctx.stroke();
 
-        // Side panel lines (give hull more shape)
-        ctx.strokeStyle = hullDark;
-        ctx.lineWidth = 0.5;
-        const sp1a = lift([P(HR + 0.04, -HW)], hullTop)[0];
-        const sp1b = lift([P(HR + 0.04, HW)], hullTop)[0];
+        // Exhaust outlet (rear-left corner)
+        const ex = lift([P(HR - 0.005, -HW * 0.55)], hullTop + 1)[0];
+        ctx.fillStyle = "#1c1c1c";
         ctx.beginPath();
-        ctx.moveTo(sp1a[0], sp1a[1]);
-        ctx.lineTo(sp1b[0], sp1b[1]);
-        ctx.stroke();
+        ctx.arc(ex[0], ex[1], 1.4, 0, Math.PI * 2);
+        ctx.fill();
 
-        /* ── 4. Barrel (turret angle) ───────────────────── */
-        const barrColor = tank.turretDisabled ? "#444" : "#666";
-        const barrDark = tank.turretDisabled ? "#222" : "#333";
+        /* ── 6. Barrel (turret angle) ───────────────────── */
+        const barrColor = tank.turretDisabled ? "#444" : "#5e6368";
+        const barrDark = tank.turretDisabled ? "#222" : "#303338";
         const barrPts = lift([PT(BX0, -BHW), PT(BX1, -BHW), PT(BX1, BHW), PT(BX0, BHW)], barrTop);
         slab(barrPts, BARR_H, barrColor, barrDark);
+
+        // Fume extractor (bulge ~55 % along the barrel)
+        const fmX = BX0 + (BX1 - BX0) * 0.55;
+        const fume = lift(
+            [
+                PT(fmX - 0.018, -BHW - 0.009),
+                PT(fmX + 0.018, -BHW - 0.009),
+                PT(fmX + 0.018, BHW + 0.009),
+                PT(fmX - 0.018, BHW + 0.009),
+            ],
+            barrTop,
+        );
+        slab(
+            fume,
+            BARR_H + 0.5,
+            tank.turretDisabled ? "#484848" : barrColor,
+            tank.turretDisabled ? "#262626" : barrDark,
+        );
 
         // Muzzle brake (wider tip)
         const MZ = 0.04;
@@ -770,26 +1073,94 @@ export class Renderer {
         );
         slab(muzzle, BARR_H, tank.turretDisabled ? "#555" : "#777", tank.turretDisabled ? "#333" : "#444");
 
-        /* ── 5. Turret (turret angle) ───────────────────── */
+        /* ── 7. Turret (turret angle) ───────────────────── */
         const turretColor = tank.turretDisabled ? "#555" : tank.color;
-        const turretDark = tank.turretDisabled ? "#333" : tank.darkColor;
-        const tPts = [],
-            tHatch = [];
-        const N = 10;
-        for (let i = 0; i < N; i++) {
-            const a = (i / N) * Math.PI * 2;
-            tPts.push(lift([PT(Math.cos(a) * TR, Math.sin(a) * TR)], turrTop)[0]);
-            tHatch.push(lift([PT(Math.cos(a) * TR * 0.35, Math.sin(a) * TR * 0.35)], turrTop)[0]);
+        const turretWallL = tank.turretDisabled ? "#2c2c2c" : wallL;
+        const turretWallR = tank.turretDisabled ? "#3d3d3d" : wallR;
+        // Angular heptagon: pointed nose, wide mid, flat rear
+        const turrRaw = [
+            [1.05, 0],
+            [0.55, -0.8],
+            [-0.55, -0.92],
+            [-0.95, -0.5],
+            [-0.95, 0.5],
+            [-0.55, 0.92],
+            [0.55, 0.8],
+        ];
+        // Turret ring: dark footprint on the hull, seats the turret
+        fill(
+            lift(
+                turrRaw.map(([px, py]) => PT(px * TR * 1.12, py * TR * 1.12)),
+                hullTop,
+            ),
+            turretWallL,
+        );
+        const tPts = lift(
+            turrRaw.map(([px, py]) => PT(px * TR, py * TR)),
+            turrTop,
+        );
+        slabLit(tPts, TURR_H, turretColor, turretWallL, turretWallR);
+        outline(tPts, turretWallL, 0.5);
+
+        // Gun mantlet (reinforced block where the barrel emerges)
+        const MW = TR * 0.34;
+        const mant = lift([PT(TR * 0.72, -MW), PT(TR * 1.14, -MW), PT(TR * 1.14, MW), PT(TR * 0.72, MW)], turrTop + 1);
+        slab(
+            mant,
+            TURR_H - 1,
+            tank.turretDisabled ? "#4a4a4a" : "#4d5257",
+            tank.turretDisabled ? "#2a2a2a" : "#2c3033",
+        );
+
+        // Commander hatch (slightly rear-left of centre)
+        const hatchC = [-TR * 0.18, -TR * 0.15];
+        const hN = 8,
+            hR = TR * 0.34;
+        const hatch = [];
+        for (let i = 0; i < hN; i++) {
+            const a = (i / hN) * Math.PI * 2;
+            hatch.push(lift([PT(hatchC[0] + Math.cos(a) * hR, hatchC[1] + Math.sin(a) * hR)], turrTop - 1)[0]);
         }
-        slab(tPts, TURR_H, turretColor, turretDark);
-        outline(tPts, turretDark, 0.5);
+        fill(hatch, tank.turretDisabled ? "#3a3a3a" : shadeHex(tank.color, 0.8));
+        outline(hatch, turretWallL, 0.5);
 
-        // Commander hatch
-        fill(tHatch, turretDark);
+        // Periscopes (two small blocks ahead of the hatch)
+        ctx.fillStyle = "#1d2530";
+        for (const off of [
+            [TR * 0.32, -TR * 0.28],
+            [TR * 0.34, -TR * 0.02],
+        ]) {
+            const p = lift([PT(hatchC[0] + off[0], hatchC[1] + off[1])], turrTop - 0.5)[0];
+            ctx.fillRect(p[0] - 0.7, p[1] - 0.6, 1.4, 1.2);
+        }
 
-        // Hatch cross-hair (or X for disabled turret)
+        // Rear stowage basket (thin U-shaped outline)
+        ctx.strokeStyle = turretWallL;
+        ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        const bPts = [
+            [-0.98, -0.42],
+            [-1.18, -0.42],
+            [-1.18, 0.42],
+            [-0.98, 0.42],
+        ].map(([px, py]) => lift([PT(px * TR, py * TR)], turrTop + 1)[0]);
+        ctx.moveTo(bPts[0][0], bPts[0][1]);
+        for (let i = 1; i < bPts.length; i++) ctx.lineTo(bPts[i][0], bPts[i][1]);
+        ctx.stroke();
+
+        // Antenna whip (turret rear-right)
+        if (!tank.turretDisabled) {
+            const ant = lift([PT(-TR * 0.8, -TR * 0.55)], turrTop)[0];
+            ctx.strokeStyle = "rgba(40,40,40,0.8)";
+            ctx.lineWidth = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(ant[0], ant[1]);
+            ctx.lineTo(ant[0] + 1, ant[1] - 11);
+            ctx.stroke();
+        }
+
+        // Disabled-turret marker: red ✕ over the turret centre
         if (tank.turretDisabled) {
-            // Red X indicating locked turret
             ctx.strokeStyle = "#cc2222";
             ctx.lineWidth = 1.5;
             const x1 = lift([PT(-TR * 0.25, -TR * 0.25)], turrTop)[0];
@@ -801,20 +1172,6 @@ export class Renderer {
             ctx.lineTo(x2[0], x2[1]);
             ctx.moveTo(x3[0], x3[1]);
             ctx.lineTo(x4[0], x4[1]);
-            ctx.stroke();
-        } else {
-            ctx.strokeStyle = tank.color;
-            ctx.lineWidth = 0.5;
-            const _hc = lift([PT(0, 0)], turrTop)[0];
-            const ht = lift([PT(0, -TR * 0.3)], turrTop)[0];
-            const hb = lift([PT(0, TR * 0.3)], turrTop)[0];
-            const hl = lift([PT(-TR * 0.3, 0)], turrTop)[0];
-            const hr = lift([PT(TR * 0.3, 0)], turrTop)[0];
-            ctx.beginPath();
-            ctx.moveTo(ht[0], ht[1]);
-            ctx.lineTo(hb[0], hb[1]);
-            ctx.moveTo(hl[0], hl[1]);
-            ctx.lineTo(hr[0], hr[1]);
             ctx.stroke();
         }
     }
@@ -830,7 +1187,7 @@ export class Renderer {
      *   - White chevron marking on hull top
      */
     _drawIFV(ctx, tank, sx, sy) {
-        const { drop, fill, lift, outline, slab } = createDrawHelpers(ctx);
+        const { drop, fill, lift, outline, slab, slabLit } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -870,6 +1227,9 @@ export class Renderer {
         // Darken hull colour when damaged
         const hullColor = tank.damaged ? tank.darkColor : tank.color;
         const hullDark = tank.damaged ? "#1a1a1a" : tank.darkColor;
+        // Directional wall shades (terrain lighting: SW dark, SE bright)
+        const wallL = tank.damaged ? "#101010" : shadeHex(tank.darkColor, 0.7);
+        const wallR = tank.damaged ? "#1e1e1e" : tank.darkColor;
 
         /* ── 1. Shadow ──────────────────────────────────── */
         fill(
@@ -921,19 +1281,42 @@ export class Renderer {
             }
         }
 
-        /* ── 3. Hull — wide flat box (NOT pointed like tank) ── */
-        // Flat front instead of tank's pointed nose
+        /* ── 2b. Fenders (thin mudguards over the wheels) ── */
+        for (const side of [-1, 1]) {
+            const fender = lift(
+                [
+                    P(-SHL * 0.92, side * (SWO + 0.008)),
+                    P(SHL * 0.92, side * (SWO + 0.008)),
+                    P(SHL * 0.92, side * (SWO - 0.035)),
+                    P(-SHL * 0.92, side * (SWO - 0.035)),
+                ],
+                wheelTop - 1,
+            );
+            slab(fender, 2, mixHex(hullColor, "#000000", 0.35), mixHex(hullColor, "#000000", 0.6));
+        }
+
+        /* ── 3. Hull — wide box with a chamfered nose ── */
+        // Sloped front corners suggest the glacis of a real APC
         const hullPts = lift(
             [
                 P(-SHL, -SHW),
-                P(SHL, -SHW), // flat front edge (key visual difference)
-                P(SHL, SHW),
+                P(SHL - 0.09, -SHW), // chamfer start
+                P(SHL, -SHW + 0.08), // nose corner
+                P(SHL, SHW - 0.08),
+                P(SHL - 0.09, SHW),
                 P(-SHL, SHW),
             ],
             hullTop,
         );
-        slab(hullPts, HULL_H, hullColor, hullDark);
-        outline(hullPts, hullDark, 0.7);
+        slabLit(hullPts, HULL_H, hullColor, wallL, wallR);
+        outline(hullPts, wallL, 0.7);
+
+        // Vision ports on the chamfered nose faces
+        ctx.fillStyle = "#1c242c";
+        for (const vy of [-SHW * 0.55, SHW * 0.55]) {
+            const vp = lift([P(SHL - 0.055, vy)], hullTop - 0.5)[0];
+            ctx.fillRect(vp[0] - 1, vp[1] - 0.7, 2.2, 1.4);
+        }
 
         // Rear panel
         fill(
@@ -1000,8 +1383,20 @@ export class Renderer {
 
         /* ── 5. Gun mount — small angular box (NOT circular) ── */
         const mountPts = lift([P(-MHL, -MHW), P(MHL, -MHW), P(MHL, MHW), P(-MHL, MHW)], mountTop);
-        slab(mountPts, MOUNT_H, hullColor, hullDark);
-        outline(mountPts, hullDark, 0.5);
+        slabLit(mountPts, MOUNT_H, hullColor, wallL, wallR);
+        outline(mountPts, wallL, 0.5);
+
+        // Hatch on the mount roof
+        const hatch = lift(
+            [
+                P(-MHL * 0.5, -MHW * 0.45),
+                P(MHL * 0.1, -MHW * 0.45),
+                P(MHL * 0.1, MHW * 0.45),
+                P(-MHL * 0.5, MHW * 0.45),
+            ],
+            mountTop - 0.5,
+        );
+        fill(hatch, shadeHex(tank.color, 0.75));
 
         // Vision slit on front of mount
         ctx.fillStyle = "#222";
@@ -1450,7 +1845,7 @@ export class Renderer {
      *   - White LED indicator on the front
      */
     _drawDrone(ctx, tank, sx, sy) {
-        const { fill, lift } = createDrawHelpers(ctx);
+        const { drop, fill, lift } = createDrawHelpers(ctx);
         if (!tank.alive) return;
         if (tank.flashTimer > 0 && Math.sin(tank.flashTimer * 20) > 0) return;
 
@@ -1528,6 +1923,7 @@ export class Renderer {
         const bw = 0.09,
             bh = 0.06;
         const body = lift([P(-bw, -bh), P(bw, -bh), P(bw, bh), P(-bw, bh)], -hoverH);
+        fill(drop(body, 2), tank.darkColor); // body thickness
         fill(body, tank.color);
         ctx.strokeStyle = tank.darkColor;
         ctx.lineWidth = 0.7;
@@ -1537,9 +1933,24 @@ export class Renderer {
         ctx.closePath();
         ctx.stroke();
 
+        // Warhead band (dark stripe around the payload)
+        const band = lift([P(-0.015, -bh), P(0.015, -bh), P(0.015, bh), P(-0.015, bh)], -hoverH + 0.5);
+        fill(band, "#26221e");
+
         // Dark underside indicator (payload)
         const payload = lift([P(-0.04, -0.03), P(0.04, -0.03), P(0.04, 0.03), P(-0.04, 0.03)], -hoverH + 2);
         fill(payload, tank.darkColor);
+
+        // Camera gimbal (small ball under the nose)
+        const gim = lift([P(bw + 0.02, 0)], -hoverH + 2.5)[0];
+        ctx.fillStyle = "#1a1a1a";
+        ctx.beginPath();
+        ctx.arc(gim[0], gim[1], 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#3a5a78";
+        ctx.beginPath();
+        ctx.arc(gim[0] + 0.5, gim[1] + 0.3, 0.7, 0, Math.PI * 2);
+        ctx.fill();
 
         // ── 5. Front LED (white dot, blinks) ──
         const ledOn = Math.sin(performance.now() / 200) > 0;
