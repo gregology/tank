@@ -160,9 +160,16 @@ export class Tank extends GameEntity {
 
         const rotSpeed = VEHICLES[this.vehicleType].rotationSpeed;
 
-        const rotating = (input.isDown(keyMap.left) && canRotateLeft) || (input.isDown(keyMap.right) && canRotateRight);
-        if (input.isDown(keyMap.left) && canRotateLeft) this.angle -= rotSpeed * dt;
-        if (input.isDown(keyMap.right) && canRotateRight) this.angle += rotSpeed * dt;
+        // Turn/turret amounts are analog (0–1) when the input source
+        // provides them (gamepad stick/triggers) and binary otherwise
+        // (keyboard, AI).  Falls back to isDown() for inputs without analog().
+        const amt = (code) => (typeof input.analog === "function" ? input.analog(code) : input.isDown(code) ? 1 : 0);
+        const turnL = amt(keyMap.left);
+        const turnR = amt(keyMap.right);
+
+        const rotating = (turnL > 0 && canRotateLeft) || (turnR > 0 && canRotateRight);
+        if (turnL > 0 && canRotateLeft) this.angle -= rotSpeed * turnL * dt;
+        if (turnR > 0 && canRotateRight) this.angle += rotSpeed * turnR * dt;
         this.angle = normalizeAngle(this.angle);
 
         // ── Turret rotation (relative to hull, slower)
@@ -172,8 +179,10 @@ export class Tank extends GameEntity {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
             const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
-            if (input.isDown(keyMap.turretLeft)) this.turretAngle -= turretSpd * dt;
-            if (input.isDown(keyMap.turretRight)) this.turretAngle += turretSpd * dt;
+            const turrL = amt(keyMap.turretLeft);
+            const turrR = amt(keyMap.turretRight);
+            if (turrL > 0) this.turretAngle -= turretSpd * turrL * dt;
+            if (turrR > 0) this.turretAngle += turretSpd * turrR * dt;
             this.turretAngle = normalizeAngle(this.turretAngle);
         }
 

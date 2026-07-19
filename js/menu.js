@@ -552,7 +552,7 @@ export class Menu {
         const modeDef = chosen.mode && chosen.mode !== "_about" ? MODE_DEFS[chosen.mode] : null;
         if (modeDef) {
             const isSplit = modeDef.split;
-            const panelH = isSplit ? 68 : 52;
+            const panelH = isSplit ? 84 : 68;
             const panelY = H - panelH - 30;
 
             // Background
@@ -575,9 +575,16 @@ export class Menu {
                 ctx.fillText("P2", cx - 185, panelY + 50);
                 ctx.fillStyle = "#aaa";
                 ctx.fillText("Arrows move  ·  ,. turret  ·  ENTER fire", cx + 10, panelY + 50);
+
+                ctx.fillStyle = "#44bb44";
+                ctx.fillText("PAD", cx - 185, panelY + 68);
+                ctx.fillStyle = "#aaa";
+                ctx.fillText("Y fwd · X rev · Stick steer · A fire", cx + 10, panelY + 68);
             } else {
                 ctx.fillStyle = "#aaa";
-                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx, panelY + 32);
+                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx, panelY + 30);
+                ctx.fillStyle = "#888";
+                ctx.fillText("Gamepad:  Y fwd  ·  X rev  ·  Stick steer  ·  A fire", cx, panelY + 48);
             }
 
             ctx.font = '10px "Courier New", monospace';

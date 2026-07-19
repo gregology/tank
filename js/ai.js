@@ -119,6 +119,10 @@ export class AIController {
     isDown(code) {
         return !!this.keys[code];
     }
+    /** Binary input source — analog channels are 1 when held, 0 otherwise. */
+    analog(code) {
+        return this.keys[code] ? 1 : 0;
+    }
     wasPressed(_) {
         return false;
     }

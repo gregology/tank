@@ -49,6 +49,24 @@ The turret rotates independently from the hull, slower than hull rotation. This 
 **Menu:** ↑↓ or W/S to select, Enter or Space to start.
 **Game over:** Space/Enter for rematch, R for menu.
 
+## Gamepad
+
+One or two standard-mapping controllers (Xbox, PlayStation, Steam Deck built-in controls) work alongside the keyboard. The first connected pad drives **Player 1**, the second drives **Player 2** — ideal for split-screen with two controllers.
+
+The pad mapping is layout-independent (Xbox, PlayStation and Nintendo pads all work). Face buttons are described by position below.
+
+| Action   | Gamepad |
+|----------|---------|
+| Forward  | **Top face button** (Y / △ / X) — D-pad ↑ or stick ↑ also work |
+| Reverse  | **Left face button** (X / □ / Y) — D-pad ↓ or stick ↓ also work |
+| Steer left / right | D-pad ←→ (digital) or left stick ←→ (**analog** — turn rate scales with deflection) |
+| Turret left / right | LT / RT (**analog** — speed scales with trigger pull) |
+| Fire     | **Bottom face button** (A / ✕ / B) — right face button and Start also work |
+| Menu: navigate / confirm / back | D-pad or stick / **bottom button** / **right button** |
+| Game over: rematch / menu | Bottom button / right button |
+
+Keyboard and gamepad can be used at the same time (e.g. P1 on pad, P2 on keyboard arrows).
+
 ## How to Play
 
 - Each game generates a **random island** with villages, buildings, and road networks.

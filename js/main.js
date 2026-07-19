@@ -32,6 +32,11 @@ function loop(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
 
+    // Pads use the menu mapping (navigate/confirm/back) while in menus
+    // or on the game-over screen, and the gameplay mapping otherwise.
+    input.menuMode = state === "menu" || (game?.gameOver ?? false);
+    input.pollGamepads(); // merge gamepad state before anything reads input
+
     if (state === "menu") {
         menu.update(dt, input, audio);
         menu.render(renderer.ctx, renderer.canvas);

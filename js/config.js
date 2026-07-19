@@ -94,6 +94,12 @@ export const CONFIG = {
         turretRight: "Period",
         fire: "Enter",
     },
+
+    // ── Gamepad ────────────────────────────────────────────
+    // Pads are polled each frame and translated into the PLAYER*_KEYS
+    // codes above (pad 1 → P1, pad 2 → P2).  See js/input.js.
+    GAMEPAD_STICK_DEADZONE: 0.35, // left-stick deflection needed to register a direction
+    GAMEPAD_TRIGGER_THRESHOLD: 0.35, // analogue LT/RT pull needed to rotate the turret
 };
 
 /**
