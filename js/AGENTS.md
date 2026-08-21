@@ -13,9 +13,31 @@ leaf):
 main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
 game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js
 ai.js  ──▶ pathfinder.js
-renderer.js ──▶ config.js, utils.js
+renderer.js ──▶ js/render/*, layout.js      (thin shell)
+js/render/ ──▶ config.js, utils.js, draw-helpers.js, formation.js
 everything ──▶ config.js, utils.js   (config.js imports nothing)
 ```
+
+The render layer is a **package**, not one file. `renderer.js` is a thin
+shell (canvas + per-frame layout); every drawing concern lives in a focused
+module under `js/render/`:
+
+- `viewport.js` — the two-pass depth-sort orchestration (`renderViewport`)
+  plus the pure `collectDepthItems` bucket builder. **The depth contract
+  lives here**: flat tiles in pass 1, elevated tiles at depth `gx+gy+1`,
+  drones at +2, items pushed tiles → tanks → structures → bullets →
+  particles within a bucket.
+- `tiles.js` / `buildings.js` / `structures.js` — terrain, destructible
+  buildings, and base compounds.
+- `vehicles.js` — the five vehicle sprites + `drawVehicle` dispatch. This is
+  the module `menu.js` imports for previews (no prototype hack).
+- `effects.js` — bullets (incl. arcing shells) + particles.
+- `hud.js` / `minimap.js` / `overlay.js` — score/battle HUDs, minimap,
+  game-over + SPG target indicator.
+- `projection.js` — shared isometric `P`/`PT` projection closures and the
+  alive/flash sprite guard.
+- `canvas-utils.js` — the colour palette and colour math, `roundedRect`.
+- `damage.js` — the shared damage overlay (cracks + critical flash).
 
 Rules that follow:
 
@@ -24,6 +46,9 @@ Rules that follow:
 - `utils.js` imports only `config.js`. It is a leaf of pure helpers.
 - Avoid circular dependencies. If two modules need each other, extract a
   third, or push the shared logic down toward the leaf.
+- The render package must stay leaf-ish (enforced by dependency-cruiser):
+  it may import data/config/utils/draw-helpers/formation — never game
+  logic modules.
 
 ## The abstractions, in detail
 
@@ -146,13 +171,13 @@ The root principles, made concrete for this directory:
 - **Delete, don't preserve.** When you change an API, migrate every caller and
   remove the old path. No `// backward compat` fields, no dead methods kept
   "in case".
-- **Do the larger change.** A duplicated helper (e.g. `_roundedRect`, colour
-  math, line-of-sight) is removed by extracting and unifying *all* call sites
+- **Do the larger change.** A duplicated helper (e.g. line-of-sight or
+  passability queries) is removed by extracting and unifying *all* call sites
   at once — not by adding a fourth copy.
 - **Readability.** Keep functions small and single-responsibility, name them
   for what they do, and let the data table say what varies. If a class needs a
-  diagram, split it (`renderer.js` and `ai.js` are the current worst cases —
-  see `docs/refactor_opportunities.md`).
+  diagram, split it (`ai.js` and `game.js` are the current worst cases — see
+  `docs/refactor_opportunities.md`).
 - **Comments.** Explain *why*, never *what*. The codebase's own header blocks
   are good examples of *why*-style documentation; a line comment restating
   `this.hp -= amount` is not.
@@ -163,11 +188,14 @@ These are the current violations of the principles above; the plan to remove
 them is in `docs/refactor_opportunities.md`. While they still exist, do not
 make them worse:
 
-- `renderer.js` — a ~3,000-line god object with **no tests**. Do not add more
-  responsibilities to it; extract, don't append.
+- `renderer.js` was split into the `js/render/` package (opportunity #1 in
+  `docs/refactor_opportunities.md`) — do not grow `renderer.js` back into a
+  god object; put new drawing code in the right `js/render/` module and keep
+  the package's dependency rules intact.
 - `ai.js` and `game.js` — ~1,100 lines each, multiple roles/responsibilities.
 - `vehicleType === "x"` dispatch — ~47 checks across six files: `game.js`,
   `tank.js`, `ai.js`, `renderer.js`, `collision.js`, `audio.js`.
-- Duplicated `_roundedRect` (`renderer.js`, `menu.js`), colour helpers, and
-  line-of-sight / passability queries.
+- Duplicated colour helpers and line-of-sight / passability queries (the
+  shared `_roundedRect` and colour math are gone — they now live in
+  `js/render/canvas-utils.js`).
 - Dead code: `map.js#_createBase()` is never called.

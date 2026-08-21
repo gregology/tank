@@ -104,7 +104,10 @@ tank.js      vehicle entity + data-driven damage model (applyHit)
 ai.js        bot brain; implements the same InputDevice interface as humans
 pathfinder.js  A* + wall-cost overlay
 map.js       map generation, passability, tile queries
-renderer.js  all Canvas drawing (tiles, vehicles, HUD, minimap, effects)
+renderer.js  thin shell: canvas, viewport layout, per-frame draw order
+render/      render package: viewport (two-pass depth sort), tiles,
+             buildings, vehicles, structures, effects, HUD, minimap,
+             overlays — plus shared projection/colour helpers
 input.js     InputDevice / Keyboard / Gamepad / InputManager
 menu.js      pre-game screens; builds the MatchConfig
 lobby.js     player/team joining state
@@ -159,15 +162,18 @@ around them. (Details live in `js/AGENTS.md`.)
 The refactor backlog is tracked in `docs/refactor_opportunities.md`. In brief,
 the known structural debt is:
 
-- `js/renderer.js` is a ~3,000-line god object (tiles, buildings, five vehicle
-  renderers, HUDs, minimap, effects) with **no test coverage**.
+- The old `renderer.js` god object was split into the `js/render/` package
+  (opportunity #1) — keep it that way: new drawing code goes into the right
+  `js/render/` module, never back into `renderer.js`.
 - Vehicle behaviour is dispatched by ~47 `vehicleType === "x"` checks across
   six files ("type code") rather than polymorphism/strategy — despite the
   vehicles sharing one `Tank` class.
-- Duplicated helpers: colour math, `_roundedRect`, line-of-sight, passability.
-- The measured coverage figure (~92% line) **excludes** several untested
-  modules (`renderer`, `menu`, `audio`, `particles`, `camera`,
-  `draw-helpers`), so it overstates real coverage.
+- Duplicated helpers: line-of-sight and passability queries (the duplicated
+  colour math and `_roundedRect` now live in `js/render/canvas-utils.js`).
+- The measured coverage figure **excludes** several untested modules
+  (`game.js`, `audio`, `particles`, `camera`, `draw-helpers`, and most of
+  `menu`), so it overstates real coverage — `renderer` + the whole `render/`
+  package are now measured (~90%+).
 
 Treat these as the top of the queue, and apply the principles above when you
 touch them.

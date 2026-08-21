@@ -10,12 +10,13 @@
  * input orchestration + rendering over that state.
  *
  * Vehicle previews use the EXACT same geometry as the in-game renderer
- * (renderer.js _drawVehicle), projected at a configurable scale.
+ * (js/render/vehicles.js drawVehicle), projected at a configurable scale.
  */
 
 import { ACTIONS, GAME_OPTIONS, MAX_PLAYERS, PLAYER_COLORS, VEHICLES } from "./config.js";
 import { Lobby } from "./lobby.js";
-import { Renderer } from "./renderer.js";
+import { roundedRect } from "./render/canvas-utils.js";
+import { drawVehicle } from "./render/vehicles.js";
 
 /* ── Vehicle descriptions (UI text, not gameplay constants) ── */
 
@@ -429,12 +430,12 @@ export class Menu {
             const col = p ? PLAYER_COLORS[p.team - 1] : null;
 
             ctx.fillStyle = p ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.03)";
-            this._roundedRect(ctx, x, cardY, cardW, cardH, 6);
+            roundedRect(ctx, x, cardY, cardW, cardH, 6);
             ctx.fill();
             if (p) {
                 ctx.strokeStyle = col.color;
                 ctx.lineWidth = 2;
-                this._roundedRect(ctx, x, cardY, cardW, cardH, 6);
+                roundedRect(ctx, x, cardY, cardW, cardH, 6);
                 ctx.stroke();
             }
 
@@ -510,7 +511,7 @@ export class Menu {
     _cursorBar(ctx, x, y, w, h) {
         const pulse = 0.05 + Math.sin(this._time * 4) * 0.02;
         ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-        this._roundedRect(ctx, x, y, w, h, 4);
+        roundedRect(ctx, x, y, w, h, 4);
         ctx.fill();
     }
 
@@ -543,7 +544,7 @@ export class Menu {
             const sel = i === this._aboutIndex;
             if (sel) {
                 ctx.fillStyle = "rgba(255,255,255,0.06)";
-                this._roundedRect(ctx, tx - tabSpacing / 2 + 5, tabY - 14, tabSpacing - 10, 24, 4);
+                roundedRect(ctx, tx - tabSpacing / 2 + 5, tabY - 14, tabSpacing - 10, 24, 4);
                 ctx.fill();
                 ctx.fillStyle = VEHICLE_INFO[i].color;
             } else {
@@ -578,7 +579,7 @@ export class Menu {
         const statStart = cx - (statSpacing * (statKeys.length - 1)) / 2;
 
         ctx.fillStyle = "rgba(255,255,255,0.03)";
-        this._roundedRect(ctx, statStart - statSpacing / 2, statsY - 16, statSpacing * statKeys.length, 32, 6);
+        roundedRect(ctx, statStart - statSpacing / 2, statsY - 16, statSpacing * statKeys.length, 32, 6);
         ctx.fill();
 
         ctx.font = 'bold 11px "Courier New", monospace';
@@ -712,11 +713,10 @@ export class Menu {
 
     /**
      * Draw a vehicle preview at a configurable scale.  Delegates to the
-     * in-game vehicle renderer via a prototype-only instance.
+     * shared vehicle sprite module (the same one the in-game renderer uses).
      */
     _drawMenuVehicle(ctx, sx, sy, angle, type, color, dark, scale) {
         const s = scale !== undefined ? scale : 1.0;
-        if (!this._vehicleRenderer) this._vehicleRenderer = Object.create(Renderer.prototype);
         const fakeTank = {
             alive: true,
             flashTimer: 0,
@@ -737,23 +737,7 @@ export class Menu {
         ctx.save();
         ctx.translate(sx, sy);
         ctx.scale(s, s);
-        this._vehicleRenderer._drawVehicle(ctx, fakeTank, 0, 0);
+        drawVehicle(ctx, fakeTank, 0, 0);
         ctx.restore();
-    }
-
-    /* ── utility ──────────────────────────────────────────── */
-
-    _roundedRect(ctx, x, y, w, h, r) {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.arcTo(x + w, y, x + w, y + r, r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-        ctx.lineTo(x + r, y + h);
-        ctx.arcTo(x, y + h, x, y + h - r, r);
-        ctx.lineTo(x, y + r);
-        ctx.arcTo(x, y, x + r, y, r);
-        ctx.closePath();
     }
 }

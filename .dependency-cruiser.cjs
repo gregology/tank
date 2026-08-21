@@ -25,9 +25,16 @@ module.exports = {
         {
             name: "no-renderer-from-logic",
             severity: "warn",
-            comment: "Game logic modules should not import the renderer",
+            comment: "Game logic modules should not import the renderer or render package",
             from: { path: "^js/(ai|tank|bullet|map|pathfinder|config|utils)\\.js$" },
-            to: { path: "^js/renderer\\.js$" },
+            to: { path: "^js/render(er\\.js|/)" },
+        },
+        {
+            name: "render-only-imports-data",
+            severity: "warn",
+            comment: "The render package must stay leaf-ish: data, utils, and drawing helpers only",
+            from: { path: "^js/render/" },
+            to: { path: "^js/(?!config\\.js$|utils\\.js$|draw-helpers\\.js$|formation\\.js$|render/)" },
         },
         {
             name: "no-input-from-logic",

@@ -108,6 +108,38 @@ export function zigzag(startY, spacing, count, x1, x2, gapSide = "alternate") {
     return obs;
 }
 
+/* ── Recording canvas context ─────────────────────────────── */
+
+/**
+ * Minimal recording 2D context for render smoke tests.
+ *
+ * Every method call is a no-op recorded into `calls`; property sets
+ * store the value (so reads after writes behave).  Use it to assert
+ * "drawing happened and did not throw", not pixel output.
+ */
+export function fakeCtx() {
+    const calls = [];
+    const ctx = new Proxy(
+        {},
+        {
+            get(target, prop) {
+                if (typeof prop === "symbol") return undefined;
+                if (prop in target) return target[prop];
+                const record = () => {
+                    calls.push(prop);
+                };
+                target[prop] = record;
+                return record;
+            },
+            set(target, prop, value) {
+                target[prop] = value;
+                return true;
+            },
+        },
+    );
+    return { ctx, calls };
+}
+
 /* ── Bot simulation ───────────────────────────────────────── */
 
 /**

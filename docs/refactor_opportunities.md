@@ -13,9 +13,11 @@ good separation of `config` → `utils` → logic → `renderer`), but it has on
 large exception and several cross-cutting smells that will make every future
 feature harder to ship safely:
 
-1. **`js/renderer.js` is a 3,061-line "god object" with zero test coverage** — it
-   draws tiles, buildings, five vehicle types, base structures, bullets, particles,
+1. **`js/renderer.js` was a 3,061-line "god object" with zero test coverage** — it
+   drew tiles, buildings, five vehicle types, base structures, bullets, particles,
    two HUDs, a minimap, and a game-over screen, all through one class.
+   **✅ Decomposed into the `js/render/` package (see #1); `renderer.js` is now a
+   thin shell and the package has ~100% line coverage.**
 2. **~4,600 lines (roughly a third of `js/`) have no tests at all.** The 92% coverage
    number is an illusion: the coverage gate never imports `renderer`, `menu`, `audio`,
    `particles`, `camera`, or `draw-helpers`, so they are excluded rather than measured.
@@ -37,7 +39,8 @@ they are also each other's prerequisites, so they are intentionally listed toget
 
 | Module | Lines | Direct test | Coverage line % |
 |---|---|---|---|
-| `renderer.js` | 3,061 | ✗ none | *(not measured)* |
+| `render/` package (was `renderer.js`) | ~3,020 | ✓ `render.test.js` | ~100 (line) |
+| `renderer.js` (shell) | 65 | ✓ (via render) | 100 |
 | `ai.js` | 1,109 | ✓ `ai.test.js`, `roles.test.js` | 85.3 |
 | `map.js` | 1,095 | ✓ `map.test.js` | 89.6 |
 | `game.js` | 1,065 | ✓ `game.test.js` | *(via game)* |
@@ -61,6 +64,19 @@ they are also each other's prerequisites, so they are intentionally listed toget
 ---
 
 ## 1. Decompose `renderer.js` — the 3,061-line god object
+
+**Status: ✅ implemented.** `renderer.js` is now a thin shell over a
+`js/render/` package: `viewport.js` (two-pass depth sort, incl. the pure
+`collectDepthItems`), `tiles.js`, `buildings.js`, `vehicles.js`,
+`structures.js`, `effects.js`, `hud.js`, `minimap.js`, `overlay.js`, plus
+shared `projection.js`, `canvas-utils.js`, and `damage.js`. The menu
+prototype hack is gone (`menu.js` imports `drawVehicle` directly) and the
+duplicated `_roundedRect`/colour helpers are unified in
+`js/render/canvas-utils.js`. `test/render.test.js` covers the depth contract
+and smoke-tests every draw entry point with a recording fake 2D context.
+The bullets below describe the original problem; the approach is what was
+built (modulo one change: smoke tests drive the package through hand-built
+game fixtures so the coverage report stays scoped to the render layer).
 
 **Impact: highest.** This is the largest module in the project, it is the single
 biggest barrier to adding visual content, and it has no safety net.
@@ -174,6 +190,11 @@ and the `targetPriority` data-driven style.
 
 ## 4. Extract a reusable vehicle-sprite module; remove the prototype hack
 
+**Status: ✅ implemented (as part of #1).** `js/render/vehicles.js` exports
+`drawVehicle(ctx, tankLike, sx, sy)`; both `Renderer` and `menu.js` import it —
+the `Object.create(Renderer.prototype)` hack and the `_vehicleRenderer` state
+are gone, and the menu preview is covered by `test/render.test.js`.
+
 **Impact: high.** `menu.js` renders vehicle previews with:
 
 ```js
@@ -233,6 +254,13 @@ Make the AI reuse the same LOS as `Game` (or explicitly document the difference)
 ---
 
 ## 6. Consolidate colour & canvas helpers
+
+**Status: ✅ implemented (as part of #1).** All colour math lives in
+`js/render/canvas-utils.js` (`rgb`, `hexToRgb`, `shadeHex`, `mixHex`,
+`mixRgb`, `mixGrey`, `darken`, `scaleRgb`, `lerpPt`, `roundedRect`); the SPG
+`parseHex`/`mix` closures and the three base-structure `darken` closures use
+the shared helpers, and `menu.js` imports `roundedRect` instead of defining
+its own.
 
 **Impact: medium–high.** Colour math is duplicated in multiple places: `renderer.js`
 defines `rgb`, `hexToRgb`, `shadeHex`, `mixHex`, `scaleRgb`, `lerpPt`; `_drawSPG`
@@ -382,15 +410,20 @@ vehicle types; SPG/squad mechanics). Add a lightweight "docs drift" check if des
 
 ## Suggested sequencing
 
+Status: **#1 + #4 + #6 ✅ done** (renderer decomposition, sprite module,
+canvas helpers — one coherent "untangle the render layer" effort). The
+remaining plan:
+
 1. **#2 first** (test harness for renderer/menu/audio/particles) — it is the safety
-   net that makes every other move non-blind.
+   net that makes every other move non-blind. (Partial credit: the render layer
+   now has its recording-context harness via `test/render.test.js`; `menu` is
+   partially imported/measured; `game`, `audio`, `particles`, `camera`, and most
+   of `menu` remain unmeasured.)
 2. **#10** (dead code + stale docs) — cheap, and removes misleading guidance before
    larger work begins.
-3. **#1 + #4 + #6 together** (renderer decomposition, sprite module, canvas helpers) —
-   they are one coherent "untangle the render layer" effort and share call sites.
-4. **#3 + #5 + #7** (vehicle behaviour, geometry queries, game-mode strategy) — the
+3. **#3 + #5 + #7** (vehicle behaviour, geometry queries, game-mode strategy) — the
    logic-layer counterpart, now safely testable.
-5. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
+4. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
 
 Each opportunity is independently valuable, but this order maximises safety and
 keeps every large refactor under a growing test net.

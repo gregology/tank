@@ -1,0 +1,122 @@
+/**
+ * Per-viewport minimap: a top-down square-colour map with vehicle
+ * markers (shape varies by vehicle type), base-compound outlines, and
+ * a border tinted with the local player's team colour.
+ */
+
+import { TILES as T } from "../config.js";
+
+const TILE_COLORS = {
+    [T.DEEP_WATER]: "#1a3252",
+    [T.SHALLOW_WATER]: "#265a80",
+    [T.SAND]: "#c8b490",
+    [T.DIRT]: "#9b8260",
+    [T.PAVED]: "#8c8a82",
+    [T.GRASS]: "#487c3c",
+    [T.DARK_GRASS]: "#3a6c2a",
+    [T.HILL]: "#8c7350",
+    [T.ROCK]: "#808080",
+    [T.BLDG_SMALL]: "#b4a08c",
+    [T.BLDG_MEDIUM]: "#a0a0b0",
+    [T.BLDG_LARGE]: "#707080",
+};
+
+const ROLE_LETTERS = { cavalry: "C", sniper: "S", defender: "D", scout: "F" };
+
+export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
+    const map = game.map;
+    const px = Math.max(1, Math.min(2, Math.floor(140 / Math.max(map.width, map.height)))); // scale to fit
+    const mmW = map.width * px;
+    const mmH = map.height * px;
+    const pad = 10;
+    const mmX = vx + vw - mmW - pad;
+    const mmY = vy + vh - mmH - pad;
+
+    // Background
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4);
+
+    // Tiles (simple top-down coloured squares)
+    for (let gy = 0; gy < map.height; gy++) {
+        for (let gx = 0; gx < map.width; gx++) {
+            const t = map.getTile(gx, gy);
+            ctx.fillStyle = TILE_COLORS[t] ?? "#000";
+            ctx.fillRect(mmX + gx * px, mmY + gy * px, px, px);
+        }
+    }
+
+    // Tank dots (IFVs slightly smaller) + role letters in team mode
+    for (const t of game.allTanks) {
+        if (!t.alive) continue;
+        ctx.fillStyle = t.color;
+        const dx = mmX + t.x * px;
+        const dy = mmY + t.y * px;
+        if (t.vehicleType === "drone") {
+            // Cross shape for drones
+            ctx.fillRect(dx - 0.5, dy - 2, 1.5, 4.5);
+            ctx.fillRect(dx - 2, dy - 0.5, 4.5, 1.5);
+        } else if (t.vehicleType === "ifv") {
+            // Diamond shape for IFVs
+            ctx.beginPath();
+            ctx.moveTo(dx, dy - 1.5);
+            ctx.lineTo(dx + 1.5, dy);
+            ctx.lineTo(dx, dy + 1.5);
+            ctx.lineTo(dx - 1.5, dy);
+            ctx.closePath();
+            ctx.fill();
+        } else if (t.vehicleType === "spg") {
+            // Triangle for SPG
+            ctx.beginPath();
+            ctx.moveTo(dx, dy - 2);
+            ctx.lineTo(dx + 2, dy + 1.5);
+            ctx.lineTo(dx - 2, dy + 1.5);
+            ctx.closePath();
+            ctx.fill();
+        } else if (t.vehicleType === "squad") {
+            // Small dot for infantry squads
+            ctx.beginPath();
+            ctx.arc(dx, dy, 1.6, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillRect(dx - 1, dy - 1, 3, 3);
+        }
+        // Show role letter for allied bots in team mode
+        if (game._bots) {
+            const bot = game._bots.find((b) => b.tank === t);
+            if (bot?.ai.role) {
+                const letter = ROLE_LETTERS[bot.ai.role] || "?";
+                ctx.font = "bold 7px monospace";
+                ctx.fillStyle = "#fff";
+                ctx.textAlign = "center";
+                ctx.fillText(letter, dx, dy - 3);
+            }
+        }
+    }
+
+    // Base compound markers
+    for (const base of game.bases) {
+        // Draw compound outline
+        const bOx = mmX + base.origin.x * px;
+        const bOy = mmY + base.origin.y * px;
+        ctx.strokeStyle = base.color;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(bOx, bOy, (base.compoundSize ?? 10) * px, (base.compoundSize ?? 10) * px);
+
+        // HQ marker
+        if (base.hq?.alive) {
+            ctx.fillStyle = base.color;
+            const hx = mmX + base.hq.x * px;
+            const hy = mmY + base.hq.y * px;
+            ctx.fillRect(hx - 2, hy - 2, 5, 5);
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(hx - 2, hy - 2, 5, 5);
+        }
+    }
+
+    // Border highlight for this player
+    const borderTank = game.allTanks.find((t) => t.team === playerNum) ?? game.allTanks[0];
+    ctx.strokeStyle = borderTank ? borderTank.color : "#888";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4);
+}

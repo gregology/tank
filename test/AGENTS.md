@@ -49,13 +49,16 @@ The coverage thresholds are a **minimum safety net**, not a target to game.
 Hitting 85% by asserting getters does not protect the game; it just makes the
 number lie.
 
-**Known caveat:** the current reported coverage (~92% line) *excludes* several
-modules that no test imports — `renderer`, `menu`, `audio`, `particles`,
-`camera`, `draw-helpers` (~a third of `js/`, including the ~3,000-line
-renderer). That figure overstates real coverage. Closing that gap is the
-highest-priority testing work — see `docs/refactor_opportunities.md`. Until
-those modules are imported by tests, treat the 92% figure as "the tested
-subset is well covered", not "the game is well covered".
+**Known caveat:** the reported coverage *excludes* modules that no test
+imports — `game.js`, `audio`, `particles`, `camera`, `draw-helpers`, and most
+of `menu`. The render layer is now honest: `renderer` and the whole
+`js/render/` package are measured (mostly 95%+ line) via
+`test/render.test.js`'s recording-context smoke tests, which also raised the
+aggregate gate to ~90% line while importing the package. Closing the remaining
+gap (game/audio/particles/camera/menu) is the highest-priority testing work —
+see `docs/refactor_opportunities.md`. Until those modules are imported by
+tests, treat the headline figure as "the tested subset is well covered", not
+"the game is well covered".
 
 ### Determinism where it matters; tolerance where it can't be
 
@@ -89,10 +92,20 @@ Reusable, deterministic utilities:
 - `simulateNavigation(...)` — run N seconds; returns
   `{ reachedTarget, finalDist, maxStuck, elapsed }`.
 - `simulateTeam(...)` — full 5v5 with separation physics.
+- `fakeCtx()` — a recording 2D context (every method call is a no-op logged
+  to `calls`) for render smoke tests: assert "drew and did not throw", never
+  pixel output.
 - `randomMap(...)` — random map (note: currently returns a legacy `towers`
   field that should be treated as removable debt).
 
 ### Per-suite notes
+
+- **Render tests** (`render.test.js`) drive the `js/render/` package through
+  hand-built game fixtures (real `Tank`/`Bullet`/structure entities, fake
+  game-shaped objects) so the package is exercised without dragging the whole
+  match simulation into the coverage report. The depth-sort contract
+  (`collectDepthItems`) is tested directly — never regress the two-pass
+  ordering.
 
 - **AI navigation** is slightly nondeterministic (aim wobble). Allow ~5%
   flake on tight courses; prefer progress assertions and generous time limits.

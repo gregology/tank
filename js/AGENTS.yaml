@@ -4,7 +4,8 @@ context:
         main.js → game.js, renderer.js, audio.js, menu.js, input.js
         game.js → map.js, tank.js, bullet.js, particles.js, camera.js, ai.js
         ai.js → pathfinder.js
-        renderer.js → config.js, utils.js
+        renderer.js → js/render/*, layout.js   (thin shell)
+        js/render/* → config.js, utils.js, draw-helpers.js, formation.js
       All modules import config.js and utils.js.  Avoid circular dependencies.
     match: ["**"]
     on: [edit, create]
@@ -14,8 +15,8 @@ context:
       config.js exports both TILES (tile type enum) and CONFIG (all constants).
       When adding new tile types, update: TILES enum, CONFIG HP values,
       map.js (isPassable, blocksProjectile, isSolid, tileHeight, setTile HP init),
-      renderer.js (_drawTile switch, minimap switch, PALETTE), and
-      test/helpers.js if needed.
+      js/render/tiles.js (drawTile switch), js/render/minimap.js (TILE_COLORS),
+      js/render/canvas-utils.js (PALETTE), and test/helpers.js if needed.
     match: ["config.js"]
     on: edit
     when: after
@@ -45,11 +46,12 @@ context:
     when: before
 
   - content: |
-      renderer.js _drawTank() projects every polygon from local tank space
-      (+x = forward, +y = right) through rotation + isometric transform.
+      js/render/vehicles.js drawTank() projects every polygon from local
+      tank space (+x = forward, +y = right) through rotation + isometric
+      transform (shared makeProjection in js/render/projection.js).
       Layers stack with pixel offsets: tracks → hull → barrel → turret.
       Each layer has a dark "extrusion" slab drawn below its top face for 3D effect.
-    match: ["renderer.js"]
+    match: ["renderer.js", "js/render/*"]
     on: read
     when: before
 
