@@ -22,6 +22,9 @@ export class Bullet {
      * @param {number} speed  bullet speed (world-units / second)
      * @param {boolean} arcing       true for SPG shells that arc over terrain
      * @param {number}  targetDistance  range to impact point (arcing only)
+     * @param {number}  [lifetime]      explicit lifetime in seconds (defaults
+     *                                  to CONFIG.BULLET_LIFETIME; squad weapons
+     *                                  use it to enforce their range)
      */
     constructor(
         x,
@@ -33,6 +36,7 @@ export class Bullet {
         speed = VEHICLES.tank.bulletSpeed,
         arcing = false,
         targetDistance = 0,
+        lifetime = null,
     ) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x = x + Math.cos(angle) * offset;
@@ -49,11 +53,8 @@ export class Bullet {
         this.targetDistance = targetDistance;
 
         // Arcing shells need enough lifetime to reach their target;
-        // normal bullets use the global constant.
-        this.lifetime =
-            arcing && speed > 0
-                ? targetDistance / speed + 1.0 // flight time + margin
-                : CONFIG.BULLET_LIFETIME;
+        // normal bullets use the global constant (or an explicit value).
+        this.lifetime = lifetime ?? (arcing && speed > 0 ? targetDistance / speed + 1.0 : CONFIG.BULLET_LIFETIME);
         this.distanceTraveled = 0;
         this.landed = false; // true when shell reaches target distance
     }

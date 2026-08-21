@@ -158,6 +158,20 @@ export class AIController {
         this._updateWobble(dt);
         this._updateStuck(dt, me);
 
+        // ── Squad: decide whether to dig in (cover + enemy nearby) ──
+        if (me.vehicleType === "squad" && me.squad) {
+            this._updateSquadDigIn(me, enemies, map);
+            if (me.squad.digIn.state !== "roaming") {
+                // Digging in / dug in: hold position (auto-fire is handled
+                // by game.js) and clear stuck state so standing still doesn't
+                // trigger the "blow through a wall" escape behaviour.
+                this._path = [];
+                this._posHistory = [];
+                this.stuckTime = 0;
+                return;
+            }
+        }
+
         // ── Drones: simplified AI (fly direct, no pathfinding) ──
         if (me.vehicleType === "drone") {
             this._thinkDrone(dt, me, enemies, map, objective);
@@ -863,6 +877,24 @@ export class AIController {
 
         if (diff > 0.05) this.keys[this.keyMap.turretRight] = true;
         if (diff < -0.05) this.keys[this.keyMap.turretLeft] = true;
+    }
+
+    /**
+     * Bot squads dig in when enemies are close AND building cover is
+     * available; otherwise they stay mobile.  (Human squads toggle
+     * dig-in with FIRE, handled in game.js.)
+     */
+    _updateSquadDigIn(me, enemies, map) {
+        const component = me.squad;
+        if (!component) return;
+        const v = VEHICLES.squad;
+        const nearEnemy = enemies.some((e) => e.alive && Math.hypot(e.x - me.x, e.y - me.y) < v.coverRadius + 5);
+        const inCover = map.hasIntactBuildingNear(me.x, me.y, v.coverRadius);
+        if (nearEnemy && inCover) {
+            if (component.digIn.state === "roaming") component.startDigIn();
+        } else if (component.digIn.state !== "roaming") {
+            component.standUp();
+        }
     }
 
     /* ════════════════════════════════════════════════════════ *
