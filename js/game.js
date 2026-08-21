@@ -16,6 +16,7 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
+import { vehiclesSeparate } from "./collision.js";
 import { BASE_STRUCTURES, CONFIG, MODE_DEFS, SQUAD_MEMBERS, TILES as T, VEHICLES } from "./config.js";
 import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
 import { GameMap } from "./map.js";
@@ -898,14 +899,7 @@ export class Game {
             for (let j = i + 1; j < alive.length; j++) {
                 const a = alive[i],
                     b = alive[j];
-                const aDrone = a.vehicleType === "drone";
-                const bDrone = b.vehicleType === "drone";
-                if (aDrone !== bDrone) continue;
-                // Squads are soft — vehicles drive through them (run-over),
-                // so only separate squad-vs-squad and vehicle-vs-vehicle.
-                const aSquad = a.vehicleType === "squad";
-                const bSquad = b.vehicleType === "squad";
-                if (aSquad !== bSquad) continue;
+                if (!vehiclesSeparate(a, b)) continue;
                 const d = distance(a.x, a.y, b.x, b.y);
                 const min = VEHICLES[a.vehicleType].size + VEHICLES[b.vehicleType].size;
                 if (d < min && d > 0.001) {
