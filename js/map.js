@@ -134,6 +134,89 @@ export class GameMap {
     }
 
     /**
+     * Is there an intact (undamaged) building tile within `radius` of a
+     * world position?  Drives the infantry squad's mechanical cover bonus.
+     *
+     * @param {number} wx  world X
+     * @param {number} wy  world Y
+     * @param {number} radius  search radius in tiles (default 1.2)
+     * @returns {boolean}
+     */
+    hasIntactBuildingNear(wx, wy, radius = 1.2) {
+        const gx = Math.floor(wx);
+        const gy = Math.floor(wy);
+        const r = Math.ceil(radius);
+        const r2 = radius * radius;
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                const tx = gx + dx,
+                    ty = gy + dy;
+                const t = this.getTile(tx, ty);
+                if (t !== T.BLDG_SMALL && t !== T.BLDG_MEDIUM && t !== T.BLDG_LARGE) continue;
+                if (ty < 0 || ty >= this.height || tx < 0 || tx >= this.width) continue;
+                if (this.hp[ty * this.width + tx] <= 0) continue; // already destroyed
+                const cx = tx + 0.5,
+                    cy = ty + 0.5;
+                if ((cx - wx) * (cx - wx) + (cy - wy) * (cy - wy) <= r2) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Nearest intact building tile centre within `maxDist` of a world
+     * position.  Used by squad formation steering to hug walls.
+     *
+     * @returns {{x:number, y:number, dist:number} | null}
+     */
+    nearestBuilding(wx, wy, maxDist = 2.0) {
+        const gx = Math.floor(wx);
+        const gy = Math.floor(wy);
+        const r = Math.ceil(maxDist);
+        const r2 = maxDist * maxDist;
+        let best = null;
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                const tx = gx + dx,
+                    ty = gy + dy;
+                const t = this.getTile(tx, ty);
+                if (t !== T.BLDG_SMALL && t !== T.BLDG_MEDIUM && t !== T.BLDG_LARGE) continue;
+                if (ty < 0 || ty >= this.height || tx < 0 || tx >= this.width) continue;
+                if (this.hp[ty * this.width + tx] <= 0) continue;
+                const cx = tx + 0.5,
+                    cy = ty + 0.5;
+                const d2 = (cx - wx) * (cx - wx) + (cy - wy) * (cy - wy);
+                if (d2 > r2) continue;
+                if (!best || d2 < best.d2) best = { x: cx, y: cy, dist: Math.sqrt(d2), d2 };
+            }
+        }
+        return best ? { x: best.x, y: best.y, dist: best.dist } : null;
+    }
+
+    /**
+     * Nearest passable tile centre to a world position (spiral search).
+     * Used by squad formation steering to keep members out of obstacles.
+     *
+     * @returns {{x:number, y:number} | null}
+     */
+    nearestPassable(wx, wy) {
+        const gx = Math.floor(wx);
+        const gy = Math.floor(wy);
+        if (this.isPassable(wx, wy)) return { x: wx, y: wy };
+        for (let r = 1; r <= 6; r++) {
+            for (let dy = -r; dy <= r; dy++) {
+                for (let dx = -r; dx <= r; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                    const tx = gx + dx,
+                        ty = gy + dy;
+                    if (this.isPassable(tx + 0.5, ty + 0.5)) return { x: tx + 0.5, y: ty + 0.5 };
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Apply one hit of damage to the tile at (gx, gy).
      * @returns {boolean} true if the tile was destroyed.
      */

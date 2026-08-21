@@ -32,7 +32,10 @@ export class AudioManager {
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
         game.on("fire", (d) => {
-            if (d.tank?.vehicleType === "spg") this.playSPGShoot();
+            if (d.weapon === "rpg") this.playRPGShoot();
+            else if (d.weapon === "shotgun") this.playShotgunShoot();
+            else if (d.weapon === "rifle" || d.weapon === "mg") this.playRifleShoot();
+            else if (d.tank?.vehicleType === "spg") this.playSPGShoot();
             else if (d.tank?.vehicleType === "ifv") this.playIFVShoot();
             else this.playShoot();
         });
@@ -100,6 +103,77 @@ export class AudioManager {
         o.connect(og).connect(ctx.destination);
         o.start(t);
         o.stop(t + 0.06);
+    }
+
+    /** Sharp small-arms crack for rifle / MG fire. */
+    playRifleShoot() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "bandpass";
+        nf.Q.value = 4;
+        nf.frequency.setValueAtTime(4200, t);
+        nf.frequency.exponentialRampToValueAtTime(1200, t + 0.04);
+        const ng = this._env(t, 0.14, 0.05);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t);
+        n.stop(t + 0.07);
+    }
+
+    /** Rocket whoosh + thud for the RPG soldier. */
+    playRPGShoot() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        // Whoosh (rising noise sweep)
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "bandpass";
+        nf.Q.value = 1.5;
+        nf.frequency.setValueAtTime(900, t);
+        nf.frequency.exponentialRampToValueAtTime(3000, t + 0.18);
+        const ng = this._env(t, 0.25, 0.22);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t);
+        n.stop(t + 0.25);
+
+        // Low launch thump
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(140, t);
+        o.frequency.exponentialRampToValueAtTime(50, t + 0.15);
+        const og = this._env(t, 0.3, 0.18);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.2);
+    }
+
+    /** Deep blast for the counter-drone shotgun. */
+    playShotgunShoot() {
+        if (!this._ok()) return;
+        const { ctx } = this,
+            t = ctx.currentTime;
+
+        const n = this._noiseSrc();
+        const nf = ctx.createBiquadFilter();
+        nf.type = "lowpass";
+        nf.frequency.setValueAtTime(2600, t);
+        nf.frequency.exponentialRampToValueAtTime(120, t + 0.12);
+        const ng = this._env(t, 0.4, 0.16);
+        n.connect(nf).connect(ng).connect(ctx.destination);
+        n.start(t);
+        n.stop(t + 0.2);
+
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(120, t);
+        o.frequency.exponentialRampToValueAtTime(30, t + 0.12);
+        const og = this._env(t, 0.35, 0.16);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.18);
     }
 
     /** High-pitched whine + crunch when a drone detonates. */

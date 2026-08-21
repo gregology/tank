@@ -16,10 +16,11 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { BASE_STRUCTURES, CONFIG, MODE_DEFS, TILES as T, VEHICLES } from "./config.js";
+import { BASE_STRUCTURES, CONFIG, MODE_DEFS, SQUAD_MEMBERS, TILES as T, VEHICLES } from "./config.js";
 import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
 import { GameMap } from "./map.js";
 import { ParticleSystem } from "./particles.js";
+import { pickSquadTarget } from "./squad.js";
 import { Tank } from "./tank.js";
 import { distance, worldToScreen } from "./utils.js";
 
@@ -342,8 +343,16 @@ export class Game {
             if (tank.alive) tank.update(dt, ai, BOT_KEYS, this.map);
         }
 
+        // ── Squad member steering + dig-in timers ──
+        for (const t of this._allTanks) {
+            if (t.alive && t.vehicleType === "squad" && t.squad) t.squad.update(dt, this.map);
+        }
+
         this._separatePairs(this._allTanks);
         if (def.bases) this._pushFromStructures();
+
+        // ── Run-over: enemy ground vehicles crush exposed soldiers ──
+        this._resolveCrushes();
 
         // ── Firing — humans ──
         for (let i = 0; i < this._humanTanks.length; i++) {
@@ -465,6 +474,11 @@ export class Game {
             this._handleSPGFiring(tank, input, keys, dt);
             return;
         }
+        // Squads auto-fire per member; FIRE toggles dig-in
+        if (tank.vehicleType === "squad") {
+            this._handleSquadFiring(tank, input, keys, dt);
+            return;
+        }
         if (input.isDown(keys.fire) && tank.canFire()) {
             tank.fire();
             const fireAngle = tank.turretWorld;
@@ -528,15 +542,117 @@ export class Game {
         }
     }
 
+    /**
+     * Infantry squad firing: each alive member auto-targets and auto-fires
+     * from its own position.  FIRE drives the dig-in state machine
+     * (roaming → diggingIn → dugIn → roaming).
+     */
+    _handleSquadFiring(squad, input, keys, dt) {
+        if (!squad.alive || !squad.squad) return;
+        const component = squad.squad;
+
+        // Dig-in toggle — humans have edge detection; bots manage dig-in in AI.
+        if (typeof input.wasPressed === "function" && input.wasPressed(keys.fire)) {
+            if (component.digIn.state === "roaming") component.startDigIn();
+            else if (component.digIn.state === "diggingIn") component.cancelDigIn();
+            else component.standUp();
+        }
+
+        // No firing while performing the dig-in transition.
+        if (!component.canFire) return;
+
+        // Pre-filtered candidates: alive, enemy-team tanks + structures.
+        const candidates = [
+            ...this._allTanks.filter((t) => t.alive && t.team !== squad.team),
+            ...this._allStructures.filter((s) => s.alive && s.team !== squad.team),
+        ];
+        const hasLOS = (x1, y1, x2, y2) => this._hasLineOfSight(x1, y1, x2, y2);
+
+        for (const m of component.aliveMembers) {
+            const weapon = SQUAD_MEMBERS[m.type];
+            if (!weapon) continue;
+
+            m.cooldown -= dt;
+            if (m.cooldown > 0) continue;
+
+            const target = pickSquadTarget(m, weapon, candidates, hasLOS);
+            if (!target) continue;
+
+            // Set the cooldown (dug-in squads fire 25% faster)
+            let cooldown = weapon.cooldown;
+            if (component.dugIn) cooldown *= 0.8;
+            m.cooldown = cooldown;
+
+            this._squadFireAt(squad, m, weapon, target);
+        }
+    }
+
+    /**
+     * Fire one member's weapon at a target.  Shotguns fire a pellet spread;
+     * everything else fires a single bullet.  The bullet originates from
+     * the member's position, not the squad centre.
+     */
+    _squadFireAt(squad, memberPos, weapon, target) {
+        const e = target.entity;
+        const angle = Math.atan2(e.y - memberPos.y, e.x - memberPos.x);
+        const dmg = target.isFallback ? (weapon.fallbackDamage ?? weapon.damage) : weapon.damage;
+        // Bullet lifetime = time to fly the member's range (+ margin),
+        // giving squad weapons a hard range limit.
+        const lifetime = weapon.bulletSpeed > 0 ? weapon.range / weapon.bulletSpeed + 0.15 : null;
+
+        const pellets = weapon.pellets ?? 1;
+        const spread = weapon.spread ?? 0;
+        for (let p = 0; p < pellets; p++) {
+            const a = pellets > 1 ? angle - spread / 2 + (spread * p) / (pellets - 1) : angle;
+            const b = new Bullet(
+                memberPos.x,
+                memberPos.y,
+                a,
+                squad.playerNumber,
+                squad.team,
+                dmg,
+                weapon.bulletSpeed,
+                false,
+                0,
+                lifetime,
+            );
+            this.bullets.push(b);
+        }
+
+        // Muzzle flash + event (the weapon tag drives the sound)
+        const tipX = memberPos.x + Math.cos(angle) * 0.3;
+        const tipY = memberPos.y + Math.sin(angle) * 0.3;
+        this.particles.emitIFVFlash(tipX, tipY, angle);
+        this.emit("fire", { tank: squad, bullet: this.bullets[this.bullets.length - 1], weapon: weapon.weapon });
+    }
+
+    /**
+     * Distance from an AoE source to a tank.  Squads use their nearest
+     * alive member; everything else uses the centre.
+     */
+    _entityDistance(source, tank) {
+        if (tank.vehicleType === "squad" && tank.squad) {
+            const d = tank.squad.nearestMemberDistance(source.x, source.y);
+            if (Number.isFinite(d)) return d;
+        }
+        return distance(source.x, source.y, tank.x, tank.y);
+    }
+
+    /** Radius used for AoE falloff: squads use their soldier radius. */
+    _entityRadius(tank) {
+        return tank.vehicleType === "squad" ? VEHICLES.squad.soldierRadius : tank.size;
+    }
+
     _handleArtilleryImpact(b) {
         const splashR = VEHICLES.spg.splashRadius;
 
         for (const t of this.allTanks) {
             if (!t.alive || b.team === t.team) continue;
-            const d = distance(b.x, b.y, t.x, t.y);
-            if (d >= splashR + t.size) continue;
+            const r = this._entityRadius(t);
+            const d = this._entityDistance(b, t);
+            if (d >= splashR + r) continue;
 
-            const effectiveDist = Math.max(0, d - t.size);
+            const effectiveDist = Math.max(0, d - r);
             const dmg = b.damage * Math.max(0, 1 - effectiveDist / splashR);
             if (dmg <= 0) continue;
 
@@ -581,7 +697,7 @@ export class Game {
 
         for (const t of this.allTanks) {
             if (!t.alive || t.team === drone.team) continue;
-            const d = distance(drone.x, drone.y, t.x, t.y);
+            const d = this._entityDistance(drone, t);
             if (d >= blastR) continue;
 
             const dmg = maxDmg * Math.max(0, 1 - d / blastR);
@@ -619,8 +735,21 @@ export class Game {
      * @param {number} damage - damage amount
      */
     _applyHitToTank(source, tank, damage) {
+        let dmg = damage;
+
+        // Infantry squad mechanical cover / dig-in damage reduction.
+        if (tank.vehicleType === "squad" && tank.alive) {
+            const v = VEHICLES.squad;
+            let reduction = tank.dugIn ? v.digInReduction : 0;
+            if (this.map.hasIntactBuildingNear(tank.x, tank.y, v.coverRadius)) {
+                reduction = Math.max(reduction, v.coverReduction);
+            }
+            reduction = Math.min(reduction, v.maxDamageReduction);
+            if (reduction > 0) dmg = damage * (1 - reduction);
+        }
+
         const zone = tank.getHitZone(source.x, source.y);
-        const result = tank.applyHit(zone, damage);
+        const result = tank.applyHit(zone, dmg);
 
         if (result === "destroyed") {
             this.particles.emitExplosion(tank.x, tank.y);
@@ -683,11 +812,44 @@ export class Game {
             if (!b.alive || b.arcing) continue;
             for (const t of this.allTanks) {
                 if (!t.alive || b.team === t.team) continue;
-                if (distance(b.x, b.y, t.x, t.y) < t.size) {
+                // Squads use a distributed hitbox — the bullet must strike
+                // an individual soldier, not the squad centre.
+                const hit =
+                    t.vehicleType === "squad" && t.squad
+                        ? t.squad.bulletHit(b.x, b.y)
+                        : distance(b.x, b.y, t.x, t.y) < t.size;
+                if (hit) {
                     b.alive = false;
 
                     this._applyHitToTank(b, t, b.damage);
                     break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Enemy ground vehicles run over exposed (non-dug-in) soldiers.
+     * Overlapping a soldier kills that specific member; killing the last
+     * member destroys the squad with kill credit to the vehicle.
+     */
+    _resolveCrushes() {
+        const ground = new Set(["tank", "ifv", "spg"]);
+        for (const squad of this._allTanks) {
+            if (!squad.alive || squad.vehicleType !== "squad" || !squad.squad) continue;
+            const component = squad.squad;
+
+            for (const v of this._allTanks) {
+                if (!v.alive || v.team === squad.team || !ground.has(v.vehicleType)) continue;
+
+                const idx = component.crushedMemberBy(v);
+                if (idx < 0) continue;
+
+                if (component.crushMember(idx)) {
+                    squad.kill();
+                    this.particles.emitExplosion(squad.x, squad.y);
+                    this.emit("destroy", { tank: squad });
+                    this._onKill(v.team, squad);
                 }
             }
         }
@@ -739,6 +901,11 @@ export class Game {
                 const aDrone = a.vehicleType === "drone";
                 const bDrone = b.vehicleType === "drone";
                 if (aDrone !== bDrone) continue;
+                // Squads are soft — vehicles drive through them (run-over),
+                // so only separate squad-vs-squad and vehicle-vs-vehicle.
+                const aSquad = a.vehicleType === "squad";
+                const bSquad = b.vehicleType === "squad";
+                if (aSquad !== bSquad) continue;
                 const d = distance(a.x, a.y, b.x, b.y);
                 const min = VEHICLES[a.vehicleType].size + VEHICLES[b.vehicleType].size;
                 if (d < min && d > 0.001) {

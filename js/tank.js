@@ -26,10 +26,14 @@
  *   - 'ifv'   — fixed forward gun, 4 HP, track subsystems at 2 HP
  *   - 'drone' — FPV kamikaze, 0.25 HP (one tower shot kills), no subsystems
  *   - 'spg'   — hold-to-charge artillery, 5 HP, subsystems at 2 HP
+ *   - 'squad' — 5-man infantry squad, one HP per member, auto-fires
+ *               (see Game._handleSquadFiring); members drop as it takes
+ *               damage and it can dig in / use building cover
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
 import { GameEntity } from "./entity.js";
+import { Squad } from "./squad.js";
 import { normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
@@ -59,7 +63,7 @@ export class Tank extends GameEntity {
         this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
 
         // Vehicle type
-        this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg'
+        this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg', 'squad'
 
         // Gameplay
         this.score = 0;
@@ -76,6 +80,9 @@ export class Tank extends GameEntity {
         // SPG charge state
         this.chargeTime = 0; // seconds fire button has been held
         this.isCharging = false; // true while holding fire to charge range
+
+        // Squad component (lazily created when vehicleType === 'squad')
+        this._squad = null;
 
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
@@ -94,9 +101,14 @@ export class Tank extends GameEntity {
         return this.leftTrackDisabled || this.rightTrackDisabled;
     }
 
-    /** True if the gun fires only forward (IFV, drone, or disabled turret). */
+    /** True if the gun fires only forward (IFV, drone, squad, or disabled turret). */
     get fixedGun() {
-        return this.vehicleType === "ifv" || this.vehicleType === "drone" || this.turretDisabled;
+        return (
+            this.vehicleType === "ifv" ||
+            this.vehicleType === "drone" ||
+            this.vehicleType === "squad" ||
+            this.turretDisabled
+        );
     }
 
     /** Collision radius — varies by vehicle type. */
@@ -104,10 +116,36 @@ export class Tank extends GameEntity {
         return VEHICLES[this.vehicleType].size;
     }
 
+    /**
+     * The squad component (soldiers, dig-in state machine, damage) for
+     * squad vehicles; null otherwise.  Lazily created on first access.
+     */
+    get squad() {
+        if (this.vehicleType !== "squad") return null;
+        if (!this._squad) this._squad = new Squad(this);
+        return this._squad;
+    }
+
+    /** Whether the squad is fully dug in (proxy into the component). */
+    get dugIn() {
+        return this.squad?.dugIn ?? false;
+    }
+
     /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed). */
     get hpFraction() {
+        if (this.vehicleType === "squad" && this.squad) return this.squad.hpFraction;
         const armour = VEHICLES[this.vehicleType].armour;
         return Math.max(0, 1 - this.damageAccum / armour.hp);
+    }
+
+    /** Number of squad members still alive (0 for non-squad vehicles). */
+    get membersAlive() {
+        return this.squad?.membersAlive ?? 0;
+    }
+
+    /** Alive squad member objects ({type, x, y, ...}) in canonical order. */
+    get aliveMembers() {
+        return this.squad?.aliveMembers ?? [];
     }
 
     /* ── GameEntity capability overrides ──────────────────── */
@@ -173,9 +211,9 @@ export class Tank extends GameEntity {
         this.angle = normalizeAngle(this.angle);
 
         // ── Turret rotation (relative to hull, slower)
-        // IFV/Drone: turret is fixed forward (always 0)
+        // IFV/Drone/Squad: no turret — fixed forward (always 0)
         // Disabled by front hit on tanks
-        if (isIFV || isDrone) {
+        if (isIFV || isDrone || this.vehicleType === "squad") {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
             const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
@@ -190,10 +228,18 @@ export class Tank extends GameEntity {
         // Disabled if any track is damaged (can only pivot).
         // Drones always fly freely.
         // SPGs cannot drive while charging (deployed).
+        // Squads are immobile while digging in / dug in; pressing a movement
+        // key during the dig-in transition cancels it (back to roaming).
         let move = 0;
+        if (this.vehicleType === "squad" && this.squad && this.squad.digIn.state === "diggingIn") {
+            if (input.isDown(keyMap.forward) || input.isDown(keyMap.backward)) {
+                this.squad.cancelDigIn();
+            }
+        }
         if (isDrone || !this.trackDamaged) {
-            if (this.isCharging) {
-                // SPG is deployed — no movement
+            const squadLocked = this.vehicleType === "squad" && this.squad && !this.squad.canMove;
+            if (this.isCharging || squadLocked) {
+                // SPG deployed / squad digging in or dug in — no movement
             } else {
                 if (input.isDown(keyMap.forward)) move = 1;
                 if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
@@ -272,6 +318,13 @@ export class Tank extends GameEntity {
      *                     'absorbed'  — damage counted but no state change yet
      */
     applyHit(zone, damage = 1.0) {
+        // Squads use their explicit member damage model (see Squad).
+        if (this.vehicleType === "squad" && this.squad) {
+            const result = this.squad.applyDamage(damage);
+            if (result === "destroyed") this.kill();
+            return result;
+        }
+
         const armour = VEHICLES[this.vehicleType].armour;
 
         // ── Rear instant kill (full-damage hit, e.g. ammo rack detonation)
@@ -348,6 +401,10 @@ export class Tank extends GameEntity {
         // Clear charge state
         this.chargeTime = 0;
         this.isCharging = false;
+
+        // Discard the squad component — a fresh one is created lazily on
+        // next access (which also resets members, dig-in, and cooldowns).
+        this._squad = null;
 
         // Clear all damage
         this.damaged = false;

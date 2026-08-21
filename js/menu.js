@@ -109,6 +109,24 @@ const VEHICLE_INFO = [
             "Slow and fragile \u2014 stay at range!",
         ],
     },
+    {
+        type: "squad",
+        name: "SQUAD",
+        tagline: "Infantry Fireteam",
+        color: "#55aa44",
+        dark: "#337722",
+        stats: { SPD: 2.6, ARM: 1, DMG: 1.0, ROF: "Auto", TUR: "No" },
+        desc: [
+            "Five-man squad that fights on its own.",
+            "Each member auto-fires at its target:",
+            " \u2022 RPG        \u2192 vehicles",
+            " \u2022 Shotgun    \u2192 drones",
+            " \u2022 Rifles/MG  \u2192 enemy squads",
+            "",
+            "Members drop as the squad takes hits.",
+            "FIRE to dig in; buildings give cover.",
+        ],
+    },
 ];
 
 /* ── Menu items with category headers ─────────────────────── */
@@ -472,8 +490,8 @@ export class Menu {
 
         // Vehicle showcase
         const vehicleY = cy - 130;
-        const spacing = Math.min(160, (W - 80) / 4);
-        const startX = cx - spacing * 1.5;
+        const spacing = Math.min(150, (W - 80) / (VEHICLE_INFO.length - 1));
+        const startX = cx - spacing * ((VEHICLE_INFO.length - 1) / 2);
 
         for (let i = 0; i < VEHICLE_INFO.length; i++) {
             const v = VEHICLE_INFO[i];
@@ -719,6 +737,14 @@ export class Menu {
         ];
         const getVal = (type, key) => {
             const v = VEHICLES[type];
+            if (type === "squad") {
+                // No single bullet/cooldown — show representative values.
+                if (key === "speed") return v.speed;
+                if (key === "dmg") return 1.0; // RPG hit
+                if (key === "armour") return 1; // soft, but 5 members
+                if (key === "rof") return 6; // five auto-firing members
+                return 0;
+            }
             if (key === "speed") return v.speed;
             if (key === "dmg") return type === "drone" ? v.blastDamage : v.bulletDamage;
             if (key === "armour") return type === "tank" ? 2 : 1;
