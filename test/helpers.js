@@ -108,6 +108,23 @@ export function zigzag(startY, spacing, count, x1, x2, gapSide = "alternate") {
     return obs;
 }
 
+/* ── Fake input devices ───────────────────────────────────── */
+
+/**
+ * A configurable InputDevice for driving human-controlled tanks/menus.
+ * `held` actions report as isDown/analog; `pressed` actions report as
+ * wasPressed (one-frame edge).  Both are Sets of ACTIONS keys.
+ */
+export function fakeDevice({ held = [], pressed = [] } = {}) {
+    const heldSet = new Set(held);
+    const pressedSet = new Set(pressed);
+    return {
+        isDown: (a) => heldSet.has(a),
+        analog: (a) => (heldSet.has(a) ? 1 : 0),
+        wasPressed: (a) => pressedSet.has(a),
+    };
+}
+
 /* ── Recording canvas context ─────────────────────────────── */
 
 /**

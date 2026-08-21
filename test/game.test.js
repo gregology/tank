@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { Game } from "../js/game.js";
 import { HIT_ZONE } from "../js/tank.js";
-import { ACTIONS, BASE_STRUCTURES, Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
+import {
+    ACTIONS,
+    BASE_STRUCTURES,
+    Bullet,
+    CONFIG,
+    customMap,
+    fakeDevice,
+    GameMap,
+    T,
+    Tank,
+    VEHICLES,
+} from "./helpers.js";
 
 describe("Tank", () => {
     it("starts alive with default properties", () => {
@@ -1021,5 +1033,749 @@ describe("Data-driven armour system", () => {
                 );
             }
         }
+    });
+});
+
+/* ═══════════════════════════════════════════════════════════ *
+ *  Game — match simulation                                    *
+ *  Built through the public Game seam: MatchConfig → Game.    *
+ *  Two-human skirmish games have zero bots (deterministic);   *
+ *  battle games use teamSize 1 per team to keep bot count 0.  *
+ * ═══════════════════════════════════════════════════════════ */
+
+const human = (team, device = fakeDevice()) => ({
+    device,
+    color: "#cc3333",
+    darkColor: "#882222",
+    label: `P${team}`,
+    team,
+});
+
+const skirmishConfig = (humans, settings = {}) => ({
+    gameType: "skirmish",
+    humans,
+    settings: { mapSize: { w: 64, h: 64 }, buildingDensity: 0, ...settings },
+});
+
+const battleConfig = (humans, settings = {}) => ({
+    gameType: "battle",
+    humans,
+    settings: {
+        mapSize: { w: 64, h: 64 },
+        buildingDensity: 0,
+        baseType: "compound",
+        teamSize: 1,
+        ...settings,
+    },
+});
+
+describe("Game – construction & accessors", () => {
+    it("skirmish with two humans builds two factions and no bots", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        assert.equal(game.gameType, "skirmish");
+        assert.equal(game.factions.length, 2);
+        assert.equal(game.allTanks.length, 2);
+        assert.equal(game.humanTanks.length, 2);
+        assert.equal(game.humanTank, game.humanTanks[0]);
+        assert.equal(game.cameras.length, 2);
+        assert.equal(game.hasBases, false);
+        assert.equal(game.bases.length, 0);
+        assert.equal(game.baseStructures.length, 0);
+        assert.deepEqual([...game.scores.entries()].sort(), [
+            [1, 0],
+            [2, 0],
+        ]);
+    });
+
+    it("skirmish with one human adds exactly one bot", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        assert.equal(game.factions.length, 2);
+        assert.equal(game.allTanks.length, 2);
+        assert.equal(game._bots.length, 1);
+        assert.equal(game.humanTanks.length, 1);
+    });
+
+    it("battle builds two base compounds", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        assert.equal(game.gameType, "battle");
+        assert.equal(game.hasBases, true);
+        assert.equal(game.bases.length, 2);
+        assert.ok(game.baseStructures.length > 0);
+        for (const base of game.bases) {
+            assert.ok(base.hq, "HQ built");
+            assert.ok(base.towers.length > 0, "watch towers built");
+        }
+    });
+
+    it("factions carry colours and labels", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        const f1 = game.factions.find((f) => f.id === 1);
+        const f2 = game.factions.find((f) => f.id === 2);
+        assert.equal(f1.color, "#cc3333");
+        assert.ok(f2.color);
+        assert.equal(game.factionLabel(1), "P1");
+        assert.equal(game.factionLabel(2), "BOT");
+    });
+
+    it("winnerColor defaults to grey", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        assert.equal(game.winnerColor, "#888");
+    });
+});
+
+describe("Game – event bus", () => {
+    it("on/emit deliver payloads to listeners", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        const seen = [];
+        game.on("test", (d) => seen.push(d));
+        game.emit("test", { n: 1 });
+        game.emit("test", { n: 2 });
+        assert.deepEqual(seen, [{ n: 1 }, { n: 2 }]);
+    });
+
+    it("emit with no listeners is a no-op", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        assert.doesNotThrow(() => game.emit("nothing", {}));
+    });
+});
+
+describe("Game – update / restart", () => {
+    it("update advances game time", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        game.update(0.016);
+        assert.ok(game.gameTime > 0);
+    });
+
+    it("update short-circuits after game over", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        game.gameOver = true;
+        const t0 = game.gameTime;
+        game.update(0.016);
+        assert.equal(game.gameTime, t0);
+    });
+
+    it("restart clears bullets, particles, and win state", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        game.bullets.push(new Bullet(1, 1, 0, 1, 1));
+        game.particles.emitExplosion(5, 5);
+        game.gameOver = true;
+        game.winner = 1;
+        game.restart();
+        assert.equal(game.bullets.length, 0);
+        assert.equal(game.particles.particles.length, 0);
+        assert.equal(game.gameOver, false);
+        assert.equal(game.winner, null);
+        assert.equal(game.allTanks.length, 2, "factions rebuilt");
+    });
+});
+
+describe("Game – human firing", () => {
+    it("tank fires a bullet and emits the fire event", () => {
+        const device = fakeDevice({ held: [ACTIONS.fire] });
+        const game = new Game(skirmishConfig([human(1, device), human(2)]));
+        const fires = [];
+        game.on("fire", (d) => fires.push(d));
+        game.update(0.016);
+        assert.equal(fires.length, 1);
+        assert.equal(game.bullets.length, 1);
+        assert.equal(game.bullets[0].damage, VEHICLES.tank.bulletDamage);
+    });
+
+    it("IFV fires a lighter bullet and IFV flash particles", () => {
+        const device = fakeDevice({ held: [ACTIONS.fire] });
+        const game = new Game(skirmishConfig([human(1, device), human(2)]));
+        game.humanTank.vehicleType = "ifv";
+        const before = game.particles.particles.length;
+        game.update(0.016);
+        assert.equal(game.bullets.length, 1);
+        assert.equal(game.bullets[0].damage, VEHICLES.ifv.bulletDamage);
+        assert.ok(game.particles.particles.length > before, "IFV muzzle flash particles");
+    });
+
+    it("drone detonates itself and strikes nearby enemies", () => {
+        const device = fakeDevice({ held: [ACTIONS.fire] });
+        const game = new Game(skirmishConfig([human(1, device), human(2)]));
+        const drone = game.humanTank;
+        drone.vehicleType = "drone";
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.x = drone.x;
+        enemy.y = drone.y;
+        const strikes = [];
+        game.on("drone_strike", (d) => strikes.push(d));
+        game.update(0.016);
+        assert.equal(strikes.length, 1);
+        assert.ok(!drone.alive, "drone self-destructs");
+        assert.ok(!enemy.alive, "point-blank blast kills the enemy tank");
+    });
+
+    it("SPG charges while held and fires an arcing shell on release", () => {
+        let held = true;
+        const device = {
+            isDown: () => held,
+            analog: () => (held ? 1 : 0),
+            wasPressed: () => false,
+        };
+        const game = new Game(skirmishConfig([human(1, device), human(2)]));
+        const spg = game.humanTank;
+        spg.vehicleType = "spg";
+
+        game.update(0.05);
+        assert.ok(spg.isCharging, "charging while fire held");
+        assert.ok(spg.chargeTime > 0);
+
+        held = false;
+        const fires = [];
+        game.on("fire", (d) => fires.push(d));
+        game.update(0.05);
+        assert.ok(!spg.isCharging, "released");
+        assert.equal(fires.length, 1);
+        const shell = game.bullets.find((b) => b.arcing);
+        assert.ok(shell, "arcing shell fired");
+        assert.ok(shell.targetDistance >= VEHICLES.spg.minRange);
+    });
+
+    it("squad members auto-fire at enemies in range with LOS", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        // Place the enemy a few tiles east on clear ground.
+        squad.x = 10.5;
+        squad.y = 10.5;
+        enemy.x = 14.5;
+        enemy.y = 10.5;
+        for (let gx = 8; gx <= 16; gx++) {
+            game.map.setTile(gx, 9, T.GRASS);
+            game.map.setTile(gx, 10, T.GRASS);
+            game.map.setTile(gx, 11, T.GRASS);
+        }
+        const fires = [];
+        game.on("fire", (d) => fires.push(d));
+        game._handleSquadFiring(squad, fakeDevice(), 0.016);
+        assert.ok(fires.length >= 1, "squad members fired");
+        assert.ok(game.bullets.length >= 1);
+    });
+
+    it("squad dig-in toggle cycles the state machine", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
+        game._handleSquadFiring(squad, toggle, 0.016);
+        assert.equal(comp.digIn.state, "diggingIn");
+        comp.update(1.1, game.map);
+        assert.equal(comp.digIn.state, "dugIn");
+        game._handleSquadFiring(squad, toggle, 0.016);
+        assert.equal(comp.digIn.state, "roaming");
+    });
+});
+
+describe("Game – win conditions", () => {
+    it("skirmish ends when a faction reaches WIN_SCORE", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        game._scores.set(1, CONFIG.WIN_SCORE);
+        const wins = [];
+        game.on("win", (d) => wins.push(d));
+        game._checkWin();
+        assert.equal(game.gameOver, true);
+        assert.equal(game.winner, 1);
+        assert.equal(wins.length, 1);
+        assert.equal(wins[0].winner, 1);
+    });
+
+    it("battle ends when an HQ is destroyed", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const enemyBase = game.bases.find((b) => b.team === 2);
+        enemyBase.hq.applyDamage(9999);
+        const wins = [];
+        game.on("win", (d) => wins.push(d));
+        game._checkWin();
+        assert.equal(game.gameOver, true);
+        assert.equal(game.winner, 1);
+        assert.equal(wins.length, 1);
+    });
+
+    it("winnerLabel reports the winning faction", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        game.winner = 1;
+        assert.equal(game.winnerLabel, "PLAYER 1");
+        game.winner = 2;
+        assert.equal(game.winnerLabel, "BOT");
+
+        const battle = new Game(battleConfig([human(1), human(2)]));
+        battle.winner = 1;
+        assert.equal(battle.winnerLabel, "RED TEAM");
+        battle.winner = 2;
+        assert.equal(battle.winnerLabel, "BLUE TEAM");
+    });
+});
+
+describe("Game – respawn", () => {
+    it("dead tanks respawn after the timer and re-roll vehicle type", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        const tank = game.humanTank;
+        tank.kill();
+        assert.ok(!tank.alive);
+        game._handleRespawns(CONFIG.TANK_RESPAWN_TIME + 0.1);
+        assert.ok(tank.alive);
+        assert.equal(tank.flashTimer, 1);
+        assert.equal(tank.vehicleType, "tank"); // skirmish only allows tanks
+    });
+
+    it("bot respawn re-assigns the AI role", () => {
+        const game = new Game(skirmishConfig([human(1)]));
+        const bot = game._bots[0].tank;
+        bot.kill();
+        game._handleRespawns(CONFIG.TANK_RESPAWN_TIME + 0.1);
+        assert.ok(bot.alive);
+        assert.ok(game._bots[0].ai.role, "role re-assigned");
+    });
+});
+
+describe("Game – bullets & damage", () => {
+    it("bullets are removed after their lifetime expires", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const b = new Bullet(30, 30, 0, 1, 1, 1.0, 9.0);
+        b.lifetime = 0.01;
+        game.bullets.push(b);
+        for (let i = 0; i < 10; i++) game._tickBullets(0.016);
+        assert.ok(!b.alive);
+    });
+
+    it("bullets hitting destructible terrain emit impact and destroy the tile", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        game.map.setTile(25, 10, T.HILL);
+        game.map.setTile(24, 10, T.GRASS);
+        const events = [];
+        game.on("impact", () => events.push("impact"));
+        game.on("destroy_tile", (d) => events.push(`tile:${d.gx},${d.gy}`));
+        const b = new Bullet(23, 10.5, 0, 1, 1, 3.0, 9.0); // flies east into the hill
+        game.bullets.push(b);
+        for (let i = 0; i < 60 && b.alive; i++) game._tickBullets(0.016);
+        assert.ok(!b.alive);
+        assert.ok(events.includes("impact"));
+        assert.ok(events.includes("tile:25,10"));
+        assert.equal(game.map.getTile(25, 10), T.GRASS, "destroyed hill replaced with grass");
+    });
+
+    it("arcing bullets trigger artillery impact with splash damage", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.x = 12.5;
+        enemy.y = 12.5;
+        const impacts = [];
+        game.on("artillery_impact", () => impacts.push("artillery"));
+        const b = new Bullet(12.5, 12.5, 0, 1, 1, 3.0, 7.0, true, 0.1); // lands immediately
+        game.bullets.push(b);
+        game._tickBullets(0.016);
+        assert.equal(impacts.length, 1);
+        assert.ok(enemy.damageAccum > 0 || !enemy.alive, "splash damaged the enemy");
+    });
+
+    it("_checkBulletHits applies damage to a tank at the bullet position", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.x = 20.5;
+        enemy.y = 20.5;
+        enemy.angle = 0; // facing east
+        const b = new Bullet(20.7, 20.5, 0, 1, 1, 3.0, 9.0); // front hit
+        b.x = 20.7;
+        b.y = 20.5;
+        game.bullets.push(b);
+        const hits = [];
+        game.on("hit", (d) => hits.push(d));
+        game._checkBulletHits();
+        assert.ok(!b.alive);
+        assert.equal(hits.length, 1);
+        assert.ok(enemy.damaged || !enemy.alive);
+    });
+
+    it("_applyHitToTank emits destroy, explosion, and kill credit", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.x = 30.5;
+        enemy.y = 30.5;
+        const destroys = [];
+        game.on("destroy", (d) => destroys.push(d));
+        const before = game.particles.particles.length;
+        game._applyHitToTank({ x: 30.5, y: 30.5, team: 1 }, enemy, 999);
+        assert.equal(destroys.length, 1);
+        assert.ok(!enemy.alive);
+        assert.ok(game.particles.particles.length > before, "explosion particles");
+        assert.equal(game.scores.get(1), 1, "kill credited in skirmish");
+    });
+
+    it("_applyHitToTank emits hit for subsystem damage only", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.x = 30.5;
+        enemy.y = 30.5;
+        enemy.angle = 0; // facing east → source at x+1 is a front hit
+        const hits = [];
+        game.on("hit", (d) => hits.push(d));
+        const destroys = [];
+        game.on("destroy", () => destroys.push("destroy"));
+        game._applyHitToTank({ x: 31.5, y: 30.5, team: 1 }, enemy, 3.0);
+        assert.equal(hits.length, 1);
+        assert.equal(destroys.length, 0);
+        assert.ok(enemy.alive);
+        assert.ok(enemy.damaged);
+    });
+
+    it("squad damage reduction applies while dug in", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        comp.startDigIn();
+        comp.update(1.1, game.map); // now dugIn
+        const membersBefore = comp.membersAlive;
+        game._applyHitToTank({ x: squad.x, y: squad.y, team: 2 }, squad, 1.0);
+        assert.ok(membersBefore > comp.membersAlive || squad.alive, "damage applied through reduction");
+    });
+
+    it("squads use member distance for AoE distance", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        comp.members[0].x = squad.x + 5;
+        comp.members[0].y = squad.y;
+        const d = game._entityDistance({ x: squad.x + 5, y: squad.y }, squad);
+        assert.equal(d, 0);
+        assert.equal(game._entityRadius(squad), VEHICLES.squad.soldierRadius);
+    });
+});
+
+describe("Game – separation, crush, structures, towers", () => {
+    it("_separatePairs pushes overlapping tanks apart", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const [a, b] = game.allTanks;
+        a.x = 15;
+        a.y = 15;
+        b.x = 15.05;
+        b.y = 15;
+        game._separatePairs(game.allTanks);
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= VEHICLES.tank.size * 2 - 0.1);
+    });
+
+    it("_resolveCrushes kills exposed squad members run over by vehicles", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.vehicleType = "tank";
+        enemy.x = squad.x;
+        enemy.y = squad.y;
+        const membersBefore = comp.membersAlive;
+        game._resolveCrushes();
+        assert.ok(comp.membersAlive < membersBefore, "a soldier was crushed");
+    });
+
+    it("_pushFromStructures pushes tanks out of structure tiles", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        // Corner towers are isolated (no adjacent structure within the push
+        // radius), so the tank can only be pushed one way.
+        const tower = game.bases[0].towers[0];
+        const tank = game.humanTank;
+        tank.vehicleType = "tank"; // drones fly over structures and are skipped
+        const pos = tower.tilePositions[0];
+        // Clear the corridor east of the tower so the push target is passable.
+        for (let dx = 0; dx <= 4; dx++) {
+            game.map.setTile(pos.gx + dx, pos.gy, T.GRASS);
+            game.map.setTile(pos.gx + dx, pos.gy + 1, T.GRASS);
+            game.map.setTile(pos.gx + dx, pos.gy - 1, T.GRASS);
+        }
+        tank.x = tower.x + 0.3; // just east of the tower centre
+        tank.y = tower.y;
+        const before = Math.hypot(tank.x - tower.x, tank.y - tower.y);
+        game._pushFromStructures();
+        const after = Math.hypot(tank.x - tower.x, tank.y - tower.y);
+        assert.ok(after > before, `tank pushed away from the tower (${before} → ${after})`);
+        assert.ok(after >= VEHICLES.tank.size + 0.5 - 0.05, `tank at min distance (${after})`);
+    });
+
+    it("_getStructureAt finds structures by tile and _onStructureDestroyed clears them", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const structure = game.baseStructures[0];
+        const pos = structure.tilePositions[0];
+        assert.equal(game._getStructureAt(pos.gx, pos.gy), structure);
+        const destroys = [];
+        game.on("destroy", (d) => destroys.push(d));
+        game._onStructureDestroyed(structure);
+        assert.equal(destroys.length, 1);
+        assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
+        assert.equal(game._getStructureAt(pos.gx, pos.gy), null);
+    });
+
+    it("watch towers fire at enemies in range with LOS", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const tower = game.bases[0].towers[0];
+        const enemy = game.allTanks.find((t) => t.team !== tower.team);
+        const pos = tower.tilePositions[0];
+        // Clear the corridor east of the tower so LOS is unobstructed.
+        for (let dx = 0; dx <= 6; dx++) {
+            game.map.setTile(pos.gx + dx, pos.gy, T.GRASS);
+        }
+        enemy.x = pos.gx + 3.5;
+        enemy.y = pos.gy + 0.5;
+        enemy.alive = true;
+        const fires = [];
+        game.on("fire", (d) => fires.push(d));
+        game._updateWatchTowers(0.016);
+        assert.ok(
+            fires.some((f) => f.tower === tower),
+            "tower fired",
+        );
+    });
+
+    it("_hasLineOfSight is blocked by projectile-blocking terrain", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        for (let gx = 0; gx < 20; gx++) {
+            game.map.setTile(gx, 5, T.GRASS);
+            game.map.setTile(gx, 6, T.GRASS);
+        }
+        assert.equal(game._hasLineOfSight(2.5, 5.5, 15.5, 5.5), true);
+        game.map.setTile(8, 5, T.HILL);
+        assert.equal(game._hasLineOfSight(2.5, 5.5, 15.5, 5.5), false);
+    });
+
+    it("_canStand reflects passability", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        game.map.setTile(5, 5, T.GRASS);
+        game.map.setTile(5, 6, T.GRASS);
+        game.map.setTile(6, 5, T.GRASS);
+        game.map.setTile(6, 6, T.GRASS);
+        // Tank corners (size*0.85 ≈ 0.38) from (5.7, 5.7) reach tile (6,6).
+        assert.equal(game._canStand(5.7, 5.7), true);
+        game.map.setTile(6, 6, T.HILL);
+        assert.equal(game._canStand(5.7, 5.7), false);
+    });
+
+    it("_nearestEnemy returns the closest alive enemy", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const me = game.humanTank;
+        me.x = 10;
+        me.y = 10;
+        const near = game.allTanks.find((t) => t.team === 2);
+        near.x = 11;
+        near.y = 10;
+        assert.equal(game._nearestEnemy(me), near);
+        near.alive = false;
+        assert.equal(game._nearestEnemy(me), null);
+    });
+});
+
+describe("Game – cameras & smoke", () => {
+    it("camera follows an alive tank", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const cam = game.cameras[0];
+        const tank = game.humanTank;
+        tank.x = 20;
+        tank.y = 20;
+        const before = { x: cam.x, y: cam.y };
+        game._updateCamera(cam, tank, 0.1);
+        assert.ok(cam.x !== before.x || cam.y !== before.y);
+    });
+
+    it("camera does not move for a dead tank", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const cam = game.cameras[0];
+        const tank = game.humanTank;
+        tank.alive = false;
+        const before = { x: cam.x, y: cam.y };
+        game._updateCamera(cam, tank, 0.1);
+        assert.deepEqual({ x: cam.x, y: cam.y }, before);
+    });
+
+    it("damaged tanks emit smoke particles", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const tank = game.humanTank;
+        tank.damaged = true;
+        tank.smokeTimer = 0;
+        const before = game.particles.particles.length;
+        game._emitDamageSmoke(0.1);
+        assert.ok(game.particles.particles.length > before, "smoke emitted");
+    });
+});
+
+describe("Game – deeper coverage", () => {
+    it("update runs the AI loop for bots without throwing", () => {
+        const game = new Game(skirmishConfig([human(1)])); // 1 human + 1 bot
+        assert.equal(game._bots.length, 1);
+        assert.doesNotThrow(() => {
+            for (let i = 0; i < 5; i++) game.update(0.016);
+        });
+        assert.ok(game.gameTime > 0);
+    });
+
+    it("battle respawn places dead tanks back inside their compound", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const tank = game.humanTank;
+        tank.kill();
+        game._handleRespawns(CONFIG.TANK_RESPAWN_TIME + 0.1);
+        assert.ok(tank.alive);
+        const base = game.bases.find((b) => b.team === 1);
+        assert.ok(
+            Math.abs(tank.x - base.center.x) < 15 && Math.abs(tank.y - base.center.y) < 15,
+            "respawned near the friendly compound",
+        );
+    });
+
+    it("factionLabel falls back to the colour label for multi-human teams", () => {
+        const game = new Game(skirmishConfig([human(1), human(1)])); // both humans on RED
+        assert.equal(game.factionLabel(1), "RED");
+        assert.equal(game.factionLabel(2), "BOT");
+        assert.equal(game.factionLabel(99), "");
+    });
+
+    it("winnerLabel uses the colour label for multi-human teams", () => {
+        const game = new Game(skirmishConfig([human(1), human(1)]));
+        game.winner = 1;
+        assert.equal(game.winnerLabel, "RED TEAM");
+    });
+
+    it("battle faction labels are RED / BLUE", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        assert.equal(game.factionLabel(1), "RED");
+        assert.equal(game.factionLabel(2), "BLUE");
+    });
+
+    it("squad dig-in cancels back to roaming while digging in", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
+        game._handleSquadFiring(squad, toggle, 0.016); // roaming → diggingIn
+        assert.equal(comp.digIn.state, "diggingIn");
+        game._handleSquadFiring(squad, toggle, 0.016); // diggingIn → cancel → roaming
+        assert.equal(comp.digIn.state, "roaming");
+    });
+
+    it("SPG firing with fire released and not charging resets charge state", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const spg = game.humanTank;
+        spg.vehicleType = "spg";
+        game._handleSPGFiring(spg, fakeDevice(), 0.016); // not held, not charging
+        assert.equal(spg.isCharging, false);
+        assert.equal(spg.chargeTime, 0);
+    });
+
+    it("artillery splash destroys nearby enemy structures", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const tower = game.bases[1].towers[0];
+        const b = new Bullet(tower.x, tower.y, 0, 1, 1, 10, 7.0, true, 0.05);
+        game.bullets.push(b);
+        game._tickBullets(0.016); // lands immediately
+        assert.ok(!b.alive);
+        assert.ok(!tower.alive, "tower destroyed by splash");
+        assert.equal(game.map.getTile(tower.tilePositions[0].gx, tower.tilePositions[0].gy), T.SAND);
+    });
+
+    it("artillery splash destroys destructible terrain tiles", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        game.map.setTile(11, 10, T.HILL);
+        const events = [];
+        game.on("destroy_tile", (d) => events.push(d));
+        const b = new Bullet(9, 10.5, 0, 1, 1, 3.0, 7.0, true, 1.5); // lands at ~(11.1, 10.5)
+        game.bullets.push(b);
+        for (let i = 0; i < 40 && b.alive; i++) game._tickBullets(0.016);
+        assert.ok(!b.alive);
+        assert.ok(
+            events.some((d) => d.gx === 11 && d.gy === 10),
+            "hill tile destroyed",
+        );
+    });
+
+    it("drone detonation damages enemy structures", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const drone = game.humanTank;
+        drone.vehicleType = "drone";
+        const tower = game.bases[1].towers[0];
+        drone.x = tower.x + 1;
+        drone.y = tower.y;
+        game._handleDroneAttack(drone, fakeDevice({ held: [ACTIONS.fire] }));
+        assert.ok(!drone.alive);
+        assert.ok(tower.hp < BASE_STRUCTURES.baseTower.hp, "tower damaged by blast");
+    });
+
+    it("squads get mechanical cover reduction next to intact buildings", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        game.map.setTile(30, 30, T.BLDG_SMALL); // intact building
+        squad.x = 30.5;
+        squad.y = 31.5; // 1 unit below the building centre (inside coverRadius)
+        game._applyHitToTank({ x: 30.5, y: 30.5, team: 2 }, squad, 1.0);
+        assert.ok(comp.partialDamage > 0 && comp.partialDamage < 1.0, "damage reduced by cover");
+        assert.equal(comp.membersAlive, 5);
+    });
+
+    it("bullets damage base structures on impact", () => {
+        const game = new Game(battleConfig([human(1), human(2)]));
+        const wall = game.bases[1].walls[0];
+        const pos = wall.tilePositions[0];
+        // Bullet from the west, heading east into the wall tile (team 1 vs team 2).
+        const b = new Bullet(pos.gx - 1.5, pos.gy + 0.5, 0, 1, 1, 3.0, 9.0);
+        game.bullets.push(b);
+        for (let i = 0; i < 40 && b.alive; i++) game._tickBullets(0.016);
+        assert.ok(!b.alive);
+        assert.ok(!wall.alive, "wall destroyed by a single tank shell");
+        assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
+    });
+
+    it("crushing the last squad member destroys the squad with kill credit", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const comp = squad.squad;
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        enemy.vehicleType = "tank";
+        enemy.x = squad.x;
+        enemy.y = squad.y;
+        const destroys = [];
+        game.on("destroy", (d) => destroys.push(d));
+        for (let i = 0; i < 5 && squad.alive; i++) game._resolveCrushes();
+        assert.ok(!squad.alive, "squad destroyed after all members crushed");
+        assert.equal(comp.membersAlive, 0);
+        assert.ok(destroys.length >= 1, "destroy event emitted");
+        assert.equal(game.scores.get(2), 1, "kill credited to the crushing vehicle");
+    });
+});
+
+describe("Game – firing dispatch", () => {
+    it("_handleFiring routes squad tanks to the squad handler", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const squad = game.humanTank;
+        squad.vehicleType = "squad";
+        const enemy = game.allTanks.find((t) => t.team === 2);
+        squad.x = 10.5;
+        squad.y = 10.5;
+        enemy.x = 14.5;
+        enemy.y = 10.5;
+        for (let gx = 8; gx <= 16; gx++) {
+            game.map.setTile(gx, 9, T.GRASS);
+            game.map.setTile(gx, 10, T.GRASS);
+            game.map.setTile(gx, 11, T.GRASS);
+        }
+        const fires = [];
+        game.on("fire", (d) => fires.push(d));
+        game._handleFiring(squad, fakeDevice(), 0.016);
+        assert.ok(fires.length >= 1, "squad fired through the dispatch");
+    });
+
+    it("_handleFiring routes drones to the detonation handler", () => {
+        const game = new Game(skirmishConfig([human(1), human(2)]));
+        const drone = game.humanTank;
+        drone.vehicleType = "drone";
+        const strikes = [];
+        game.on("drone_strike", () => strikes.push("strike"));
+        game._handleFiring(drone, fakeDevice({ held: [ACTIONS.fire] }), 0.016);
+        assert.equal(strikes.length, 1);
+        assert.ok(!drone.alive);
     });
 });

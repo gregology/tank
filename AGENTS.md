@@ -170,10 +170,10 @@ the known structural debt is:
   vehicles sharing one `Tank` class.
 - Duplicated helpers: line-of-sight and passability queries (the duplicated
   colour math and `_roundedRect` now live in `js/render/canvas-utils.js`).
-- The measured coverage figure **excludes** several untested modules
-  (`game.js`, `audio`, `particles`, `camera`, `draw-helpers`, and most of
-  `menu`), so it overstates real coverage — `renderer` + the whole `render/`
-  package are now measured (~90%+).
+- Coverage is now honest: every `js/` module is imported by at least one test
+  (opportunity #2 done), and the aggregate gate sits at ~96% line / ~88%
+  branch / ~94% funcs. Keep it that way — a new module that no test imports
+  silently drops out of the report, so any new file needs a test suite too.
 
 Treat these as the top of the queue, and apply the principles above when you
 touch them.

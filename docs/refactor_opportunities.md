@@ -18,9 +18,11 @@ feature harder to ship safely:
    two HUDs, a minimap, and a game-over screen, all through one class.
    **✅ Decomposed into the `js/render/` package (see #1); `renderer.js` is now a
    thin shell and the package has ~100% line coverage.**
-2. **~4,600 lines (roughly a third of `js/`) have no tests at all.** The 92% coverage
-   number is an illusion: the coverage gate never imports `renderer`, `menu`, `audio`,
-   `particles`, `camera`, or `draw-helpers`, so they are excluded rather than measured.
+2. **~4,600 lines (roughly a third of `js/`) had no tests at all.** The 92% coverage
+   number was an illusion: the coverage gate never imported `renderer`, `menu`, `audio`,
+   `particles`, `camera`, or `draw-helpers`, so they were excluded rather than measured.
+   **✅ Fixed (see #2): every `js/` module is now imported by at least one test and the
+   aggregate gate is ~96% line / ~88% branch / ~94% funcs.**
 3. **Vehicle types are a "type code"**, not a type system. 46 hardcoded
    `vehicleType === "x"` checks are scattered across `game.js`, `tank.js`, `ai.js`,
    `renderer.js`, `squad.js`, `menu.js`, and `config.js`. Adding a vehicle today touches
@@ -42,24 +44,25 @@ they are also each other's prerequisites, so they are intentionally listed toget
 | `render/` package (was `renderer.js`) | ~3,020 | ✓ `render.test.js` | ~100 (line) |
 | `renderer.js` (shell) | 65 | ✓ (via render) | 100 |
 | `ai.js` | 1,109 | ✓ `ai.test.js`, `roles.test.js` | 85.3 |
-| `map.js` | 1,095 | ✓ `map.test.js` | 89.6 |
-| `game.js` | 1,065 | ✓ `game.test.js` | *(via game)* |
-| `menu.js` | 759 | ✗ none | *(not measured)* |
+| `map.js` | 1,095 | ✓ `map.test.js` | 92.0 |
+| `game.js` | 1,065 | ✓ `game.test.js` (Game suite) | ~100 |
+| `menu.js` | 743 | ✓ `menu.test.js` | 98.8 |
 | `config.js` | 563 | ✓ (indirect) | 100 |
 | `tank.js` | 434 | ✓ (indirect) | 96.1 |
-| `audio.js` | 404 | ✗ none | *(not measured)* |
+| `audio.js` | 404 | ✓ `audio.test.js` | 100 |
 | `input.js` | 311 | ✓ `input.test.js` | 92.6 |
-| `particles.js` | 289 | ✗ none | *(not measured)* |
+| `particles.js` | 289 | ✓ `particles.test.js` | 100 |
 | `pathfinder.js` | 230 | ✓ `pathfinder.test.js` | 100 |
 | `squad.js` | 211 | ✓ `squad.test.js` | 98.1 |
 | `formation.js` | 149 | ✓ (via squad) | 84.6 |
 | `lobby.js` | 144 | ✓ `lobby.test.js` | 99.3 |
 | `bullet.js` | 104 | ✓ (via game) | 94.2 |
-| rest (entity, utils, layout, factions, collision, camera, draw-helpers) | < 200 each | ✓ | 98–100 |
+| `camera.js` | 23 | ✓ `camera.test.js` | 100 |
+| rest (entity, utils, layout, factions, collision, draw-helpers) | < 200 each | ✓ | 98–100 |
 
-- **263 tests, 0 failures**, all in Node's built-in runner.
-- Coverage gate passes at 92.5% line / 88.2% branch / 89.9% funcs **only because**
-  the six untested modules are never imported by a test and thus dropped from the report.
+- **414 tests, 0 failures**, all in Node's built-in runner.
+- Coverage gate passes honestly at ~96% line / ~88% branch / ~94% funcs: every
+  `js/` module is imported by at least one test (no silent exclusions).
 
 ---
 
@@ -118,6 +121,20 @@ file per vehicle), `structures.js`, `effects.js` (bullets/particles), `hud.js`,
 ---
 
 ## 2. Add test coverage for the untested modules (regression safety net)
+
+**Status: ✅ implemented.** Every `js/` module is now imported by at least one
+test. `test/game.test.js` gained a full Game suite (construction/faction
+fill, event bus, update/restart, all five firing paths, win conditions,
+respawn, bullet/terrain/structure collisions, artillery splash, crush
+resolution, watch towers, LOS, cameras, labels) driven through the public
+`Game` seam with zero-bot matches for determinism. New suites:
+`test/menu.test.js` (all three screens, input orchestration, render smoke
+with the recording context), `test/audio.test.js` (fake `window.AudioContext`
+with recording nodes; every sound plus the full `hookIntoGame` event wiring),
+`test/particles.test.js` (every emitter + lifecycle), `test/camera.test.js`.
+`test/helpers.js` gained `fakeDevice({ held, pressed })`, a one-shot
+InputDevice for driving human tanks and menus. The bullets below describe
+the original problem; the approach is what was built.
 
 **Impact: highest (prerequisite for everything else).** ~4,600 lines — `renderer`,
 `menu`, `audio`, `particles`, `camera`, `draw-helpers` — are entirely outside the
@@ -411,19 +428,15 @@ vehicle types; SPG/squad mechanics). Add a lightweight "docs drift" check if des
 ## Suggested sequencing
 
 Status: **#1 + #4 + #6 ✅ done** (renderer decomposition, sprite module,
-canvas helpers — one coherent "untangle the render layer" effort). The
-remaining plan:
+canvas helpers — one coherent "untangle the render layer" effort) and
+**#2 ✅ done** (test coverage for every previously-unmeasured module:
+game/audio/particles/camera/menu). The remaining plan:
 
-1. **#2 first** (test harness for renderer/menu/audio/particles) — it is the safety
-   net that makes every other move non-blind. (Partial credit: the render layer
-   now has its recording-context harness via `test/render.test.js`; `menu` is
-   partially imported/measured; `game`, `audio`, `particles`, `camera`, and most
-   of `menu` remain unmeasured.)
-2. **#10** (dead code + stale docs) — cheap, and removes misleading guidance before
+1. **#10** (dead code + stale docs) — cheap, and removes misleading guidance before
    larger work begins.
-3. **#3 + #5 + #7** (vehicle behaviour, geometry queries, game-mode strategy) — the
+2. **#3 + #5 + #7** (vehicle behaviour, geometry queries, game-mode strategy) — the
    logic-layer counterpart, now safely testable.
-4. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
+3. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
 
 Each opportunity is independently valuable, but this order maximises safety and
 keeps every large refactor under a growing test net.

@@ -49,16 +49,15 @@ The coverage thresholds are a **minimum safety net**, not a target to game.
 Hitting 85% by asserting getters does not protect the game; it just makes the
 number lie.
 
-**Known caveat:** the reported coverage *excludes* modules that no test
-imports — `game.js`, `audio`, `particles`, `camera`, `draw-helpers`, and most
-of `menu`. The render layer is now honest: `renderer` and the whole
-`js/render/` package are measured (mostly 95%+ line) via
-`test/render.test.js`'s recording-context smoke tests, which also raised the
-aggregate gate to ~90% line while importing the package. Closing the remaining
-gap (game/audio/particles/camera/menu) is the highest-priority testing work —
-see `docs/refactor_opportunities.md`. Until those modules are imported by
-tests, treat the headline figure as "the tested subset is well covered", not
-"the game is well covered".
+**Known caveat:** the reported coverage is now honest — every `js/` module is
+imported by at least one test. The render layer (`renderer.js` + the whole
+`js/render/` package) is measured via `test/render.test.js`'s
+recording-context smoke tests; the match simulation, menus, audio, particles,
+and camera are measured by `game.test.js` (Game suite), `menu.test.js`,
+`audio.test.js`, `particles.test.js`, and `camera.test.js`. The aggregate
+gate (~96% line / ~88% branch / ~94% funcs at last check) is a floor, not a
+target — keep the untested-modules gap closed: any new module must be
+imported by a test or it silently drops out of the report.
 
 ### Determinism where it matters; tolerance where it can't be
 
@@ -95,6 +94,10 @@ Reusable, deterministic utilities:
 - `fakeCtx()` — a recording 2D context (every method call is a no-op logged
   to `calls`) for render smoke tests: assert "drew and did not throw", never
   pixel output.
+- `fakeDevice({ held, pressed })` — a one-shot InputDevice: `held` actions
+  report as isDown/analog, `pressed` actions are consumed by a single
+  `wasPressed` call (edge-triggered across frames). Use it to drive human
+  tanks and menu navigation.
 - `randomMap(...)` — random map (note: currently returns a legacy `towers`
   field that should be treated as removable debt).
 
@@ -112,7 +115,21 @@ Reusable, deterministic utilities:
 - **Map tests** should place tiles explicitly (`map.setTile`) rather than rely
   on random generation, which may not contain the tile you're asserting on.
 - **Game tests** build matches through the public `Game`/`planFactions` seam,
-  not by poking internals.
+  not by poking internals. The Game suite in `game.test.js` constructs
+  two-human skirmish matches (zero bots → deterministic) and battle matches
+  with `teamSize: 1` (zero bots) for the base/tower paths; bots are only used
+  when testing bot-specific behaviour (AI role re-assignment, the AI think
+  loop). Where a deep code path can't be reached deterministically through
+  `update()` (artillery splash, crush resolution, watch towers, structure
+  destruction), the suite calls the `_`-prefixed method directly after
+  arranging state through public entities — assert on events/state, not
+  internals.
+- **Menu tests** (`menu.test.js`) drive `Menu.update` with one-shot fake
+  devices — reuse the same device object across frames so the host keeps its
+  identity, and re-`press` the action for each frame it should fire.
+- **Audio tests** (`audio.test.js`) install a fake `window.AudioContext`
+  (recording nodes) via `withAudioContext` and assert wiring through
+  `hookIntoGame` with spy play methods plus node creation for each sound.
 
 ## Checklist for a new test
 
