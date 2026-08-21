@@ -1,33 +1,20 @@
 /**
- * Start-screen menu rendered on the game canvas.
+ * Menu screens rendered on the game canvas: title, lobby, and vehicle info.
  *
- * Modes are organised into three categories:
- *   DUEL (1v1)      — duel_split, duel_bot
- *   SKIRMISH (2v2)  — skirmish_coop
- *   BATTLE (5v5)    — battle_split, battle_coop, battle_solo
+ * The lobby is a console-style match setup: players press A/Start to join,
+ * press ◀▶ / X to switch team, B to leave, and the host (first joiner)
+ * selects the game type (Skirmish / Battle) and match options.
  *
- * Sub-screens:
- *   • main    — mode selection with vehicle showcase
- *   • options — per-game settings (map size, density, etc.)
- *   • about   — scrollable vehicle info cards
+ * All match-setup state lives in the pure Lobby (lobby.js), which resolves
+ * to a MatchConfig that main.js hands to the Game.  This module is just
+ * input orchestration + rendering over that state.
  *
- * After selecting a mode the player sees the options screen.
- * Press Enter/Space to accept defaults and start immediately,
- * or adjust values with ←/→ then confirm.
- *
- * Vehicle previews use the EXACT same geometry as the in-game
- * renderer (renderer.js _drawTank / _drawIFV / _drawDrone / _drawSPG),
- * projected at a configurable scale.
+ * Vehicle previews use the EXACT same geometry as the in-game renderer
+ * (renderer.js _drawVehicle), projected at a configurable scale.
  */
 
-import {
-    CATEGORY_OPTIONS,
-    GAME_OPTIONS,
-    getDefaultOptionValues,
-    MODE_DEFS,
-    resolveSettings,
-    VEHICLES,
-} from "./config.js";
+import { ACTIONS, GAME_OPTIONS, MAX_PLAYERS, PLAYER_COLORS, VEHICLES } from "./config.js";
+import { Lobby } from "./lobby.js";
 import { Renderer } from "./renderer.js";
 
 /* ── Vehicle descriptions (UI text, not gameplay constants) ── */
@@ -129,116 +116,151 @@ const VEHICLE_INFO = [
     },
 ];
 
-/* ── Menu items with category headers ─────────────────────── */
+const GAME_TYPE_LABELS = {
+    skirmish: "SKIRMISH",
+    battle: "BATTLE",
+};
 
-const MENU_ITEMS = [
-    { type: "header", label: "DUEL  (1v1)" },
-    { type: "mode", label: "SPLIT SCREEN", mode: "duel_split", desc: "2 players, tanks" },
-    { type: "mode", label: "vs BOT", mode: "duel_bot", desc: "1 player vs AI" },
-    { type: "header", label: "SKIRMISH  (2v2)" },
-    { type: "mode", label: "CO-OP vs BOTS", mode: "skirmish_coop", desc: "2 players vs 2 AI" },
-    { type: "header", label: "BATTLE  (5v5)" },
-    { type: "mode", label: "SPLIT SCREEN", mode: "battle_split", desc: "1+4 vs 1+4, bases" },
-    { type: "mode", label: "CO-OP", mode: "battle_coop", desc: "2+3 vs 5 AI, bases" },
-    { type: "mode", label: "vs BOTS", mode: "battle_solo", desc: "1+4 vs 5 AI, bases" },
-    { type: "header", label: "" },
-    { type: "mode", label: "VEHICLE INFO", mode: "_about", desc: "" },
-];
+const GAME_TYPE_DESC = {
+    skirmish: "kill race \u00b7 teams optional \u00b7 tanks only",
+    battle: "tower/base objective \u00b7 2 teams \u00b7 all vehicles",
+};
 
 /* ================================================================== */
 
 export class Menu {
     constructor() {
-        // Build selectable indices (skip headers)
-        this._items = MENU_ITEMS;
-        this._selectableIndices = MENU_ITEMS.map((item, i) => (item.type === "mode" ? i : -1)).filter((i) => i >= 0);
-        this._selCursor = 0; // index into _selectableIndices
-        this.confirmed = false;
-        this.selectedMode = "duel_split";
-        /** Resolved settings object (populated when confirmed). */
-        this.settings = {};
-
-        // Sub-screen state
-        this._screen = "main"; // 'main' | 'options' | 'about'
+        this._screen = "main"; // 'main' | 'lobby' | 'about'
         this._aboutIndex = 0;
-
-        // Options screen state
-        this._optionKeys = []; // keys visible for current mode
-        this._optionValues = null; // Map<string, number> of current values
-        this._optionCursor = 0; // which option row is highlighted
-
-        // decorative
         this._time = 0;
-    }
+        /** Set true (with `match` populated) when the host starts. */
+        this.confirmed = false;
+        /** Resolved MatchConfig (populated when confirmed). */
+        this.match = null;
 
-    /** Currently highlighted item index (into MENU_ITEMS). */
-    get selectedIndex() {
-        return this._selectableIndices[this._selCursor];
+        this.lobby = new Lobby();
     }
 
     reset() {
         this.confirmed = false;
+        this.match = null;
         this._screen = "main";
         this._aboutIndex = 0;
-        this._optionCursor = 0;
+        this.lobby = new Lobby();
     }
+
+    /* ── update ───────────────────────────────────────────── */
 
     update(dt, input, audio) {
         this._time += dt;
-
         if (this._screen === "about") {
             this._updateAbout(input, audio);
             return;
         }
-        if (this._screen === "options") {
-            this._updateOptions(input, audio);
+        if (this._screen === "main") {
+            this._updateMain(input, audio);
             return;
         }
+        this._updateLobby(input, audio);
+    }
 
-        const up = input.wasPressed("ArrowUp") || input.wasPressed("KeyW");
-        const down = input.wasPressed("ArrowDown") || input.wasPressed("KeyS");
-        const go = input.wasPressed("Enter") || input.wasPressed("Space");
-
-        if (up) {
-            this._selCursor = (this._selCursor - 1 + this._selectableIndices.length) % this._selectableIndices.length;
+    _updateMain(input, audio) {
+        // Any device's confirm → join as P1 and enter the lobby.
+        const joiner = this._firstJoiner(input);
+        if (joiner) {
+            this.lobby.join(joiner);
+            this._screen = "lobby";
+            this.lobby.cursor = 0;
             if (audio) {
                 audio.init();
-                audio.playSelect();
+                audio.playConfirm();
             }
+            return;
         }
-        if (down) {
-            this._selCursor = (this._selCursor + 1) % this._selectableIndices.length;
+        // Back → vehicle info.
+        if (this._anyPressed(input, ACTIONS.back)) {
+            this._screen = "about";
+            this._aboutIndex = 0;
             if (audio) {
                 audio.init();
-                audio.playSelect();
-            }
-        }
-        if (go) {
-            const chosen = this._items[this.selectedIndex];
-            if (chosen.mode === "_about") {
-                this._screen = "about";
-                this._aboutIndex = 0;
-                if (audio) {
-                    audio.init();
-                    audio.playConfirm();
-                }
-            } else {
-                // Transition to options screen
-                this.selectedMode = chosen.mode;
-                this._enterOptions(chosen.mode);
-                if (audio) {
-                    audio.init();
-                    audio.playConfirm();
-                }
+                audio.playConfirm();
             }
         }
     }
 
+    _updateLobby(input, audio) {
+        // ── Joins (any unjoined device pressing confirm) ──
+        for (const device of this._joinCandidates(input)) {
+            if (this.lobby.players.length < MAX_PLAYERS) {
+                this.lobby.join(device);
+                if (audio) {
+                    audio.init();
+                    audio.playConfirm();
+                }
+            }
+        }
+
+        const host = this.lobby.host;
+
+        // ── Non-host players: switch team / leave ──
+        for (const p of this.lobby.players) {
+            if (p === host) continue;
+            if (
+                p.device.wasPressed(ACTIONS.cycleTeam) ||
+                p.device.wasPressed(ACTIONS.left) ||
+                p.device.wasPressed(ACTIONS.right)
+            ) {
+                this.lobby.cycleTeam(p);
+                if (audio) {
+                    audio.init();
+                    audio.playSelect();
+                }
+            }
+            if (p.device.wasPressed(ACTIONS.back)) this.lobby.leave(p);
+        }
+
+        // ── Host: settings cursor, team, start, leave ──
+        if (host) {
+            const d = host.device;
+            if (d.wasPressed(ACTIONS.cycleTeam)) this.lobby.cycleTeam(host);
+
+            const rows = this.lobby.rows();
+            if (d.wasPressed(ACTIONS.up)) {
+                this.lobby.cursor = (this.lobby.cursor - 1 + rows.length) % rows.length;
+                if (audio) {
+                    audio.init();
+                    audio.playSelect();
+                }
+            }
+            if (d.wasPressed(ACTIONS.down)) {
+                this.lobby.cursor = (this.lobby.cursor + 1) % rows.length;
+                if (audio) {
+                    audio.init();
+                    audio.playSelect();
+                }
+            }
+            if (d.wasPressed(ACTIONS.left) || d.wasPressed(ACTIONS.right)) {
+                this.lobby.changeRow(rows[this.lobby.cursor], d.wasPressed(ACTIONS.right));
+                if (audio) {
+                    audio.init();
+                    audio.playSelect();
+                }
+            }
+            if (d.wasPressed(ACTIONS.confirm)) this._startMatch();
+            if (d.wasPressed(ACTIONS.back)) {
+                this.lobby.leave(host);
+                if (this.lobby.players.length === 0) this._screen = "main";
+            }
+        } else if (this._anyPressed(input, ACTIONS.back)) {
+            this._screen = "main";
+        }
+    }
+
     _updateAbout(input, audio) {
-        const left = input.wasPressed("ArrowLeft") || input.wasPressed("KeyA");
-        const right = input.wasPressed("ArrowRight") || input.wasPressed("KeyD");
-        const back = input.wasPressed("Escape") || input.wasPressed("Backspace") || input.wasPressed("KeyR");
-        const go = input.wasPressed("Enter") || input.wasPressed("Space");
+        const left = this._anyPressed(input, ACTIONS.left);
+        const right = this._anyPressed(input, ACTIONS.right);
+        const back = this._anyPressed(input, ACTIONS.back);
+        const go = this._anyPressed(input, ACTIONS.confirm);
 
         if (left) {
             this._aboutIndex = (this._aboutIndex - 1 + VEHICLE_INFO.length) % VEHICLE_INFO.length;
@@ -263,354 +285,233 @@ export class Menu {
         }
     }
 
+    _startMatch() {
+        if (this.lobby.players.length === 0) return;
+        this.match = this.lobby.buildMatch();
+        this.confirmed = true;
+    }
+
+    /* ── input helpers ────────────────────────────────────── */
+
+    _joinCandidates(input) {
+        const out = [];
+        if (!this.lobby.isJoined(input.keyboard) && input.keyboard.wasPressed(ACTIONS.confirm))
+            out.push(input.keyboard);
+        for (const gp of input.connectedGamepads) {
+            if (!this.lobby.isJoined(gp) && gp.wasPressed(ACTIONS.confirm)) out.push(gp);
+        }
+        return out;
+    }
+
+    _firstJoiner(input) {
+        return this._joinCandidates(input)[0] ?? null;
+    }
+
+    _anyPressed(input, action) {
+        if (input.keyboard?.wasPressed(action)) return true;
+        for (const gp of input.connectedGamepads) {
+            if (gp.wasPressed(action)) return true;
+        }
+        return false;
+    }
+
     /* ── rendering ────────────────────────────────────────── */
 
     render(ctx, canvas) {
         if (this._screen === "about") this._renderAbout(ctx, canvas);
-        else if (this._screen === "options") this._renderOptions(ctx, canvas);
+        else if (this._screen === "lobby") this._renderLobby(ctx, canvas);
         else this._renderMain(ctx, canvas);
     }
 
-    /* ── OPTIONS sub-screen ────────────────────────────────── */
-
-    /** Initialise the options screen for the given mode. */
-    _enterOptions(mode) {
-        const def = MODE_DEFS[mode];
-        const category = def?.category ?? "duel";
-        this._optionKeys = CATEGORY_OPTIONS[category] ?? [];
-        this._optionValues = getDefaultOptionValues(mode);
-        this._optionCursor = 0;
-        this._screen = "options";
-    }
-
-    /** Effective max for a range option, accounting for maxByMapSize. */
-    _effectiveMax(opt) {
-        if (opt.maxByMapSize) {
-            const msIdx = this._optionValues.get("mapSize") ?? 0;
-            return opt.maxByMapSize[msIdx] ?? opt.max;
-        }
-        return opt.max;
-    }
-
-    /** Clamp range options whose max depends on another option (e.g. mapSize). */
-    _clampDependentOptions(keys) {
-        for (const k of keys) {
-            const o = GAME_OPTIONS.find((d) => d.key === k);
-            if (!o || o.type !== "range" || !o.maxByMapSize) continue;
-            const cur = this._optionValues.get(k);
-            const effMax = this._effectiveMax(o);
-            if (cur > effMax) this._optionValues.set(k, effMax);
-        }
-    }
-
-    _updateOptions(input, audio) {
-        const up = input.wasPressed("ArrowUp") || input.wasPressed("KeyW");
-        const down = input.wasPressed("ArrowDown") || input.wasPressed("KeyS");
-        const left = input.wasPressed("ArrowLeft") || input.wasPressed("KeyA");
-        const right = input.wasPressed("ArrowRight") || input.wasPressed("KeyD");
-        const go = input.wasPressed("Enter") || input.wasPressed("Space");
-        const back = input.wasPressed("Escape") || input.wasPressed("Backspace") || input.wasPressed("KeyR");
-
-        const keys = this._optionKeys;
-        if (!keys.length) {
-            // No options for this mode — confirm immediately
-            this.settings = {};
-            this.confirmed = true;
-            return;
-        }
-
-        if (up) {
-            this._optionCursor = (this._optionCursor - 1 + keys.length) % keys.length;
-            if (audio) {
-                audio.init();
-                audio.playSelect();
-            }
-        }
-        if (down) {
-            this._optionCursor = (this._optionCursor + 1) % keys.length;
-            if (audio) {
-                audio.init();
-                audio.playSelect();
-            }
-        }
-        if (left || right) {
-            const key = keys[this._optionCursor];
-            const opt = GAME_OPTIONS.find((o) => o.key === key);
-            if (opt) {
-                const cur = this._optionValues.get(key);
-                if (opt.type === "enum") {
-                    const n = opt.choices.length;
-                    const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
-                    this._optionValues.set(key, next);
-                    this._clampDependentOptions(keys);
-                } else if (opt.type === "range") {
-                    const delta = right ? opt.step : -opt.step;
-                    const effMax = this._effectiveMax(opt);
-                    const next = Math.min(effMax, Math.max(opt.min, cur + delta));
-                    this._optionValues.set(key, next);
-                }
-                if (audio) {
-                    audio.init();
-                    audio.playSelect();
-                }
-            }
-        }
-        if (go) {
-            this.settings = resolveSettings(this._optionValues);
-            this.confirmed = true;
-            if (audio) {
-                audio.init();
-                audio.playConfirm();
-            }
-        }
-        if (back) {
-            this._screen = "main";
-            if (audio) {
-                audio.init();
-                audio.playConfirm();
-            }
-        }
-    }
-
-    _renderOptions(ctx, canvas) {
-        const W = canvas.width,
-            H = canvas.height;
-        const cx = W / 2;
-        const t = this._time;
-        const keys = this._optionKeys;
-
-        ctx.fillStyle = "#080810";
-        ctx.fillRect(0, 0, W, H);
-        this._drawGrid(ctx, W, H, t);
-        ctx.textAlign = "center";
-
-        // Title
-        const modeItem = this._items[this.selectedIndex];
-        ctx.font = 'bold 36px "Courier New", monospace';
-        ctx.fillStyle = "#777";
-        ctx.fillText("GAME  OPTIONS", cx, 60);
-
-        ctx.font = '14px "Courier New", monospace';
-        ctx.fillStyle = "#555";
-        const modeLabel = modeItem ? modeItem.label : this.selectedMode;
-        ctx.fillText(modeLabel, cx, 85);
-
-        // Options list
-        const startY = 140;
-        const rowH = 48;
-
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            const opt = GAME_OPTIONS.find((o) => o.key === key);
-            if (!opt) continue;
-            const y = startY + i * rowH;
-            const sel = i === this._optionCursor;
-            const cur = this._optionValues.get(key);
-
-            // Highlight bar
-            if (sel) {
-                const pulse = 0.06 + Math.sin(t * 4) * 0.02;
-                ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-                this._roundedRect(ctx, cx - 240, y - 6, 480, 38, 4);
-                ctx.fill();
-            }
-
-            // Label
-            ctx.font = 'bold 15px "Courier New", monospace';
-            ctx.fillStyle = sel ? "#ccc" : "#666";
-            ctx.textAlign = "left";
-            ctx.fillText(opt.label, cx - 220, y + 16);
-
-            // Value display
-            ctx.textAlign = "center";
-            let valueText = "";
-            if (opt.type === "enum") {
-                valueText = opt.choices[cur].label;
-            } else if (opt.type === "range") {
-                const effMax = this._effectiveMax(opt);
-                valueText = `${cur} / ${effMax}`;
-            }
-
-            if (sel) {
-                // Arrows + value
-                const arrowPulse = Math.sin(t * 4) * 2;
-                ctx.font = 'bold 18px "Courier New", monospace';
-                ctx.fillStyle = "#888";
-                ctx.fillText("\u25C4", cx + 60 - arrowPulse, y + 17);
-                ctx.fillText("\u25BA", cx + 220 + arrowPulse, y + 17);
-
-                ctx.font = 'bold 16px "Courier New", monospace';
-                ctx.fillStyle = "#fff";
-                ctx.fillText(valueText, cx + 140, y + 17);
-            } else {
-                ctx.font = '15px "Courier New", monospace';
-                ctx.fillStyle = "#888";
-                ctx.fillText(valueText, cx + 140, y + 17);
-            }
-        }
-
-        // Hints
-        const hintY = startY + keys.length * rowH + 30;
-        ctx.textAlign = "center";
-        ctx.font = '14px "Courier New", monospace';
-        ctx.fillStyle = "#444";
-        ctx.fillText("\u2191 \u2193  Select     \u25C4 \u25BA  Change     Enter  Start     Esc  Back", cx, hintY);
-
-        // Bottom note
-        ctx.font = '12px "Courier New", monospace';
-        ctx.fillStyle = "#333";
-        ctx.fillText("Press Enter / Space to accept defaults and start", cx, H - 30);
-    }
-
-    /* ── MAIN MENU screen ─────────────────────────────────── */
+    /* ── MAIN / title screen ──────────────────────────────── */
 
     _renderMain(ctx, canvas) {
         const W = canvas.width,
             H = canvas.height;
-        const cx = W / 2,
-            cy = H / 2 - 50;
+        const cx = W / 2;
         const t = this._time;
 
         ctx.fillStyle = "#080810";
         ctx.fillRect(0, 0, W, H);
         this._drawGrid(ctx, W, H, t);
-
         ctx.textAlign = "center";
 
         // Title
         ctx.font = 'bold 58px "Courier New", monospace';
         ctx.fillStyle = "#cc3333";
-        ctx.fillText("TANK", cx - 90, cy - 210);
+        ctx.fillText("TANK", cx - 90, 130);
         ctx.fillStyle = "#3366dd";
-        ctx.fillText("BATTLE", cx + 100, cy - 210);
-
+        ctx.fillText("BATTLE", cx + 100, 130);
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#555";
-        ctx.fillText("ISOMETRIC  WARFARE", cx, cy - 183);
+        ctx.fillText("ISOMETRIC  WARFARE", cx, 157);
 
         // Vehicle showcase
-        const vehicleY = cy - 130;
+        const vehicleY = 230;
         const spacing = Math.min(150, (W - 80) / (VEHICLE_INFO.length - 1));
         const startX = cx - spacing * ((VEHICLE_INFO.length - 1) / 2);
-
         for (let i = 0; i < VEHICLE_INFO.length; i++) {
             const v = VEHICLE_INFO[i];
             const vx = startX + i * spacing;
-
-            const glow = 0.04 + Math.sin(t * 2 + i * 1.5) * 0.02;
-            ctx.fillStyle = `rgba(255,255,255,${glow})`;
+            ctx.fillStyle = `rgba(255,255,255,${0.04 + Math.sin(t * 2 + i * 1.5) * 0.02})`;
             ctx.beginPath();
             ctx.arc(vx, vehicleY, 36, 0, Math.PI * 2);
             ctx.fill();
-
-            const angle = t * (0.8 + i * 0.15);
-            this._drawMenuVehicle(ctx, vx, vehicleY, angle, v.type, v.color, v.dark, 1.2);
-
+            this._drawMenuVehicle(ctx, vx, vehicleY, t * (0.8 + i * 0.15), v.type, v.color, v.dark, 1.2);
             ctx.font = 'bold 12px "Courier New", monospace';
             ctx.fillStyle = v.color;
-            ctx.textAlign = "center";
             ctx.fillText(v.name, vx, vehicleY + 40);
-
             ctx.font = '9px "Courier New", monospace';
             ctx.fillStyle = "#555";
             ctx.fillText(v.tagline, vx, vehicleY + 52);
         }
 
-        // ── Menu items with category headers ──
-        const menuStartY = cy - 50;
-        const rowH = 30;
-        const headerH = 26;
-        let y = menuStartY;
-
-        for (let i = 0; i < this._items.length; i++) {
-            const item = this._items[i];
-            const sel = item.type === "mode" && i === this.selectedIndex;
-
-            if (item.type === "header") {
-                // Category header (non-selectable, dim)
-                if (item.label) {
-                    y += 6; // extra gap before header
-                    ctx.font = 'bold 13px "Courier New", monospace';
-                    ctx.fillStyle = "#444";
-                    ctx.fillText(`\u2500\u2500  ${item.label}  \u2500\u2500`, cx, y);
-                }
-                y += headerH;
-            } else {
-                // Selectable mode item
-                if (sel) {
-                    const pulse = 0.05 + Math.sin(t * 4) * 0.02;
-                    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-                    ctx.fillRect(cx - 200, y - 16, 400, rowH);
-                    ctx.font = 'bold 20px "Courier New", monospace';
-                    ctx.fillStyle = "#fff";
-                    ctx.fillText(`\u25BA  ${item.label}`, cx - 20, y + 4);
-                    // Description on the right
-                    if (item.desc) {
-                        ctx.font = '11px "Courier New", monospace';
-                        ctx.fillStyle = "#888";
-                        ctx.textAlign = "right";
-                        ctx.fillText(item.desc, cx + 190, y + 4);
-                        ctx.textAlign = "center";
-                    }
-                } else {
-                    ctx.font = 'bold 18px "Courier New", monospace';
-                    ctx.fillStyle = "#555";
-                    ctx.fillText(`   ${item.label}`, cx - 20, y + 4);
-                }
-                y += rowH;
-            }
-        }
+        // Call to action (pulsing)
+        const pulse = 0.6 + Math.sin(t * 4) * 0.3;
+        ctx.font = 'bold 26px "Courier New", monospace';
+        ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+        ctx.fillText("PRESS  A / START", cx, H / 2 + 120);
 
         ctx.font = '14px "Courier New", monospace';
+        ctx.fillStyle = "#666";
+        ctx.fillText("first to press becomes Player 1", cx, H / 2 + 152);
+
+        ctx.font = '13px "Courier New", monospace';
         ctx.fillStyle = "#444";
-        ctx.fillText("\u2191 \u2193   Select          Enter   Start", cx, y + 16);
+        ctx.fillText("B / Esc   Vehicle info", cx, H - 30);
+    }
 
-        // ── Controls panel (anchored to bottom, contextual) ──
-        const chosen = this._items[this.selectedIndex];
-        const modeDef = chosen.mode && chosen.mode !== "_about" ? MODE_DEFS[chosen.mode] : null;
-        if (modeDef) {
-            const isSplit = modeDef.split;
-            const panelH = isSplit ? 84 : 68;
-            const panelY = H - panelH - 30;
+    /* ── LOBBY screen ─────────────────────────────────────── */
 
-            // Background
-            ctx.fillStyle = "rgba(255,255,255,0.04)";
-            this._roundedRect(ctx, cx - 230, panelY, 460, panelH, 6);
+    _renderLobby(ctx, canvas) {
+        const W = canvas.width,
+            H = canvas.height;
+        const cx = W / 2;
+        const t = this._time;
+        const rows = this.lobby.rows();
+
+        ctx.fillStyle = "#080810";
+        ctx.fillRect(0, 0, W, H);
+        this._drawGrid(ctx, W, H, t);
+        ctx.textAlign = "center";
+
+        // ── Header ──
+        ctx.font = 'bold 30px "Courier New", monospace';
+        ctx.fillStyle = "#777";
+        ctx.fillText("MATCH  SETUP", cx, 44);
+        ctx.font = '13px "Courier New", monospace';
+        ctx.fillStyle = "#555";
+        ctx.fillText(GAME_TYPE_DESC[this.lobby.gameType], cx, 66);
+
+        // Game type toggle (cursor row 0)
+        const gtY = 92;
+        if (this.lobby.cursor === 0) this._cursorBar(ctx, cx - 200, gtY - 20, 400, 32);
+        ctx.font = 'bold 22px "Courier New", monospace';
+        for (const [i, type] of ["skirmish", "battle"].entries()) {
+            const x = cx + (i === 0 ? -90 : 90);
+            ctx.fillStyle = this.lobby.gameType === type ? "#fff" : "#555";
+            ctx.fillText(GAME_TYPE_LABELS[type], x, gtY + 3);
+        }
+        ctx.font = 'bold 18px "Courier New", monospace';
+        ctx.fillStyle = "#888";
+        ctx.fillText("\u25C4", cx - 24, gtY + 3);
+        ctx.fillText("\u25BA", cx + 24, gtY + 3);
+
+        // ── Player cards ──
+        const cardY = 120;
+        const cardW = Math.min(170, (W - 70) / MAX_PLAYERS);
+        const cardH = 96;
+        const totalW = cardW * MAX_PLAYERS + 20 * (MAX_PLAYERS - 1);
+        const startX = cx - totalW / 2;
+        for (let i = 0; i < MAX_PLAYERS; i++) {
+            const x = startX + i * (cardW + 20);
+            const p = this.lobby.players[i];
+            const col = p ? PLAYER_COLORS[p.team - 1] : null;
+
+            ctx.fillStyle = p ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.03)";
+            this._roundedRect(ctx, x, cardY, cardW, cardH, 6);
             ctx.fill();
-
-            ctx.font = 'bold 11px "Courier New", monospace';
-            ctx.fillStyle = "#666";
-            ctx.fillText("──  CONTROLS  ──", cx, panelY + 14);
-
-            ctx.font = '13px "Courier New", monospace';
-            if (isSplit) {
-                ctx.fillStyle = "#cc3333";
-                ctx.fillText("P1", cx - 185, panelY + 32);
-                ctx.fillStyle = "#aaa";
-                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx + 10, panelY + 32);
-
-                ctx.fillStyle = "#3366dd";
-                ctx.fillText("P2", cx - 185, panelY + 50);
-                ctx.fillStyle = "#aaa";
-                ctx.fillText("Arrows move  ·  ,. turret  ·  ENTER fire", cx + 10, panelY + 50);
-
-                ctx.fillStyle = "#44bb44";
-                ctx.fillText("PAD", cx - 185, panelY + 68);
-                ctx.fillStyle = "#aaa";
-                ctx.fillText("Y fwd · X rev · Stick steer · A fire", cx + 10, panelY + 68);
-            } else {
-                ctx.fillStyle = "#aaa";
-                ctx.fillText("WASD move  ·  QE turret  ·  SPACE fire", cx, panelY + 30);
-                ctx.fillStyle = "#888";
-                ctx.fillText("Gamepad:  Y fwd  ·  X rev  ·  Stick steer  ·  A fire", cx, panelY + 48);
+            if (p) {
+                ctx.strokeStyle = col.color;
+                ctx.lineWidth = 2;
+                this._roundedRect(ctx, x, cardY, cardW, cardH, 6);
+                ctx.stroke();
             }
 
-            ctx.font = '10px "Courier New", monospace';
-            ctx.fillStyle = "#555";
-            ctx.fillText("R  back to menu  ·  Space / Enter  rematch after game", cx, panelY + panelH - 6);
+            const swY = cardY + 26;
+            ctx.fillStyle = col ? col.color : "#333";
+            ctx.beginPath();
+            ctx.arc(x + cardW / 2, swY, 14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#111";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.font = 'bold 16px "Courier New", monospace';
+            ctx.fillStyle = p ? "#eee" : "#555";
+            ctx.fillText(`P${i + 1}`, x + cardW / 2, cardY + 54);
+
+            ctx.font = 'bold 13px "Courier New", monospace';
+            if (p) {
+                ctx.fillStyle = col.color;
+                ctx.fillText(col.label, x + cardW / 2, cardY + 76);
+            } else {
+                ctx.fillStyle = "#444";
+                ctx.fillText("PRESS A", x + cardW / 2, cardY + 76);
+            }
         }
 
-        ctx.fillText("W/S also navigate  \u00b7  Sound auto-enabled", cx, H - 20);
+        // ── Settings rows ──
+        const listY = cardY + cardH + 28;
+        const rowH = 34;
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const y = listY + i * rowH;
+            if (i === this.lobby.cursor) this._cursorBar(ctx, cx - 220, y - 8, 440, 30);
+
+            let label;
+            let value = "";
+            if (row.type === "gameType") {
+                label = "GAME TYPE";
+                value = GAME_TYPE_LABELS[this.lobby.gameType];
+            } else if (row.type === "start") {
+                label = "";
+                value = "START";
+            } else {
+                const opt = GAME_OPTIONS.find((o) => o.key === row.key);
+                label = opt?.label ?? row.key;
+                if (opt?.type === "enum") value = opt.choices[this.lobby.optionValues.get(row.key)].label;
+                else if (opt?.type === "range")
+                    value = `${this.lobby.optionValues.get(row.key)} / ${this.lobby.effectiveMax(opt)}`;
+            }
+
+            ctx.textAlign = "left";
+            ctx.font = 'bold 15px "Courier New", monospace';
+            ctx.fillStyle = i === this.lobby.cursor ? "#ccc" : "#666";
+            ctx.fillText(label, cx - 200, y + 12);
+            ctx.textAlign = "right";
+            ctx.font = 'bold 15px "Courier New", monospace';
+            ctx.fillStyle = i === this.lobby.cursor ? "#fff" : "#999";
+            ctx.fillText(value, cx + 200, y + 12);
+            ctx.textAlign = "center";
+        }
+
+        // ── Hints ──
+        ctx.font = '13px "Courier New", monospace';
+        ctx.fillStyle = "#444";
+        ctx.fillText(
+            "A join  \u00b7  X/Tab switch team  \u00b7  B leave  \u00b7  host: \u2191\u2193 select  \u25C4\u25BA change  \u00b7  A start",
+            cx,
+            H - 24,
+        );
+    }
+
+    /** Pulsing highlight bar for the host's cursor. */
+    _cursorBar(ctx, x, y, w, h) {
+        const pulse = 0.05 + Math.sin(this._time * 4) * 0.02;
+        ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+        this._roundedRect(ctx, x, y, w, h, 4);
+        ctx.fill();
     }
 
     /* ── ABOUT screen ─────────────────────────────────────── */
@@ -738,11 +639,10 @@ export class Menu {
         const getVal = (type, key) => {
             const v = VEHICLES[type];
             if (type === "squad") {
-                // No single bullet/cooldown — show representative values.
                 if (key === "speed") return v.speed;
-                if (key === "dmg") return 1.0; // RPG hit
-                if (key === "armour") return 1; // soft, but 5 members
-                if (key === "rof") return 6; // five auto-firing members
+                if (key === "dmg") return 1.0;
+                if (key === "armour") return 1;
+                if (key === "rof") return 6;
                 return 0;
             }
             if (key === "speed") return v.speed;
@@ -811,12 +711,8 @@ export class Menu {
     }
 
     /**
-     * Draw a vehicle preview at a configurable scale.
-     *
-     * Delegates to the in-game vehicle renderers in renderer.js via a
-     * prototype-only instance, so menu previews always match the
-     * gameplay art.  A lightweight fake tank object satisfies the
-     * renderer's interface; menu time drives tread scroll.
+     * Draw a vehicle preview at a configurable scale.  Delegates to the
+     * in-game vehicle renderer via a prototype-only instance.
      */
     _drawMenuVehicle(ctx, sx, sy, angle, type, color, dark, scale) {
         const s = scale !== undefined ? scale : 1.0;

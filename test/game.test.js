@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HIT_ZONE } from "../js/tank.js";
-import { BASE_STRUCTURES, Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
+import { ACTIONS, BASE_STRUCTURES, Bullet, CONFIG, customMap, GameMap, T, Tank, VEHICLES } from "./helpers.js";
 
 describe("Tank", () => {
     it("starts alive with default properties", () => {
@@ -63,8 +63,8 @@ describe("Tank", () => {
         t.y = sy;
         t.angle = 0;
         t.turretAngle = 0;
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.ok(t.turretAngle > 0);
         assert.equal(t.angle, 0);
     });
@@ -187,8 +187,8 @@ describe("Directional armour – subsystem damage", () => {
         t.turretDisabled = true;
         t.damaged = true;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.equal(t.turretAngle, 0, "turret should not rotate");
     });
 
@@ -210,8 +210,8 @@ describe("Directional armour – subsystem damage", () => {
         t.damaged = true;
 
         const startX = t.x;
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.equal(t.x, startX, "should not move forward");
     });
 
@@ -232,8 +232,8 @@ describe("Directional armour – subsystem damage", () => {
         t.leftTrackDisabled = true;
         t.damaged = true;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.left };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.left };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.ok(t.angle < 1.0, "should rotate left (right track still works)");
     });
 
@@ -255,8 +255,8 @@ describe("Directional armour – subsystem damage", () => {
         t.damaged = true;
 
         const startAngle = t.angle;
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.right };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.right };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.ok(Math.abs(t.angle - startAngle) < 0.001, "should NOT rotate right (left track needed for right turn)");
     });
 });
@@ -348,8 +348,8 @@ describe("IFV vehicle type", () => {
         t.angle = 0;
         t.turretAngle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.equal(t.turretAngle, 0, "IFV turret should stay at 0");
     });
 
@@ -371,10 +371,10 @@ describe("IFV vehicle type", () => {
         ifv.y = sy;
         ifv.angle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
         for (let i = 0; i < 30; i++) {
-            tank.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
-            ifv.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+            tank.update(0.016, fakeInput, map);
+            ifv.update(0.016, fakeInput, map);
         }
         const tankDist = Math.hypot(tank.x - sx, tank.y - sy);
         const ifvDist = Math.hypot(ifv.x - sx, ifv.y - sy);
@@ -590,8 +590,8 @@ describe("Drone vehicle type", () => {
         t.angle = 0;
         t.turretAngle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.equal(t.turretAngle, 0, "Drone turret should stay at 0");
     });
 
@@ -612,11 +612,11 @@ describe("Drone vehicle type", () => {
             t.angle = 0;
         }
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
         for (let i = 0; i < 30; i++) {
-            tank.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
-            ifv.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
-            drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+            tank.update(0.016, fakeInput, map);
+            ifv.update(0.016, fakeInput, map);
+            drone.update(0.016, fakeInput, map);
         }
         const tankDist = Math.hypot(tank.x - sx, tank.y - sy);
         const ifvDist = Math.hypot(ifv.x - sx, ifv.y - sy);
@@ -643,9 +643,9 @@ describe("Drone vehicle type", () => {
         drone.y = 32.5;
         drone.angle = 0; // facing east, into the wall
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
         // Drone speed = 6.0 u/s.  Need ~1.4s to cross 8.5 tiles → ~90 frames
-        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, map);
         assert.ok(drone.x > 36, `Drone should fly over hills (x=${drone.x.toFixed(2)})`);
     });
 
@@ -660,8 +660,8 @@ describe("Drone vehicle type", () => {
         tank.y = 32.5;
         tank.angle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 120; i++) tank.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 120; i++) tank.update(0.016, fakeInput, map);
         assert.ok(tank.x < 30, `Tank should be blocked by hills (x=${tank.x.toFixed(2)})`);
     });
 
@@ -676,8 +676,8 @@ describe("Drone vehicle type", () => {
         drone.y = 32.5;
         drone.angle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 120; i++) drone.update(0.016, fakeInput, map);
         assert.ok(drone.x > 36, `Drone should fly over water (x=${drone.x.toFixed(2)})`);
     });
 
@@ -690,8 +690,8 @@ describe("Drone vehicle type", () => {
         drone.y = 32.5;
         drone.angle = Math.PI; // facing west, toward map edge
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 200; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 200; i++) drone.update(0.016, fakeInput, map);
         assert.ok(drone.x >= 0.5, `Drone should stop at map edge (x=${drone.x.toFixed(2)})`);
     });
 
@@ -707,8 +707,8 @@ describe("Drone vehicle type", () => {
         drone.rightTrackDisabled = true;
 
         const startX = drone.x;
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 30; i++) drone.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 30; i++) drone.update(0.016, fakeInput, map);
         assert.ok(drone.x > startX + 0.5, `Drone should still move with disabled tracks (x=${drone.x.toFixed(2)})`);
     });
 });
@@ -830,8 +830,8 @@ describe("SPG vehicle type", () => {
         t.angle = 0;
         t.turretAngle = 0;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.turretRight };
-        for (let i = 0; i < 20; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
+        for (let i = 0; i < 20; i++) t.update(0.016, fakeInput, map);
         assert.ok(t.turretAngle > 0, "SPG turret should rotate");
     });
 
@@ -870,8 +870,8 @@ describe("SPG vehicle type", () => {
         t.isCharging = true;
 
         const startX = t.x;
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.forward };
-        for (let i = 0; i < 30; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.forward };
+        for (let i = 0; i < 30; i++) t.update(0.016, fakeInput, map);
         assert.equal(t.x, startX, "SPG should not move forward while charging");
     });
 
@@ -885,8 +885,8 @@ describe("SPG vehicle type", () => {
         t.angle = 1.0;
         t.isCharging = true;
 
-        const fakeInput = { isDown: (k) => k === CONFIG.PLAYER1_KEYS.right };
-        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, CONFIG.PLAYER1_KEYS, map);
+        const fakeInput = { isDown: (k) => k === ACTIONS.right };
+        for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
         assert.ok(t.angle !== 1.0, "SPG should still rotate hull while charging");
     });
 });

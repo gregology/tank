@@ -28,32 +28,31 @@ Choose from the start menu:
 
 | Mode | Description |
 |------|-------------|
-| **1v1 Split Screen** | Two human players on one keyboard |
-| **Player vs Bot** | Human (P1, red) vs AI opponent (P2, blue), full screen |
-| **5v5 Team Battle** | Human + 4 AI allies vs 5 AI enemies, tower-based objective |
+| **Skirmish** | Kill race to 10. Up to 4 players; defaults to a free-for-all (each player a different colour) but players can team up. One player faces a single bot. |
+| **Battle** | Tower/base objective. Two teams (RED vs BLUE), all vehicle types; bots fill each team to the chosen team size. |
 
 ## Controls
 
-| Action   | Player 1 (Red) | Player 2 (Blue) |
-|----------|:--------------:|:---------------:|
-| Forward  | W              | ↑               |
-| Backward | S              | ↓               |
-| Rotate left  | A          | ←               |
-| Rotate right | D          | →               |
-| Turret left  | Q          | ,               |
-| Turret right | E          | .               |
-| Fire     | Space          | Enter           |
+The keyboard drives a single player:
+
+| Action   | Keyboard |
+|----------|:--------:|
+| Forward  | W        |
+| Backward | S        |
+| Rotate left  | A     |
+| Rotate right | D     |
+| Turret left  | Q     |
+| Turret right | E     |
+| Fire     | Space        |
 
 The turret rotates independently from the hull, slower than hull rotation. This creates a skill gap between positioning and aiming — you can drive in one direction while shooting in another. AI bots track targets with the turret while navigating along their path.
 
-**Menu:** ↑↓ or W/S to select, Enter or Space to start.
-**Game over:** Space/Enter for rematch, R for menu.
+**Menu:** ↑↓ or W/S to select, ←→ or A/D to change, Enter or Space to confirm, Esc to go back.
+**Game over:** Space/Enter for rematch, Esc/R for menu.
 
 ## Gamepad
 
-One or two standard-mapping controllers (Xbox, PlayStation, Steam Deck built-in controls) work alongside the keyboard. The first connected pad drives **Player 1**, the second drives **Player 2** — ideal for split-screen with two controllers.
-
-The pad mapping is layout-independent (Xbox, PlayStation and Nintendo pads all work). Face buttons are described by position below.
+Up to **four** standard-mapping controllers (Xbox, PlayStation, Steam Deck built-in controls) work alongside the keyboard. The first device to press **A / Start** becomes **Player 1**; each additional player presses A/Start to join in turn. The pad mapping is layout-independent (Xbox, PlayStation and Nintendo pads all work). Face buttons are described by position below.
 
 | Action   | Gamepad |
 |----------|---------|
@@ -63,9 +62,10 @@ The pad mapping is layout-independent (Xbox, PlayStation and Nintendo pads all w
 | Turret left / right | LT / RT (**analog** — speed scales with trigger pull) |
 | Fire     | **Bottom face button** (A / ✕ / B) — right face button and Start also work |
 | Menu: navigate / confirm / back | D-pad or stick / **bottom button** / **right button** |
+| Lobby: join / switch team / leave | **A** or Start / **X** (left face) / **B** (right face) |
 | Game over: rematch / menu | Bottom button / right button |
 
-Keyboard and gamepad can be used at the same time (e.g. P1 on pad, P2 on keyboard arrows).
+Keyboard and gamepads can be used at the same time (e.g. one player on the keyboard, the rest on pads).
 
 ## How to Play
 
@@ -78,8 +78,8 @@ Keyboard and gamepad can be used at the same time (e.g. P1 on pad, P2 on keyboar
   - **Rear hit** — instant kill (one hit from behind)
   - **Second hit from any direction** — destroyed
 - Damaged tanks trail **smoke** and show visual damage (broken tracks, locked turret with red ✕, darkened hull).
-- In **1v1** and **vs Bot**, first to **10 kills** wins.
-- In **5v5 Team Battle**, each team has a **tower** at their base. Destroy the enemy tower to win (towers take 10 hits). Tanks respawn at their team's base.
+- In **Skirmish**, the first player or team to **10 kills** wins.
+- In **Battle**, each team has a **tower** at their base. Destroy the enemy tower to win (towers take 10 hits). Tanks respawn at their team's base.
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
 - Each viewport has a **minimap** in the corner showing the full island, all players, and towers.
 
@@ -110,7 +110,7 @@ Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
 ## Vehicle Types
 
-In 5v5 Team Battle, each vehicle is **randomly assigned** at spawn and respawn (50% tank, 30% IFV, 20% drone). Duel modes always use tanks.
+In **Battle**, each vehicle is **randomly assigned** at spawn and respawn (50% tank, 30% IFV, 20% drone). Skirmish always uses tanks.
 
 | Stat | Tank | IFV | Drone |
 |------|------|---------|-------|
@@ -131,7 +131,7 @@ IFV bullets deal 25% damage — four hits equal one tank hit. This creates an as
 
 ## AI Bot Roles
 
-In 5v5 Team Battle, each AI bot is randomly assigned a **role** at spawn and respawn. Roles determine navigation strategy and combat priorities:
+In **Battle**, each AI bot is randomly assigned a **role** at spawn and respawn. Roles determine navigation strategy and combat priorities:
 
 | Role | Symbol | Behaviour |
 |------|--------|-----------|

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-    BOT_KEYS,
+    ACTIONS,
     createBot,
     customMap,
     GameMap,
@@ -151,8 +151,8 @@ describe("AI Combat – fires at terrain", () => {
         let shotsFired = 0;
         for (let f = 0; f < 600; f++) {
             bot.ai.think(0.016, bot.tank, [], map, { x: 30.5, y: 27.5, alive: true });
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(0.016, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         assert.ok(shotsFired > 0, "bot should fire at blocking terrain");
     });
@@ -169,8 +169,8 @@ describe("AI Combat – fires at terrain", () => {
         let shotsFired = 0;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [enemy], map, null);
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(0.016, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         assert.ok(shotsFired > 0, "bot should fire at visible enemy");
     });
@@ -184,7 +184,7 @@ describe("AI Stuck recovery", () => {
         let maxStuck = 0;
         for (let f = 0; f < 1200; f++) {
             bot.ai.think(0.016, bot.tank, [], map, { x: 32.5, y: 26.5, alive: true });
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
+            bot.tank.update(0.016, bot.ai, map);
             if (bot.ai.stuckTime > maxStuck) maxStuck = bot.ai.stuckTime;
         }
         assert.ok(maxStuck < 5, `stuckTime should reset, max was ${maxStuck.toFixed(1)}s`);
@@ -196,7 +196,7 @@ describe("AI Stuck recovery", () => {
         const bot = createBot(32.5, 32.5, 0, map, rng);
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [], map, { x: 32.5 - 10, y: 32.5, alive: true });
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
+            bot.tank.update(0.016, bot.ai, map);
         }
         assert.ok(bot.ai.stuckTime < 1.0, `rotating should not count as stuck, got ${bot.ai.stuckTime.toFixed(1)}s`);
     });
@@ -425,7 +425,7 @@ describe("AI Target priority – drone detonation", () => {
         for (let f = 0; f < 30; f++) {
             bot.ai.think(0.016, bot.tank, [enemyDrone], map, null);
         }
-        assert.ok(!bot.ai.isDown("_bx"), "drone should NOT detonate on another drone");
+        assert.ok(!bot.ai.isDown(ACTIONS.fire), "drone should NOT detonate on another drone");
     });
 
     it("drone detonates on a tank at point-blank", () => {
@@ -442,7 +442,7 @@ describe("AI Target priority – drone detonation", () => {
         enemyTank.y = 32; // point-blank
 
         bot.ai.think(0.016, bot.tank, [enemyTank], map, null);
-        assert.ok(bot.ai.isDown("_bx"), "drone SHOULD detonate on a tank at point-blank");
+        assert.ok(bot.ai.isDown(ACTIONS.fire), "drone SHOULD detonate on a tank at point-blank");
     });
 
     it("drone detonates on an SPG at point-blank", () => {
@@ -459,7 +459,7 @@ describe("AI Target priority – drone detonation", () => {
         enemySpg.y = 32;
 
         bot.ai.think(0.016, bot.tank, [enemySpg], map, null);
-        assert.ok(bot.ai.isDown("_bx"), "drone SHOULD detonate on an SPG at point-blank");
+        assert.ok(bot.ai.isDown(ACTIONS.fire), "drone SHOULD detonate on an SPG at point-blank");
     });
 
     it("drone ignores drone but detonates when tank is also in range", () => {
@@ -484,7 +484,7 @@ describe("AI Target priority – drone detonation", () => {
 
         bot.ai.think(0.016, bot.tank, [enemyDrone, enemyTank], map, null);
         assert.ok(
-            bot.ai.isDown("_bx"),
+            bot.ai.isDown(ACTIONS.fire),
             "drone should detonate when a valid target (tank) is in range, even if a drone is also there",
         );
     });
@@ -508,8 +508,8 @@ describe("AI Target priority – integration with roles", () => {
         let fired = false;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [drone], map, null);
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) fired = true;
+            bot.tank.update(0.016, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) fired = true;
         }
         // Tank should not waste shots on drone (priority 0)
         assert.ok(!fired, "tank should not fire at a drone (priority 0)");
@@ -535,7 +535,7 @@ describe("AI Target priority – integration with roles", () => {
         let minDist = Infinity;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [drone], map, objective);
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
+            bot.tank.update(0.016, bot.ai, map);
             const d = Math.hypot(drone.x - bot.tank.x, drone.y - bot.tank.y);
             if (d < minDist) minDist = d;
         }

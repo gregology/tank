@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BASE_STRUCTURES, MODE_DEFS, SQUAD_ATTENTION_ORDER, SQUAD_MEMBERS, VEHICLES } from "../js/config.js";
+import { BASE_STRUCTURES, GAME_TYPES, SQUAD_ATTENTION_ORDER, SQUAD_MEMBERS, VEHICLES } from "../js/config.js";
 import { Formation } from "../js/formation.js";
 import { pickSquadTarget } from "../js/squad.js";
 import { HIT_ZONE } from "../js/tank.js";
-import { CONFIG, customMap, T, Tank } from "./helpers.js";
+import { ACTIONS, customMap, T, Tank } from "./helpers.js";
 
 /** Build a squad vehicle at a position with its component initialised. */
 function squadTank(x, y, team = 1) {
@@ -45,13 +45,9 @@ describe("Infantry squad – config", () => {
         assert.equal(SQUAD_ATTENTION_ORDER.filter((m) => m === "rifleman").length, 2);
     });
 
-    it("adds squads to battle modes only", () => {
-        for (const mode of ["battle_split", "battle_coop", "battle_solo"]) {
-            assert.ok(MODE_DEFS[mode].vehicles.includes("squad"), mode);
-        }
-        for (const mode of ["duel_split", "duel_bot", "skirmish_coop"]) {
-            assert.ok(!MODE_DEFS[mode].vehicles.includes("squad"), mode);
-        }
+    it("adds squads to battle only", () => {
+        assert.ok(GAME_TYPES.battle.vehicles.includes("squad"));
+        assert.ok(!GAME_TYPES.skirmish.vehicles.includes("squad"));
     });
 
     it("enemy targeting weights cover squads", () => {
@@ -171,11 +167,10 @@ describe("Infantry squad – dig-in state machine", () => {
     it("moving during the transition cancels it", () => {
         const map = customMap([]);
         const t = squadTank(10.5, 10.5);
-        const keys = CONFIG.PLAYER1_KEYS;
         t.squad.startDigIn();
 
         const x0 = t.x;
-        t.update(0.016, { isDown: (k) => k === keys.forward }, keys, map);
+        t.update(0.016, { isDown: (a) => a === ACTIONS.forward }, map);
         assert.equal(t.squad.digIn.state, "roaming"); // cancelled
         assert.ok(t.x > x0); // and it moves
     });
@@ -183,23 +178,21 @@ describe("Infantry squad – dig-in state machine", () => {
     it("dug-in squads cannot move but still rotate", () => {
         const map = customMap([]);
         const t = squadTank(10.5, 10.5);
-        const keys = CONFIG.PLAYER1_KEYS;
         t.squad.digIn = { state: "dugIn", timer: 0 };
 
         const x0 = t.x;
-        t.update(0.016, { isDown: (k) => k === keys.forward }, keys, map);
+        t.update(0.016, { isDown: (a) => a === ACTIONS.forward }, map);
         assert.equal(t.x, x0); // movement blocked
         assert.equal(t.squad.digIn.state, "dugIn"); // moving does NOT dig out
 
-        t.update(0.016, { isDown: (k) => k === keys.right }, keys, map);
+        t.update(0.016, { isDown: (a) => a === ACTIONS.right }, map);
         assert.ok(t.angle > 0); // rotation still allowed
     });
 
     it("squads have no turret (turretAngle stays 0)", () => {
         const map = customMap([]);
         const t = squadTank(10.5, 10.5);
-        const keys = CONFIG.PLAYER1_KEYS;
-        t.update(0.016, { isDown: (k) => k === keys.turretRight }, keys, map);
+        t.update(0.016, { isDown: (a) => a === ACTIONS.turretRight }, map);
         assert.equal(t.turretAngle, 0);
     });
 

@@ -4,7 +4,7 @@
 
 import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
-import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
+import { ACTIONS, BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
 import { Base, BaseHQ, BaseWall, BaseWatchTower, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
@@ -12,6 +12,7 @@ import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
 
 export {
+    ACTIONS,
     AI_ROLES,
     BASE_STRUCTURES,
     Base,
@@ -44,16 +45,6 @@ export function seededRng(seed) {
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
 }
-
-export const BOT_KEYS = {
-    forward: "_bf",
-    backward: "_bb",
-    left: "_bl",
-    right: "_br",
-    turretLeft: "_btl",
-    turretRight: "_btr",
-    fire: "_bx",
-};
 
 /* ── Map builders ─────────────────────────────────────────── */
 
@@ -130,7 +121,7 @@ export function createBot(x, y, angle = 0, map = null, rng = undefined) {
     tank.y = y;
     tank.angle = angle;
     tank.turretAngle = 0;
-    const ai = new AIController(BOT_KEYS, map, rng);
+    const ai = new AIController(map, rng);
     return { tank, ai };
 }
 
@@ -159,7 +150,7 @@ export function simulateNavigation(bot, target, map, opts = {}) {
 
     for (let f = 0; f < frames; f++) {
         ai.think(dt, tank, enemies, map, objective ?? target);
-        tank.update(dt, ai, BOT_KEYS, map);
+        tank.update(dt, ai, map);
 
         if (ai.stuckTime > maxStuck) maxStuck = ai.stuckTime;
 
@@ -240,7 +231,7 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         for (const b of bots) {
             const enemies = allTanks.filter((t) => t.team !== b.tank.team && t.alive);
             b.ai.think(dt, b.tank, enemies, map, { x: b.target.x, y: b.target.y, alive: true });
-            b.tank.update(dt, b.ai, BOT_KEYS, map);
+            b.tank.update(dt, b.ai, map);
         }
         // Separation
         const alive = allTanks.filter((t) => t.alive);

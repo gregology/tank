@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+    ACTIONS,
     AI_ROLES,
-    BOT_KEYS,
     CONFIG,
     createBot,
     customMap,
@@ -34,7 +34,7 @@ function simulateRole(bot, target, map, opts = {}) {
 
     for (let f = 0; f < frames; f++) {
         ai.think(dt, tank, enemies, map, objective);
-        tank.update(dt, ai, BOT_KEYS, map);
+        tank.update(dt, ai, map);
 
         const d = Math.hypot(target.x - tank.x, target.y - tank.y);
         if (!arrived && d < arrivalDist) arrived = true;
@@ -124,8 +124,8 @@ describe("AI Roles – Cavalry", () => {
         let shotsFired = 0;
         for (let f = 0; f < 900; f++) {
             bot.ai.think(0.016, bot.tank, [enemy], map, objective);
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(0.016, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         assert.ok(shotsFired > 0, "cavalry should fire at enemy in path");
     });
@@ -141,7 +141,7 @@ describe("AI Roles – Sniper", () => {
         const dt = 0.016;
         for (let f = 0; f < 2000; f++) {
             bot.ai.think(dt, bot.tank, [], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+            bot.tank.update(dt, bot.ai, map);
         }
 
         const distToObj = Math.hypot(objective.x - bot.tank.x, objective.y - bot.tank.y);
@@ -160,8 +160,8 @@ describe("AI Roles – Sniper", () => {
         const dt = 0.016;
         for (let f = 0; f < 2500; f++) {
             bot.ai.think(dt, bot.tank, [], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(dt, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         assert.ok(shotsFired > 0, "sniper should fire at tower from range");
     });
@@ -183,8 +183,8 @@ describe("AI Roles – Sniper", () => {
         const dt = 0.016;
         for (let f = 0; f < 500; f++) {
             bot.ai.think(dt, bot.tank, [enemy], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(dt, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         // Sniper fires (at tower, not chasing enemy)
         assert.ok(shotsFired >= 0, "sniper should not chase distant enemies");
@@ -199,7 +199,7 @@ describe("AI Roles – Sniper", () => {
         const dt = 0.016;
         for (let f = 0; f < 2000; f++) {
             bot.ai.think(dt, bot.tank, [], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+            bot.tank.update(dt, bot.ai, map);
             const offset = Math.abs(bot.tank.y - 32.5);
             if (offset > maxOffset) maxOffset = offset;
         }
@@ -250,7 +250,7 @@ describe("AI Roles – Defender", () => {
         const dt = 0.016;
         for (let f = 0; f < 1200; f++) {
             bot.ai.think(dt, bot.tank, [], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+            bot.tank.update(dt, bot.ai, map);
         }
 
         const distToFriendly = Math.hypot(friendlyBase.x - bot.tank.x, friendlyBase.y - bot.tank.y);
@@ -277,8 +277,8 @@ describe("AI Roles – Defender", () => {
         const dt = 0.016;
         for (let f = 0; f < 600; f++) {
             bot.ai.think(dt, bot.tank, [enemy], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) shotsFired++;
+            bot.tank.update(dt, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
         assert.ok(shotsFired > 0, "defender should engage enemies near its tower");
     });
@@ -309,7 +309,7 @@ describe("AI Roles – Scout", () => {
             let maxOffset = 0;
             for (let f = 0; f < 1200; f++) {
                 bot.ai.think(dt, bot.tank, [], map, objective);
-                bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+                bot.tank.update(dt, bot.ai, map);
                 // Perpendicular distance from the direct line (y=32.5)
                 const offset = Math.abs(bot.tank.y - 32.5);
                 if (offset > maxOffset) maxOffset = offset;
@@ -352,8 +352,8 @@ describe("AI Roles – Scout", () => {
         const dt = 0.016;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(dt, bot.tank, [enemy], map, objective);
-            bot.tank.update(dt, bot.ai, BOT_KEYS, map);
-            if (bot.ai.isDown("_bx")) _shotsFired++;
+            bot.tank.update(dt, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) _shotsFired++;
         }
         // Scout should not fire at distant enemy (only self-defence)
         // Note: it might fire at terrain or if it happens to get close
@@ -386,7 +386,7 @@ describe("AI Roles – team simulation with roles", () => {
             for (let f = 0; f < frames; f++) {
                 for (const bot of bots) {
                     bot.ai.think(dt, bot.tank, [], map, objective);
-                    bot.tank.update(dt, bot.ai, BOT_KEYS, map);
+                    bot.tank.update(dt, bot.ai, map);
                 }
             }
 
@@ -411,7 +411,7 @@ describe("AI Roles – team simulation with roles", () => {
         // Simulate to compute flank point
         for (let f = 0; f < 100; f++) {
             bot.ai.think(0.016, bot.tank, [], map, objective);
-            bot.tank.update(0.016, bot.ai, BOT_KEYS, map);
+            bot.tank.update(0.016, bot.ai, map);
         }
         assert.ok(bot.ai._flankPoint !== null, "flank point should be set");
 

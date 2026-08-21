@@ -1,11 +1,12 @@
 /**
  * Entry point – state machine that switches between the menu and gameplay.
  *
- *   MENU  ──Enter──▶  PLAYING  ──R──▶  MENU
- *                       │ Space/Enter (game over) → rematch
+ *   MENU  ──host confirms──▶  PLAYING  ──back──▶  MENU (lobby, joins kept)
+ *                                 └──confirm (game over)──▶ rematch
  */
 
 import { AudioManager } from "./audio.js";
+import { ACTIONS } from "./config.js";
 import { Game } from "./game.js";
 import { InputManager } from "./input.js";
 import { Menu } from "./menu.js";
@@ -21,8 +22,6 @@ const menu = new Menu();
 
 let game = null;
 let state = "menu"; // 'menu' | 'playing'
-let lastMode = "duel_split"; // remember for rematch
-let lastSettings = {}; // remember settings for rematch
 
 /* ── Game loop ────────────────────────────────────────────── */
 
@@ -32,10 +31,7 @@ function loop(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
     lastTime = timestamp;
 
-    // Pads use the menu mapping (navigate/confirm/back) while in menus
-    // or on the game-over screen, and the gameplay mapping otherwise.
-    input.menuMode = state === "menu" || (game?.gameOver ?? false);
-    input.pollGamepads(); // merge gamepad state before anything reads input
+    input.poll(); // refresh devices + edges before anything reads input
 
     if (state === "menu") {
         menu.update(dt, input, audio);
@@ -43,23 +39,20 @@ function loop(timestamp) {
 
         if (menu.confirmed) {
             menu.confirmed = false;
-            lastMode = menu.selectedMode;
-            lastSettings = menu.settings ?? {};
-            startGame(lastMode, lastSettings);
+            startGame(menu.match);
         }
     } else {
         // ── Playing ──
         if (game.gameOver) {
-            // Rematch (same mode, fresh map)
-            if (input.wasPressed("Space") || input.wasPressed("Enter")) {
+            // Rematch (same match, fresh map) — any device confirms.
+            if (anyPressed(ACTIONS.confirm)) {
                 audio.init();
                 game.restart();
                 audio.hookIntoGame(game); // re-subscribe (new ParticleSystem)
             }
-            // Back to menu
-            if (input.wasPressed("KeyR")) {
+            // Back to the lobby (joins preserved) — any device backs out.
+            if (anyPressed(ACTIONS.back)) {
                 state = "menu";
-                menu.reset();
                 game = null;
             }
         }
@@ -76,9 +69,18 @@ function loop(timestamp) {
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
-function startGame(mode, settings = {}) {
+/** True if any device (keyboard or connected pad) pressed the action. */
+function anyPressed(action) {
+    if (input.keyboard.wasPressed(action)) return true;
+    for (const gp of input.connectedGamepads) {
+        if (gp.wasPressed(action)) return true;
+    }
+    return false;
+}
+
+function startGame(matchConfig) {
     audio.init();
-    game = new Game(input, mode, settings);
+    game = new Game(matchConfig);
     audio.hookIntoGame(game);
     state = "playing";
 }

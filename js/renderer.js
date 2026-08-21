@@ -9,6 +9,7 @@
 import { BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "./config.js";
 import { createDrawHelpers } from "./draw-helpers.js";
 import { DEFAULT_SQUAD_SLOTS } from "./formation.js";
+import { layoutViewports } from "./layout.js";
 import { clamp, distance, worldToScreen } from "./utils.js";
 
 const TW = CONFIG.TILE_WIDTH;
@@ -87,8 +88,6 @@ export class Renderer {
     resize() {
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
-        this.vpW = Math.floor(this.canvas.width / 2);
-        this.vpH = this.canvas.height;
     }
 
     /* ── public entry point ───────────────────────────────── */
@@ -99,41 +98,52 @@ export class Renderer {
             ch = this.canvas.height;
         ctx.clearRect(0, 0, cw, ch);
 
-        if (game.splitScreen) {
-            // ── Split screen ──
-            const h0 = game.humanTanks[0],
-                h1 = game.humanTanks[1];
-            const c0 = game.cameras[0],
-                c1 = game.cameras[1];
-            this._renderViewport(ctx, game, h0, c0, 0, 0, this.vpW, this.vpH);
-            this._renderViewport(ctx, game, h1, c1, this.vpW, 0, this.vpW, this.vpH);
-            ctx.save();
-            ctx.strokeStyle = "#556";
-            ctx.lineWidth = 3;
-            ctx.shadowColor = "#000";
-            ctx.shadowBlur = 6;
-            ctx.beginPath();
-            ctx.moveTo(this.vpW, 0);
-            ctx.lineTo(this.vpW, ch);
-            ctx.stroke();
-            ctx.restore();
-            if (game.modeDef.bases) {
-                this._drawBattleHUD(ctx, game, 0, 0, 0, this.vpW, this.vpH, h0);
-                this._drawBattleHUD(ctx, game, 1, this.vpW, 0, this.vpW, this.vpH, h1);
-            } else {
-                this._drawScoreHUD(ctx, game, 0, 0, 0, this.vpW, this.vpH, h0);
-                this._drawScoreHUD(ctx, game, 1, this.vpW, 0, this.vpW, this.vpH, h1);
-            }
-        } else {
-            // ── Full screen ──
-            const h0 = game.humanTanks[0],
-                c0 = game.cameras[0];
-            this._renderViewport(ctx, game, h0, c0, 0, 0, cw, ch);
-            if (game.modeDef.bases) this._drawBattleHUD(ctx, game, 0, 0, 0, cw, ch, h0);
-            else this._drawScoreHUD(ctx, game, 0, 0, 0, cw, ch, h0);
+        const humans = game.humanTanks;
+        const rects = layoutViewports(humans.length, cw, ch);
+
+        for (let i = 0; i < rects.length; i++) {
+            const r = rects[i];
+            const tank = humans[i];
+            this._renderViewport(ctx, game, tank, game.cameras[i], r.x, r.y, r.w, r.h);
+            if (game.hasBases) this._drawBattleHUD(ctx, game, i, r.x, r.y, r.w, r.h, tank);
+            else this._drawScoreHUD(ctx, game, i, r.x, r.y, r.w, r.h, tank);
         }
 
+        this._drawViewportBorders(ctx, rects, cw, ch);
+
         if (game.gameOver) this._drawGameOver(ctx, game);
+    }
+
+    /** Draw separators on the interior edges of a multi-viewport layout. */
+    _drawViewportBorders(ctx, rects, cw, ch) {
+        if (rects.length < 2) return;
+        ctx.save();
+        ctx.strokeStyle = "#556";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#000";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        const seen = new Set();
+        const edge = (vertical, at, from, to) => {
+            const key = `${vertical ? "v" : "h"}:${at}:${from}:${to}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            if (vertical) {
+                ctx.moveTo(at, from);
+                ctx.lineTo(at, to);
+            } else {
+                ctx.moveTo(from, at);
+                ctx.lineTo(to, at);
+            }
+        };
+        for (const r of rects) {
+            if (r.x > 0) edge(true, r.x, r.y, r.y + r.h);
+            if (r.x + r.w < cw) edge(true, r.x + r.w, r.y, r.y + r.h);
+            if (r.y > 0) edge(false, r.y, r.x, r.x + r.w);
+            if (r.y + r.h < ch) edge(false, r.y + r.h, r.x, r.x + r.w);
+        }
+        ctx.stroke();
+        ctx.restore();
     }
 
     /* ── viewport rendering ───────────────────────────────── */
@@ -2572,22 +2582,24 @@ export class Renderer {
         const cx = vx + vw / 2;
 
         // Background pill
+        const factions = game.factions;
+        const pillW = Math.min(vw - 24, 70 + factions.length * 95);
+        const pillH = 36;
         ctx.fillStyle = "rgba(0,0,0,0.45)";
-        const pillW = 200,
-            pillH = 36;
         this._roundedRect(ctx, cx - pillW / 2, vy + 10, pillW, pillH, 8);
         ctx.fill();
 
-        // Both teams' scores
-        const s1 = game.teamScores[1],
-            s2 = game.teamScores[2];
-        ctx.font = 'bold 20px "Courier New", monospace';
-        ctx.fillStyle = "#cc3333";
-        ctx.fillText(`RED ${s1}`, cx - 50, vy + 35);
-        ctx.fillStyle = "#555";
-        ctx.fillText("—", cx, vy + 35);
-        ctx.fillStyle = "#3366dd";
-        ctx.fillText(`${s2} BLU`, cx + 50, vy + 35);
+        // Faction scores (one chip per faction, coloured by team/player)
+        ctx.font = 'bold 18px "Courier New", monospace';
+        const innerW = pillW - 24;
+        for (let i = 0; i < factions.length; i++) {
+            const f = factions[i];
+            const score = game.scores.get(f.id) ?? 0;
+            const label = game.factionLabel(f.id);
+            const x = cx + (i - (factions.length - 1) / 2) * (innerW / Math.max(1, factions.length - 1));
+            ctx.fillStyle = f.color;
+            ctx.fillText(`${label} ${score}`, x, vy + 35);
+        }
 
         // Win target
         ctx.font = '10px "Courier New", monospace';
@@ -2676,7 +2688,7 @@ export class Renderer {
         const roleLetters = { cavalry: "C", sniper: "S", defender: "D", scout: "F" };
         for (const t of game.allTanks) {
             if (!t.alive) continue;
-            ctx.fillStyle = t.team === 1 ? "#ff4444" : "#4488ff";
+            ctx.fillStyle = t.color;
             const dx = mmX + t.x * px;
             const dy = mmY + t.y * px;
             if (t.vehicleType === "drone") {
@@ -2726,13 +2738,13 @@ export class Renderer {
             // Draw compound outline
             const bOx = mmX + base.origin.x * px;
             const bOy = mmY + base.origin.y * px;
-            ctx.strokeStyle = base.team === 1 ? "rgba(255,100,100,0.5)" : "rgba(100,140,255,0.5)";
+            ctx.strokeStyle = base.color;
             ctx.lineWidth = 0.5;
             ctx.strokeRect(bOx, bOy, (base.compoundSize ?? 10) * px, (base.compoundSize ?? 10) * px);
 
             // HQ marker
             if (base.hq?.alive) {
-                ctx.fillStyle = base.team === 1 ? "#ff6666" : "#6688ff";
+                ctx.fillStyle = base.color;
                 const hx = mmX + base.hq.x * px;
                 const hy = mmY + base.hq.y * px;
                 ctx.fillRect(hx - 2, hy - 2, 5, 5);
@@ -2963,7 +2975,7 @@ export class Renderer {
 
         // Winner label
         const label = game.winnerLabel;
-        const winColor = game.winner === 1 ? "#cc3333" : "#3366dd";
+        const winColor = game.winnerColor;
 
         ctx.font = 'bold 48px "Courier New", monospace';
         ctx.fillStyle = winColor;

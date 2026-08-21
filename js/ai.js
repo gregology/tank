@@ -36,7 +36,7 @@
  * When stuck, the bot shoots destructible terrain to blast a path.
  */
 
-import { BASE_STRUCTURES, CONFIG, VEHICLES } from "./config.js";
+import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 
 /* ── Role names ───────────────────────────────────────────── */
@@ -69,8 +69,7 @@ export function pickRoleForVehicle(vehicleType = "tank", rng = Math.random) {
 }
 
 export class AIController {
-    constructor(keyMap, map, rng = Math.random) {
-        this.keyMap = keyMap;
+    constructor(map, rng = Math.random) {
         this.keys = {};
         this._rng = rng;
 
@@ -116,14 +115,14 @@ export class AIController {
         this.wobbleTimer = 0;
     }
 
-    isDown(code) {
-        return !!this.keys[code];
+    isDown(action) {
+        return !!this.keys[action];
     }
     /** Binary input source — analog channels are 1 when held, 0 otherwise. */
-    analog(code) {
-        return this.keys[code] ? 1 : 0;
+    analog(action) {
+        return this.keys[action] ? 1 : 0;
     }
-    wasPressed(_) {
+    wasPressed(_action) {
         return false;
     }
     endFrame() {}
@@ -220,18 +219,18 @@ export class AIController {
 
         if (hasPath && wpDist > 0.8) {
             if (absDiff < Math.PI * 0.8) {
-                this.keys[this.keyMap.forward] = true;
+                this.keys[ACTIONS.forward] = true;
             } else {
-                this.keys[this.keyMap.backward] = true;
+                this.keys[ACTIONS.backward] = true;
             }
         } else if (!hasPath && wpDist > 2.0 && absDiff < 0.6) {
-            this.keys[this.keyMap.forward] = true;
+            this.keys[ACTIONS.forward] = true;
         }
 
-        if (driveDiff > 0.08) this.keys[this.keyMap.right] = true;
-        if (driveDiff < -0.08) this.keys[this.keyMap.left] = true;
+        if (driveDiff > 0.08) this.keys[ACTIONS.right] = true;
+        if (driveDiff < -0.08) this.keys[ACTIONS.left] = true;
 
-        if (this.keys[this.keyMap.forward]) {
+        if (this.keys[ACTIONS.forward]) {
             this._nudge(me, map);
         }
 
@@ -664,12 +663,12 @@ export class AIController {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff > 0.08) this.keys[this.keyMap.right] = true;
-        if (diff < -0.08) this.keys[this.keyMap.left] = true;
+        if (diff > 0.08) this.keys[ACTIONS.right] = true;
+        if (diff < -0.08) this.keys[ACTIONS.left] = true;
 
         const dist = Math.hypot(target.x - me.x, target.y - me.y);
         if (Math.abs(diff) < Math.PI * 0.7 && dist > 0.5) {
-            this.keys[this.keyMap.forward] = true;
+            this.keys[ACTIONS.forward] = true;
         }
 
         // ── Detonate when nearly on top of a valid target ──
@@ -682,7 +681,7 @@ export class AIController {
             if ((priorities[e.targetType] ?? 1) <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             if (d < detonateRange) {
-                this.keys[this.keyMap.fire] = true;
+                this.keys[ACTIONS.fire] = true;
                 return;
             }
         }
@@ -690,7 +689,7 @@ export class AIController {
         if (objective?.alive) {
             const d = Math.hypot(objective.x - me.x, objective.y - me.y);
             if (d < detonateRange + BASE_STRUCTURES.baseHQ.size) {
-                this.keys[this.keyMap.fire] = true;
+                this.keys[ACTIONS.fire] = true;
             }
         }
     }
@@ -724,8 +723,8 @@ export class AIController {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff > 0.08) this.keys[this.keyMap.right] = true;
-        if (diff < -0.08) this.keys[this.keyMap.left] = true;
+        if (diff > 0.08) this.keys[ACTIONS.right] = true;
+        if (diff < -0.08) this.keys[ACTIONS.left] = true;
 
         // Also aim turret if it's functional
         this._aimAndFire(me, target, map);
@@ -801,7 +800,7 @@ export class AIController {
 
             // Hold fire key while charge hasn't reached needed level
             if (me.chargeTime < neededCharge + 0.05) {
-                this.keys[this.keyMap.fire] = true;
+                this.keys[ACTIONS.fire] = true;
             }
             // Else: don't set fire → release → game fires the shell
             return;
@@ -820,7 +819,7 @@ export class AIController {
             if (this.fireDelay > 0) return;
 
             if (this._los(me.x, me.y, target.x, target.y, map)) {
-                this.keys[this.keyMap.fire] = true;
+                this.keys[ACTIONS.fire] = true;
                 this.fireDelay = 0.1 + this._rng() * 0.08;
             }
             return;
@@ -832,8 +831,8 @@ export class AIController {
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            if (diff > 0.08) this.keys[this.keyMap.right] = true;
-            if (diff < -0.08) this.keys[this.keyMap.left] = true;
+            if (diff > 0.08) this.keys[ACTIONS.right] = true;
+            if (diff < -0.08) this.keys[ACTIONS.left] = true;
 
             if (Math.abs(diff) > 0.3) return;
         } else {
@@ -851,7 +850,7 @@ export class AIController {
         if (this.fireDelay > 0) return;
 
         if (this._los(me.x, me.y, target.x, target.y, map)) {
-            this.keys[this.keyMap.fire] = true;
+            this.keys[ACTIONS.fire] = true;
             this.fireDelay = 0.25 + this._rng() * 0.35;
             return;
         }
@@ -875,8 +874,8 @@ export class AIController {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff > 0.05) this.keys[this.keyMap.turretRight] = true;
-        if (diff < -0.05) this.keys[this.keyMap.turretLeft] = true;
+        if (diff > 0.05) this.keys[ACTIONS.turretRight] = true;
+        if (diff < -0.05) this.keys[ACTIONS.turretLeft] = true;
     }
 
     /**
@@ -902,7 +901,7 @@ export class AIController {
      * ════════════════════════════════════════════════════════ */
 
     _handleStuck(me, map) {
-        const k = this.keyMap;
+        const k = ACTIONS;
         if (this.stuckTime < 1.2) {
             this.keys[k.backward] = true;
             this.keys[this._rng() > 0.5 ? k.right : k.left] = true;
@@ -919,7 +918,7 @@ export class AIController {
 
     _evade(dt, me, map) {
         this.evadeTimer -= dt;
-        const k = this.keyMap;
+        const k = ACTIONS;
         this.keys[this.evadeDir > 0 ? k.right : k.left] = true;
         this.keys[k.forward] = true;
         if (!me.fixedGun) this._aimTurretForward(me);
@@ -947,7 +946,7 @@ export class AIController {
             const ax = me.x + Math.cos(tw) * d;
             const ay = me.y + Math.sin(tw) * d;
             if (map.blocksProjectile(ax, ay)) {
-                this.keys[this.keyMap.fire] = true;
+                this.keys[ACTIONS.fire] = true;
                 this.fireDelay = 0.3;
                 return;
             }
@@ -955,7 +954,7 @@ export class AIController {
     }
 
     _blastNearestWall(me, map) {
-        const k = this.keyMap;
+        const k = ACTIONS;
         let bestD = Infinity,
             bestA = me.turretWorld;
         for (let dy = -3; dy <= 3; dy++) {
@@ -1069,13 +1068,13 @@ export class AIController {
     }
 
     _patrol() {
-        this.keys[this.keyMap.forward] = true;
+        this.keys[ACTIONS.forward] = true;
         this._patrolStep = (this._patrolStep || 0) + 1;
-        if (Math.sin(this._patrolStep * 0.023) > 0.3) this.keys[this.keyMap.right] = true;
+        if (Math.sin(this._patrolStep * 0.023) > 0.3) this.keys[ACTIONS.right] = true;
     }
 
     _nudge(me, map) {
-        const k = this.keyMap,
+        const k = ACTIONS,
             a = me.angle;
         const bk = (ang, d) => !map.isPassable(me.x + Math.cos(ang) * d, me.y + Math.sin(ang) * d);
         if (!bk(a, 0.6)) return;

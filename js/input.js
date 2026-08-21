@@ -1,40 +1,26 @@
 /**
- * Keyboard + gamepad input manager.
+ * Keyboard + gamepad input, abstracted behind a per-device interface.
  *
- * Keyboard events are tracked directly.  Gamepads are polled once per
- * frame (pollGamepads) and translated into the SAME key codes the
- * keyboard uses (CONFIG.PLAYER1_KEYS / PLAYER2_KEYS), so the rest of
- * the game can't tell the difference.
+ * Each human player (and the AI) is driven by an InputDevice that exposes
+ * the game's ACTION vocabulary directly — no key-code indirection:
  *
- * The pad mapping is context-sensitive (menuMode flag):
+ *     device.isDown(action)     — action currently held
+ *     device.wasPressed(action) — action newly pressed this frame
+ *     device.analog(action)     — 0..1 magnitude (steering/triggers),
+ *                                 else 0/1 (binary)
  *
- *   MENUS (menuMode = true)
- *     d-pad / left stick      → Arrow keys (navigate)
- *     bottom face button      → Enter (confirm)  — A on Xbox, ✕ on PS,
- *     Start                   → Enter (confirm)    B on Nintendo
- *     right face button       → KeyR (back)      — B on Xbox, ○ on PS
+ * Devices:
+ *   KeyboardDevice — one fixed key map (WASD/QE/Space; arrows/Enter/Esc).
+ *   GamepadDevice  — standard-mapping buttons/axes → actions.  Every pad
+ *                    maps identically, so any pad can drive any player;
+ *                    join order (not pad index) determines P1…P4.
  *
- *   GAME (menuMode = false)
- *     top face button (Y/△)   → forward     (d-pad ↑, stick ↑ work too)
- *     left face button (X/□)  → reverse     (d-pad ↓, stick ↓ work too)
- *     d-pad ←→ / stick ←→     → steer left / right (stick is analog)
- *     LT / RT                 → turret left / right (analog)
- *     bottom face button      → fire — the primary action button on
- *     (A/✕) + right btn/Start   every layout (labelled ✕ on PlayStation)
- *
- * Analog channels (stick X, triggers) additionally report a 0–1
- * magnitude via analog(), enabling non-binary steering/turret speed.
- * Digital sources (keyboard, d-pad, AI) report 1 when held.
- *
- * The first connected pad drives player 1, the second drives player 2.
- * A pad and the keyboard can be used simultaneously — states merge.
- *
- * Tracks which keys are currently held and which were just pressed
- * this frame.  Call `pollGamepads()` at the START of each frame and
- * `endFrame()` at the END (clears the "just-pressed" set).
+ * InputManager is a device registry: it owns the keyboard, creates and
+ * refreshes GamepadDevices from navigator.getGamepads(), and drives
+ * per-frame edge detection via poll() / endFrame().
  */
 
-import { CONFIG } from "./config.js";
+import { ACTIONS, CONFIG } from "./config.js";
 
 /* ── Standard-mapping gamepad button indices ─────────────── */
 const BTN = {
@@ -51,20 +37,122 @@ const BTN = {
     DPAD_RIGHT: 15,
 };
 
-/** UI "back" code injected for the gamepad back button. */
-const BACK_CODE = "KeyR";
+/**
+ * Base InputDevice: tracks held actions and one-frame pressed edges.
+ * Subclasses populate `_held` / `_pressed` / `_axes` each frame.
+ */
+export class InputDevice {
+    constructor() {
+        this._held = new Set();
+        this._pressed = new Set();
+        this._axes = {};
+    }
+
+    isDown(action) {
+        return this._held.has(action);
+    }
+
+    wasPressed(action) {
+        return this._pressed.has(action);
+    }
+
+    analog(action) {
+        return this._axes[action] ?? (this._held.has(action) ? 1 : 0);
+    }
+
+    /** Clear one-frame press edges (call once at the end of each frame). */
+    endFrame() {
+        this._pressed = new Set();
+    }
+}
+
+/* ── Keyboard ─────────────────────────────────────────────── */
 
 /**
- * Translate one gamepad's state into virtual key presses for the
- * given player key map (GAME mapping — see gamepadToMenuKeys for menus).
- * Pure — exported for tests.
- *
- * @param {Gamepad} gp          standard-mapping gamepad snapshot
- * @param {object}  playerKeys  CONFIG.PLAYER1_KEYS or PLAYER2_KEYS
- * @returns {Record<string,boolean>} map of key code → true
+ * Keyboard key code → actions.  One keyboard = one device, so a single
+ * map covers both gameplay (WASD) and menu (arrows/Enter/Esc) inputs.
+ * Arrows double as a fallback for WASD so either hand works.
  */
-export function gamepadToKeys(gp, playerKeys) {
-    const keys = {};
+const KEYBOARD_MAP = {
+    KeyW: [ACTIONS.forward, ACTIONS.up],
+    ArrowUp: [ACTIONS.forward, ACTIONS.up],
+    KeyS: [ACTIONS.backward, ACTIONS.down],
+    ArrowDown: [ACTIONS.backward, ACTIONS.down],
+    KeyA: [ACTIONS.left],
+    ArrowLeft: [ACTIONS.left],
+    KeyD: [ACTIONS.right],
+    ArrowRight: [ACTIONS.right],
+    KeyQ: [ACTIONS.turretLeft],
+    KeyE: [ACTIONS.turretRight],
+    Space: [ACTIONS.fire, ACTIONS.confirm],
+    Enter: [ACTIONS.confirm],
+    Escape: [ACTIONS.back],
+    Backspace: [ACTIONS.back],
+    KeyR: [ACTIONS.back],
+    Tab: [ACTIONS.cycleTeam],
+};
+
+export class KeyboardDevice extends InputDevice {
+    constructor() {
+        super();
+        this.index = -1; // device id: -1 = keyboard
+        this._heldCodes = new Set();
+        this._pressedCodes = new Set();
+    }
+
+    /** The keyboard is always "connected". */
+    get connected() {
+        return true;
+    }
+
+    _onKeyDown(code) {
+        if (!this._heldCodes.has(code)) this._pressedCodes.add(code);
+        this._heldCodes.add(code);
+    }
+
+    _onKeyUp(code) {
+        this._heldCodes.delete(code);
+    }
+
+    _reset() {
+        this._heldCodes.clear();
+        this._pressedCodes.clear();
+        this._held = new Set();
+        this._pressed = new Set();
+    }
+
+    /** Recompute action sets from raw key state (called each poll). */
+    refresh() {
+        this._held = this._codesToActions(this._heldCodes);
+        this._pressed = this._codesToActions(this._pressedCodes);
+    }
+
+    endFrame() {
+        this._pressedCodes.clear();
+        this._pressed = new Set();
+    }
+
+    _codesToActions(codes) {
+        const out = new Set();
+        for (const code of codes) {
+            for (const action of KEYBOARD_MAP[code] ?? []) out.add(action);
+        }
+        return out;
+    }
+}
+
+/* ── Gamepad ──────────────────────────────────────────────── */
+
+/**
+ * Translate one standard-mapping gamepad snapshot into held actions and
+ * analog magnitudes.  Pure — exported for tests.
+ *
+ * @param {Gamepad} gp  standard-mapping gamepad snapshot
+ * @returns {{ held: Set<string>, axes: Record<string, number> }}
+ */
+export function gamepadToActions(gp) {
+    const held = new Set();
+    const axes = {};
     const pressed = (i) => gp.buttons?.[i]?.pressed ?? false;
     const trigger = (i) => {
         const b = gp.buttons?.[i];
@@ -72,99 +160,82 @@ export function gamepadToKeys(gp, playerKeys) {
     };
     const axis = (i) => gp.axes?.[i] ?? 0;
     const dz = CONFIG.GAMEPAD_STICK_DEADZONE;
-
-    // Throttle — top face button forward / left face button reverse.
-    // D-pad up/down and the stick's Y axis work too.
-    if (pressed(BTN.FACE_TOP) || pressed(BTN.DPAD_UP) || axis(1) < -dz) keys[playerKeys.forward] = true;
-    if (pressed(BTN.FACE_LEFT) || pressed(BTN.DPAD_DOWN) || axis(1) > dz) keys[playerKeys.backward] = true;
-
-    // Steering — d-pad left/right (digital) or the stick's X axis
-    // (analog magnitude reported separately via gamepadToAxes).
-    if (pressed(BTN.DPAD_LEFT) || axis(0) < -dz) keys[playerKeys.left] = true;
-    if (pressed(BTN.DPAD_RIGHT) || axis(0) > dz) keys[playerKeys.right] = true;
-
-    // Turret — LT / RT (analogue triggers with a threshold)
-    if (trigger(BTN.LT)) keys[playerKeys.turretLeft] = true;
-    if (trigger(BTN.RT)) keys[playerKeys.turretRight] = true;
-
-    // Fire — bottom face button (the primary action button on every
-    // layout; labelled ✕ on PlayStation).  Right face button and Start
-    // are aliases so confirm/rematch habits just work.
-    if (pressed(BTN.FACE_BOTTOM) || pressed(BTN.FACE_RIGHT) || pressed(BTN.START)) {
-        keys[playerKeys.fire] = true;
-    }
-
-    return keys;
-}
-
-/**
- * Translate one gamepad's state into MENU navigation keys.
- * Layout-independent: the bottom face button confirms and the right
- * face button goes back on Xbox, PlayStation and Nintendo pads alike.
- * Pure — exported for tests.
- *
- * @param {Gamepad} gp  standard-mapping gamepad snapshot
- * @returns {Record<string,boolean>} map of key code → true
- */
-export function gamepadToMenuKeys(gp) {
-    const keys = {};
-    const pressed = (i) => gp.buttons?.[i]?.pressed ?? false;
-    const axis = (i) => gp.axes?.[i] ?? 0;
-    const dz = CONFIG.GAMEPAD_STICK_DEADZONE;
-
-    // Navigate — d-pad or left stick
-    if (pressed(BTN.DPAD_UP) || axis(1) < -dz) keys.ArrowUp = true;
-    if (pressed(BTN.DPAD_DOWN) || axis(1) > dz) keys.ArrowDown = true;
-    if (pressed(BTN.DPAD_LEFT) || axis(0) < -dz) keys.ArrowLeft = true;
-    if (pressed(BTN.DPAD_RIGHT) || axis(0) > dz) keys.ArrowRight = true;
-
-    // Confirm — bottom face button or Start
-    if (pressed(BTN.FACE_BOTTOM) || pressed(BTN.START)) keys.Enter = true;
-
-    // Back — right face button
-    if (pressed(BTN.FACE_RIGHT)) keys[BACK_CODE] = true;
-
-    return keys;
-}
-
-/**
- * Analog magnitudes (0–1) for one gamepad, for the channels that
- * support non-binary control: steering (left stick X) and turret
- * (LT/RT trigger travel).  Values are scaled so deflection just past
- * the deadzone/threshold starts near 0 and full deflection is 1.
- * Pure — exported for tests.
- *
- * @param {Gamepad} gp          standard-mapping gamepad snapshot
- * @param {object}  playerKeys  CONFIG.PLAYER1_KEYS or PLAYER2_KEYS
- * @returns {Record<string,number>} map of key code → 0..1
- */
-export function gamepadToAxes(gp, playerKeys) {
-    const axes = {};
-    const dz = CONFIG.GAMEPAD_STICK_DEADZONE;
     const trig = CONFIG.GAMEPAD_TRIGGER_THRESHOLD;
     const scale = (v, min) => Math.min(1, (Math.abs(v) - min) / (1 - min));
 
-    // Steering — left stick X
-    const x = gp.axes?.[0] ?? 0;
-    if (x < -dz) axes[playerKeys.left] = scale(x, dz);
-    else if (x > dz) axes[playerKeys.right] = scale(x, dz);
+    // Throttle — top face button forward / left face button reverse.
+    // D-pad up/down and the stick's Y axis work too.
+    if (pressed(BTN.FACE_TOP) || pressed(BTN.DPAD_UP) || axis(1) < -dz) held.add(ACTIONS.forward);
+    if (pressed(BTN.FACE_LEFT) || pressed(BTN.DPAD_DOWN) || axis(1) > dz) held.add(ACTIONS.backward);
 
-    // Turret — LT / RT trigger travel
-    for (const [btn, code] of [
-        [BTN.LT, playerKeys.turretLeft],
-        [BTN.RT, playerKeys.turretRight],
+    // Steering — d-pad left/right (digital) or the left stick's X axis.
+    if (pressed(BTN.DPAD_LEFT) || axis(0) < -dz) held.add(ACTIONS.left);
+    if (pressed(BTN.DPAD_RIGHT) || axis(0) > dz) held.add(ACTIONS.right);
+
+    // Turret — LT / RT (analogue triggers with a threshold).
+    if (trigger(BTN.LT)) held.add(ACTIONS.turretLeft);
+    if (trigger(BTN.RT)) held.add(ACTIONS.turretRight);
+
+    // Fire — bottom face button (the primary action), with right face and
+    // Start as aliases so confirm/rematch habits just work.
+    if (pressed(BTN.FACE_BOTTOM) || pressed(BTN.FACE_RIGHT) || pressed(BTN.START)) held.add(ACTIONS.fire);
+
+    // Menu navigation — d-pad / stick only (face buttons never navigate).
+    if (pressed(BTN.DPAD_UP) || axis(1) < -dz) held.add(ACTIONS.up);
+    if (pressed(BTN.DPAD_DOWN) || axis(1) > dz) held.add(ACTIONS.down);
+    if (pressed(BTN.DPAD_LEFT) || axis(0) < -dz) held.add(ACTIONS.left);
+    if (pressed(BTN.DPAD_RIGHT) || axis(0) > dz) held.add(ACTIONS.right);
+
+    // Confirm / back / switch-team.
+    if (pressed(BTN.FACE_BOTTOM) || pressed(BTN.START)) held.add(ACTIONS.confirm);
+    if (pressed(BTN.FACE_RIGHT)) held.add(ACTIONS.back);
+    if (pressed(BTN.FACE_LEFT)) held.add(ACTIONS.cycleTeam);
+
+    // Analog magnitudes (0–1) for steering and turret travel.
+    const x = axis(0);
+    if (x < -dz) axes[ACTIONS.left] = scale(x, dz);
+    else if (x > dz) axes[ACTIONS.right] = scale(x, dz);
+    for (const [btn, action] of [
+        [BTN.LT, ACTIONS.turretLeft],
+        [BTN.RT, ACTIONS.turretRight],
     ]) {
-        // Prefer the analogue travel value; fall back to the pressed
-        // flag for digital triggers that only report 0/1.
         const b = gp.buttons?.[btn];
         const raw = b?.value || (b?.pressed ? 1 : 0);
-        if (raw > trig) axes[code] = scale(raw, trig);
+        if (raw > trig) axes[action] = scale(raw, trig);
     }
 
-    return axes;
+    return { held, axes };
 }
 
-/* ================================================================== */
+export class GamepadDevice extends InputDevice {
+    constructor(index) {
+        super();
+        this.index = index; // device id: gamepad index
+        this.connected = false;
+    }
+
+    /** Update from a gamepad snapshot (null/absent = disconnected). */
+    update(gp) {
+        if (!gp?.connected) {
+            this.connected = false;
+            this._held = new Set();
+            this._pressed = new Set();
+            this._axes = {};
+            return;
+        }
+        this.connected = true;
+        const { held, axes } = gamepadToActions(gp);
+        const pressed = new Set();
+        for (const action of held) {
+            if (!this._held.has(action)) pressed.add(action);
+        }
+        this._held = held;
+        this._axes = axes;
+        this._pressed = pressed;
+    }
+}
+
+/* ── Device registry ──────────────────────────────────────── */
 
 export class InputManager {
     /**
@@ -172,24 +243,9 @@ export class InputManager {
      *        defaults to navigator.getGamepads()
      */
     constructor(getGamepads = null) {
-        /** @type {Record<string,boolean>} keyboard keys currently held */
-        this._kb = {};
-        /** @type {Record<string,boolean>} gamepad-derived codes currently held */
-        this._pad = {};
-        /** @type {Record<string,number>} gamepad-derived analog magnitudes (0–1) */
-        this._padAnalog = {};
-        /** @type {Record<string,boolean>} pad state last frame (for edge detection) */
-        this._padPrev = {};
-        /** @type {Record<string,boolean>} pressed this frame */
-        this.justPressed = {};
-        /** @type {(number|null)[]} gamepad index bound to each player slot */
-        this._padSlots = [null, null];
-
-        /**
-         * Context switch for the pad mapping — true while in menus
-         * (navigate/confirm/back), false during gameplay.  Set by main.js.
-         */
-        this.menuMode = true;
+        this.keyboard = new KeyboardDevice();
+        /** @type {Map<number, GamepadDevice>} */
+        this._gamepads = new Map();
 
         this._getGamepads =
             getGamepads ??
@@ -197,106 +253,59 @@ export class InputManager {
 
         if (typeof window !== "undefined") {
             window.addEventListener("keydown", (e) => {
-                if (!this._kb[e.code]) {
-                    this.justPressed[e.code] = true;
-                }
-                this._kb[e.code] = true;
-
-                // Prevent browser scrolling for game keys
                 if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Enter"].includes(e.code)) {
                     e.preventDefault();
                 }
+                this.keyboard._onKeyDown(e.code);
             });
-
             window.addEventListener("keyup", (e) => {
-                this._kb[e.code] = false;
+                this.keyboard._onKeyUp(e.code);
             });
-
-            // Clear state if the window loses focus
+            // Clear state if the window loses focus.
             window.addEventListener("blur", () => {
-                this._kb = {};
-                this._pad = {};
-                this._padAnalog = {};
-                this._padPrev = {};
-                this.justPressed = {};
+                this.keyboard._reset();
             });
         }
     }
 
-    /** Number of gamepads currently bound to player slots (0–2). */
-    get gamepadCount() {
-        return this._padSlots.filter((s) => s !== null).length;
+    /** All gamepad devices (connected and remembered-after-disconnect). */
+    get gamepads() {
+        return [...this._gamepads.values()];
+    }
+
+    /** Connected gamepad devices only. */
+    get connectedGamepads() {
+        return this.gamepads.filter((g) => g.connected);
     }
 
     /**
-     * Poll gamepads and merge their state.  Call once at the START of
-     * each frame, before any update() reads input.
+     * Poll all devices.  Call once at the START of each frame, before any
+     * update() reads input.
      */
-    pollGamepads() {
-        const next = {};
-        const nextAxes = {};
+    poll() {
+        this.keyboard.refresh();
+
         const pads = this._getGamepads() ?? [];
-
-        // Lazily bind newly seen pads to free player slots (stable
-        // assignment — a pad keeps its slot until it disconnects).
+        const seen = new Set();
         for (const gp of pads) {
-            if (gp?.connected) this._bindSlot(gp.index);
-        }
-
-        for (let slot = 0; slot < this._padSlots.length; slot++) {
-            const idx = this._padSlots[slot];
-            if (idx === null) continue;
-            const gp = pads[idx];
-            if (!gp?.connected) {
-                this._padSlots[slot] = null; // disconnected — free the slot
-                continue;
+            if (!gp) continue;
+            seen.add(gp.index);
+            let dev = this._gamepads.get(gp.index);
+            if (!dev) {
+                dev = new GamepadDevice(gp.index);
+                this._gamepads.set(gp.index, dev);
             }
-            if (this.menuMode) {
-                // Menus: every pad navigates (no player assignment)
-                Object.assign(next, gamepadToMenuKeys(gp));
-            } else {
-                const playerKeys = slot === 0 ? CONFIG.PLAYER1_KEYS : CONFIG.PLAYER2_KEYS;
-                Object.assign(next, gamepadToKeys(gp, playerKeys));
-                Object.assign(nextAxes, gamepadToAxes(gp, playerKeys));
-            }
+            dev.update(gp);
         }
-
-        // Edge detection: code held now but not last frame → just pressed
-        for (const code in next) {
-            if (!this._padPrev[code]) this.justPressed[code] = true;
+        // A pad that vanished from the snapshot is disconnected.
+        for (const [index, dev] of this._gamepads) {
+            if (!seen.has(index)) dev.update(null);
         }
-
-        this._padPrev = next;
-        this._pad = next;
-        this._padAnalog = nextAxes;
-    }
-
-    _bindSlot(index) {
-        if (this._padSlots.includes(index)) return;
-        const free = this._padSlots.indexOf(null);
-        if (free !== -1) this._padSlots[free] = index;
-    }
-
-    isDown(code) {
-        return !!(this._kb[code] || this._pad[code]);
-    }
-
-    /**
-     * Analog magnitude (0–1) for a key code.  Digital sources (keyboard,
-     * d-pad, AI) report 1 when held; the gamepad stick and triggers
-     * report a scaled value for non-binary steering / turret speed.
-     */
-    analog(code) {
-        if (this._kb[code]) return 1;
-        return this._padAnalog[code] ?? (this._pad[code] ? 1 : 0);
-    }
-
-    wasPressed(code) {
-        return !!this.justPressed[code];
     }
 
     /** Call once at the end of each frame. */
     endFrame() {
-        this.justPressed = {};
+        this.keyboard.endFrame();
+        for (const dev of this._gamepads.values()) dev.endFrame();
     }
 }

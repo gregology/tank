@@ -31,7 +31,7 @@
  *               damage and it can dig in / use building cover
  */
 
-import { CONFIG, VEHICLES } from "./config.js";
+import { ACTIONS, CONFIG, VEHICLES } from "./config.js";
 import { GameEntity } from "./entity.js";
 import { Squad } from "./squad.js";
 import { normalizeAngle } from "./utils.js";
@@ -168,7 +168,7 @@ export class Tank extends GameEntity {
 
     /* ── per-frame update ─────────────────────────────────── */
 
-    update(dt, input, keyMap, map) {
+    update(dt, device, map) {
         // Tick timers even when dead (respawn countdown)
         if (!this.alive) {
             this.respawnTimer -= dt;
@@ -198,12 +198,13 @@ export class Tank extends GameEntity {
 
         const rotSpeed = VEHICLES[this.vehicleType].rotationSpeed;
 
-        // Turn/turret amounts are analog (0–1) when the input source
-        // provides them (gamepad stick/triggers) and binary otherwise
-        // (keyboard, AI).  Falls back to isDown() for inputs without analog().
-        const amt = (code) => (typeof input.analog === "function" ? input.analog(code) : input.isDown(code) ? 1 : 0);
-        const turnL = amt(keyMap.left);
-        const turnR = amt(keyMap.right);
+        // Turn/turret amounts are analog (0–1) when the device provides
+        // them (gamepad stick/triggers) and binary otherwise (keyboard,
+        // AI).  Falls back to isDown() for devices without analog().
+        const amt = (action) =>
+            typeof device.analog === "function" ? device.analog(action) : device.isDown(action) ? 1 : 0;
+        const turnL = amt(ACTIONS.left);
+        const turnR = amt(ACTIONS.right);
 
         const rotating = (turnL > 0 && canRotateLeft) || (turnR > 0 && canRotateRight);
         if (turnL > 0 && canRotateLeft) this.angle -= rotSpeed * turnL * dt;
@@ -217,8 +218,8 @@ export class Tank extends GameEntity {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
             const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
-            const turrL = amt(keyMap.turretLeft);
-            const turrR = amt(keyMap.turretRight);
+            const turrL = amt(ACTIONS.turretLeft);
+            const turrR = amt(ACTIONS.turretRight);
             if (turrL > 0) this.turretAngle -= turretSpd * turrL * dt;
             if (turrR > 0) this.turretAngle += turretSpd * turrR * dt;
             this.turretAngle = normalizeAngle(this.turretAngle);
@@ -232,7 +233,7 @@ export class Tank extends GameEntity {
         // key during the dig-in transition cancels it (back to roaming).
         let move = 0;
         if (this.vehicleType === "squad" && this.squad && this.squad.digIn.state === "diggingIn") {
-            if (input.isDown(keyMap.forward) || input.isDown(keyMap.backward)) {
+            if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
                 this.squad.cancelDigIn();
             }
         }
@@ -241,8 +242,8 @@ export class Tank extends GameEntity {
             if (this.isCharging || squadLocked) {
                 // SPG deployed / squad digging in or dug in — no movement
             } else {
-                if (input.isDown(keyMap.forward)) move = 1;
-                if (input.isDown(keyMap.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
+                if (device.isDown(ACTIONS.forward)) move = 1;
+                if (device.isDown(ACTIONS.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
             }
         }
 

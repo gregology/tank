@@ -1,13 +1,20 @@
 /**
- * Core game state — unified mode system.
+ * Core game state — faction-based match system.
  *
- * All modes are driven by MODE_DEFS from config.js:
- *   duel_split    — 1v1 split screen, tanks only
- *   duel_bot      — 1v1 human vs bot, full screen, tanks only
- *   skirmish_coop — 2v2 co-op split screen (2 humans vs 2 bots), tanks only
- *   battle_split  — 5v5 split screen (1 human+4 bots vs 1 human+4 bots), all vehicles+bases
- *   battle_coop   — 5v5 co-op split screen (2 humans+3 bots vs 5 bots), all vehicles+bases
- *   battle_solo   — 5v5 human vs bots (1 human+4 bots vs 5 bots), all vehicles+bases
+ * A match is described by a MatchConfig built by the lobby (menu.js) and
+ * passed to the constructor:
+ *
+ *   {
+ *     gameType: "skirmish" | "battle",   // rules from GAME_TYPES
+ *     humans: [ { device, color, darkColor, label, team } ],
+ *     settings: { mapSize, buildingDensity, baseType?, teamSize? },
+ *   }
+ *
+ * `team` is a faction id (1..MAX_PLAYERS).  Game resolves factions from
+ * the humans + game type, then fills bots:
+ *   - Battle:   2 factions (RED/BLUE), bots fill each to `teamSize`.
+ *   - Skirmish: one faction per distinct human team; if every human is on
+ *               one team, a single bot faction is added as the opposition.
  *
  * Events: fire, hit, destroy, impact, destroy_tile, win,
  *         artillery_impact, drone_strike
@@ -17,24 +24,23 @@ import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
 import { vehiclesSeparate } from "./collision.js";
-import { BASE_STRUCTURES, CONFIG, MODE_DEFS, SQUAD_MEMBERS, TILES as T, VEHICLES } from "./config.js";
+import {
+    ACTIONS,
+    BASE_STRUCTURES,
+    CONFIG,
+    GAME_TYPES,
+    PLAYER_COLORS,
+    SQUAD_MEMBERS,
+    TILES as T,
+    VEHICLES,
+} from "./config.js";
 import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
+import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
 import { ParticleSystem } from "./particles.js";
 import { pickSquadTarget } from "./squad.js";
 import { Tank } from "./tank.js";
 import { distance, worldToScreen } from "./utils.js";
-
-/* ── small bot-only key codes (never collide with real keys) ── */
-const BOT_KEYS = {
-    forward: "_bf",
-    backward: "_bb",
-    left: "_bl",
-    right: "_br",
-    turretLeft: "_btl",
-    turretRight: "_btr",
-    fire: "_bx",
-};
 
 /* ── Vehicle type selection ─────────────────────────────── */
 
@@ -54,23 +60,26 @@ function pickVehicleType(allowed) {
 /* ================================================================== */
 
 export class Game {
-    constructor(input, mode = "duel_split", settings = {}) {
-        this.input = input;
-        this.mode = mode;
-        this.modeDef = MODE_DEFS[mode];
-        this.settings = settings;
+    /**
+     * @param {object} matchConfig  lobby-built match plan (see header)
+     */
+    constructor(matchConfig = {}) {
+        this.gameType = matchConfig.gameType ?? "skirmish";
+        this.typeDef = GAME_TYPES[this.gameType] ?? GAME_TYPES.skirmish;
+        this.settings = matchConfig.settings ?? {};
+        this._humanPlan = matchConfig.humans ?? [];
 
         // Build map with settings-driven dimensions and density
-        const mapW = settings.mapSize?.w;
-        const mapH = settings.mapSize?.h;
-        const density = settings.buildingDensity;
+        const mapW = this.settings.mapSize?.w;
+        const mapH = this.settings.mapSize?.h;
+        const density = this.settings.buildingDensity;
         this.map = new GameMap(mapW, mapH, density);
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
         this.bullets = [];
         this.gameTime = 0;
         this.gameOver = false;
-        this.winner = null; // 1 or 2 (team that won)
+        this.winner = null; // winning faction id
         /** @type {Record<string,Function[]>} */
         this._listeners = {};
 
@@ -83,19 +92,19 @@ export class Game {
     get allTanks() {
         return this._allTanks;
     }
-    /** Base compounds (empty in non-base modes). */
+    /** Base compounds (empty in non-base game types). */
     get bases() {
         return this._bases;
     }
-    /** All base structures from both teams (flat list). */
+    /** All base structures from both factions (flat list). */
     get baseStructures() {
         return this._allStructures;
     }
-    /** The first human tank (for single-viewport modes / HUD). */
+    /** The first human tank (for single-viewport matches / HUD). */
     get humanTank() {
         return this._humanTanks[0];
     }
-    /** All human-controlled tanks. */
+    /** All human-controlled tanks (viewport order = join order). */
     get humanTanks() {
         return this._humanTanks;
     }
@@ -103,27 +112,21 @@ export class Game {
     get cameras() {
         return this._cameras;
     }
-    /** Whether to render split screen. */
-    get splitScreen() {
-        return this.modeDef.split;
+    /** Whether this game type builds towers/bases. */
+    get hasBases() {
+        return this.typeDef.bases;
     }
-    /** Team kill scores (for non-base modes). */
-    get teamScores() {
-        return this._teamScores;
+    /** Factions: [{ id, color, darkColor, entities }]. */
+    get factions() {
+        return this._factions;
     }
-
-    // Backward-compat aliases used by renderer
-    get tank1() {
-        return this._redTeam[0];
+    /** Per-faction kill scores (Map<factionId, number>). */
+    get scores() {
+        return this._scores;
     }
-    get tank2() {
-        return this._blueTeam[0];
-    }
-    get camera1() {
-        return this._cameras[0];
-    }
-    get camera2() {
-        return this._cameras[1] ?? this._cameras[0];
+    /** Winning faction's colour (for the game-over screen). */
+    get winnerColor() {
+        return this._factions.find((f) => f.id === this.winner)?.color ?? "#888";
     }
 
     /* ── event bus ─────────────────────────────────────────── */
@@ -159,77 +162,33 @@ export class Game {
      * ═══════════════════════════════════════════════════════ */
 
     _init() {
-        const def = this.modeDef;
-        const s = this.settings;
+        const def = this.typeDef;
 
-        // Compute team composition: if teamSize setting is present,
-        // adjust bot counts while keeping human counts from the mode def.
-        let [t1Humans, t1Bots] = def.teams[0];
-        let [t2Humans, t2Bots] = def.teams[1];
-        if (s.teamSize != null) {
-            t1Bots = Math.max(0, s.teamSize - t1Humans);
-            t2Bots = Math.max(0, s.teamSize - t2Humans);
-        }
-        const keyMaps = [CONFIG.PLAYER1_KEYS, CONFIG.PLAYER2_KEYS];
-
-        this._redTeam = [];
-        this._blueTeam = [];
+        this._factions = [];
         this._humanTanks = [];
-        this._humanKeys = [];
+        this._humanDevices = [];
         this._cameras = [];
         this._bots = [];
         this._bases = [];
         this._allStructures = [];
         this._structureMap = new Map(); // "gx,gy" → BaseStructure
-        this._teamScores = { 1: 0, 2: 0 };
+        this._scores = new Map();
 
-        let nextId = 1;
-        let humanIdx = 0;
+        const factions = planFactions(this.gameType, this._humanPlan, this.settings).map((f) => ({
+            ...f,
+            entities: [],
+        }));
+        const factionById = new Map(factions.map((f) => [f.id, f]));
 
-        // ── Team 1 (red) ──
-        for (let i = 0; i < t1Humans + t1Bots; i++) {
-            const t = new Tank(nextId++, "#cc3333", "#882222");
-            t.team = 1;
-            t.vehicleType = pickVehicleType(def.vehicles);
-            this._redTeam.push(t);
-
-            if (i < t1Humans) {
-                this._humanTanks.push(t);
-                this._humanKeys.push(keyMaps[humanIdx++]);
-                const cam = new Camera();
-                cam.smoothing = CONFIG.CAMERA_SMOOTHING;
-                this._cameras.push(cam);
-            }
-        }
-
-        // ── Team 2 (blue) ──
-        for (let i = 0; i < t2Humans + t2Bots; i++) {
-            const t = new Tank(nextId++, "#3366dd", "#223399");
-            t.team = 2;
-            t.vehicleType = pickVehicleType(def.vehicles);
-            this._blueTeam.push(t);
-
-            if (i < t2Humans) {
-                this._humanTanks.push(t);
-                this._humanKeys.push(keyMaps[humanIdx++]);
-                const cam = new Camera();
-                cam.smoothing = CONFIG.CAMERA_SMOOTHING;
-                this._cameras.push(cam);
-            }
-        }
-
-        this._allTanks = [...this._redTeam, ...this._blueTeam];
-
-        // ── Base compounds (base modes only) ──
+        // ── Base compounds (base game types only) ──
         if (def.bases) {
             const baseType = this.settings.baseType ?? "compound";
             const [layout1, layout2] = this.map.buildBaseCompounds(baseType);
             this._bases = [
-                this._buildBase(layout1, 1, "#cc3333", "#882222"),
-                this._buildBase(layout2, 2, "#3366dd", "#223399"),
+                this._buildBase(layout1, 1, factions[0].color, factions[0].darkColor),
+                this._buildBase(layout2, 2, factions[1].color, factions[1].darkColor),
             ];
             this._allStructures = [...this._bases[0].allStructures, ...this._bases[1].allStructures];
-            // Populate tile → structure lookup
             for (const s of this._allStructures) {
                 for (const pos of s.tilePositions) {
                     this._structureMap.set(`${pos.gx},${pos.gy}`, s);
@@ -237,76 +196,86 @@ export class Game {
             }
         }
 
-        // ── AI bots ──
-        for (const t of this._redTeam) {
-            if (this._humanTanks.includes(t)) continue;
-            const ai = new AIController(BOT_KEYS, this.map);
-            ai.role = pickRoleForVehicle(t.vehicleType);
-            if (def.bases) ai.friendlyBase = this._bases[0];
-            this._bots.push({
-                ai,
-                tank: t,
-                enemies: this._blueTeam,
-                enemyBase: def.bases ? this._bases[1] : null,
-            });
+        // ── Create tanks: humans (join order) then bots ──
+        let nextId = 1;
+        for (const h of this._humanPlan) {
+            const f = factionById.get(h.team);
+            if (!f) continue;
+            const t = new Tank(nextId++, h.color, h.darkColor);
+            t.team = h.team;
+            t.vehicleType = pickVehicleType(def.vehicles);
+            f.entities.push(t);
+            this._humanTanks.push(t);
+            this._humanDevices.push(h.device);
+            const cam = new Camera();
+            cam.smoothing = CONFIG.CAMERA_SMOOTHING;
+            this._cameras.push(cam);
         }
-        for (const t of this._blueTeam) {
-            if (this._humanTanks.includes(t)) continue;
-            const ai = new AIController(BOT_KEYS, this.map);
-            ai.role = pickRoleForVehicle(t.vehicleType);
-            if (def.bases) ai.friendlyBase = this._bases[1];
-            this._bots.push({
-                ai,
-                tank: t,
-                enemies: this._redTeam,
-                enemyBase: def.bases ? this._bases[0] : null,
-            });
+        for (const f of factions) {
+            for (let i = 0; i < f.botCount; i++) {
+                const t = new Tank(nextId++, f.color, f.darkColor);
+                t.team = f.id;
+                t.vehicleType = pickVehicleType(def.vehicles);
+                f.entities.push(t);
+            }
+        }
+
+        this._factions = factions;
+        this._allTanks = factions.flatMap((f) => f.entities);
+        for (const f of factions) this._scores.set(f.id, 0);
+
+        // ── AI bots (every non-human tank) ──
+        for (const f of factions) {
+            for (const t of f.entities) {
+                if (this._humanTanks.includes(t)) continue;
+                const ai = new AIController(this.map);
+                ai.role = pickRoleForVehicle(t.vehicleType);
+                if (def.bases) ai.friendlyBase = this._bases.find((b) => b.team === f.id) ?? null;
+                this._bots.push({
+                    ai,
+                    tank: t,
+                    enemies: this._allTanks.filter((e) => e.team !== t.team),
+                    enemyBase: def.bases ? (this._bases.find((b) => b.team !== f.id) ?? null) : null,
+                });
+            }
         }
 
         this._spawn();
     }
 
     _spawn() {
-        const def = this.modeDef;
+        const def = this.typeDef;
 
         if (def.bases) {
-            // ── Base spawn: inside compound interior ──
-            const b1 = this._bases[0],
-                b2 = this._bases[1];
-            for (const t of this._redTeam) {
-                const sp = this.map.getBaseSpawnPoint(b1.center.x, b1.center.y);
-                t.respawnAt(sp.x, sp.y);
-                t.alive = true;
-                t.angle = Math.atan2(b2.y - b1.y, b2.x - b1.x) + (Math.random() - 0.5) * 0.5;
-            }
-            for (const t of this._blueTeam) {
-                const sp = this.map.getBaseSpawnPoint(b2.center.x, b2.center.y);
-                t.respawnAt(sp.x, sp.y);
-                t.alive = true;
-                t.angle = Math.atan2(b1.y - b2.y, b1.x - b2.x) + (Math.random() - 0.5) * 0.5;
-            }
-        } else {
-            // ── Random spawn: spread out, then face opponents ──
-            const allTeams = [this._redTeam, this._blueTeam];
-            let lastX = -1,
-                lastY = -1;
-            for (const team of allTeams) {
-                for (const t of team) {
-                    const sp = this.map.getSpawnPoint(lastX, lastY);
+            // ── Base spawn: inside each faction's compound ──
+            for (const f of this._factions) {
+                const base = this._bases.find((b) => b.team === f.id);
+                const enemyBase = this._bases.find((b) => b.team !== f.id);
+                if (!base) continue;
+                for (const t of f.entities) {
+                    const sp = this.map.getBaseSpawnPoint(base.center.x, base.center.y);
                     t.respawnAt(sp.x, sp.y);
                     t.alive = true;
-                    lastX = sp.x;
-                    lastY = sp.y;
+                    t.angle = enemyBase
+                        ? Math.atan2(enemyBase.y - base.y, enemyBase.x - base.x) + (Math.random() - 0.5) * 0.5
+                        : Math.random() * Math.PI * 2;
                 }
             }
-            // Face toward opposing team centre
-            const avg = (arr, fn) => arr.reduce((s, t) => s + fn(t), 0) / (arr.length || 1);
-            const rcx = avg(this._redTeam, (t) => t.x),
-                rcy = avg(this._redTeam, (t) => t.y);
-            const bcx = avg(this._blueTeam, (t) => t.x),
-                bcy = avg(this._blueTeam, (t) => t.y);
-            for (const t of this._redTeam) t.angle = Math.atan2(bcy - t.y, bcx - t.x) + (Math.random() - 0.5) * 0.3;
-            for (const t of this._blueTeam) t.angle = Math.atan2(rcy - t.y, rcx - t.x) + (Math.random() - 0.5) * 0.3;
+        } else {
+            // ── Random spawn: spread everyone out, then face nearest enemy ──
+            let lastX = -1,
+                lastY = -1;
+            for (const t of this._allTanks) {
+                const sp = this.map.getSpawnPoint(lastX, lastY);
+                t.respawnAt(sp.x, sp.y);
+                t.alive = true;
+                lastX = sp.x;
+                lastY = sp.y;
+            }
+            for (const t of this._allTanks) {
+                const enemy = this._nearestEnemy(t);
+                if (enemy) t.angle = Math.atan2(enemy.y - t.y, enemy.x - t.x) + (Math.random() - 0.5) * 0.3;
+            }
         }
 
         // Init cameras
@@ -316,18 +285,33 @@ export class Game {
         }
     }
 
+    /** Nearest alive tank in a different faction. */
+    _nearestEnemy(tank) {
+        let best = null;
+        let bestD = Infinity;
+        for (const e of this._allTanks) {
+            if (e === tank || e.team === tank.team || !e.alive) continue;
+            const d = (e.x - tank.x) ** 2 + (e.y - tank.y) ** 2;
+            if (d < bestD) {
+                bestD = d;
+                best = e;
+            }
+        }
+        return best;
+    }
+
     /* ═══════════════════════════════════════════════════════ *
      *  UNIFIED UPDATE                                         *
      * ═══════════════════════════════════════════════════════ */
 
     _update(dt) {
-        const def = this.modeDef;
+        const def = this.typeDef;
 
         // ── AI think ──
         for (const { ai, tank, enemies, enemyBase } of this._bots) {
             if (!tank.alive) continue;
             const obj = def.bases && enemyBase?.alive ? enemyBase : null;
-            // For non-base modes give AI the nearest enemy as objective
+            // For non-base game types give AI the nearest enemy as objective
             const target = obj ?? (enemies.find((e) => e.alive) || null);
             const enemyStructures = enemyBase?.allStructures ?? [];
             ai.think(dt, tank, enemies, this.map, target, enemyStructures);
@@ -336,12 +320,12 @@ export class Game {
         // ── Movement — humans (only when alive) ──
         for (let i = 0; i < this._humanTanks.length; i++) {
             if (this._humanTanks[i].alive) {
-                this._humanTanks[i].update(dt, this.input, this._humanKeys[i], this.map);
+                this._humanTanks[i].update(dt, this._humanDevices[i], this.map);
             }
         }
         // ── Movement — bots ──
         for (const { ai, tank } of this._bots) {
-            if (tank.alive) tank.update(dt, ai, BOT_KEYS, this.map);
+            if (tank.alive) tank.update(dt, ai, this.map);
         }
 
         // ── Squad member steering + dig-in timers ──
@@ -358,12 +342,12 @@ export class Game {
         // ── Firing — humans ──
         for (let i = 0; i < this._humanTanks.length; i++) {
             if (this._humanTanks[i].alive) {
-                this._handleFiring(this._humanTanks[i], this.input, this._humanKeys[i], dt);
+                this._handleFiring(this._humanTanks[i], this._humanDevices[i], dt);
             }
         }
         // ── Firing — bots ──
         for (const { ai, tank } of this._bots) {
-            if (tank.alive) this._handleFiring(tank, ai, BOT_KEYS, dt);
+            if (tank.alive) this._handleFiring(tank, ai, dt);
         }
 
         this._tickBullets(dt);
@@ -388,14 +372,14 @@ export class Game {
     /* ── respawn logic ────────────────────────────────────── */
 
     _handleRespawns(dt) {
-        const def = this.modeDef;
+        const def = this.typeDef;
         for (const t of this._allTanks) {
             if (t.alive) continue;
             t.respawnTimer -= dt;
             if (t.respawnTimer <= 0) {
                 if (def.bases) {
                     // Spawn inside compound
-                    const base = this._bases[t.team - 1];
+                    const base = this._bases.find((b) => b.team === t.team);
                     const sp = base?.alive
                         ? this.map.getBaseSpawnPoint(base.center.x, base.center.y)
                         : this.map.getSpawnPoint();
@@ -419,68 +403,84 @@ export class Game {
     /* ── win condition ────────────────────────────────────── */
 
     _checkWin() {
-        const def = this.modeDef;
-        if (def.bases) {
-            // HQ destruction
+        if (this.typeDef.bases) {
+            // HQ destruction — the other faction wins.
             for (const base of this._bases) {
                 if (!base.alive) {
+                    const winner = this._bases.find((b) => b !== base)?.team ?? (base.team === 1 ? 2 : 1);
                     this.gameOver = true;
-                    this.winner = base.team === 1 ? 2 : 1;
-                    this.emit("win", { winner: this.winner });
+                    this.winner = winner;
+                    this.emit("win", { winner });
                     return;
                 }
             }
         } else {
-            // Score-based
-            if (this._teamScores[1] >= CONFIG.WIN_SCORE) {
-                this.gameOver = true;
-                this.winner = 1;
-                this.emit("win", { winner: 1 });
-            } else if (this._teamScores[2] >= CONFIG.WIN_SCORE) {
-                this.gameOver = true;
-                this.winner = 2;
-                this.emit("win", { winner: 2 });
+            // Score-based — first faction to WIN_SCORE.
+            for (const [factionId, score] of this._scores) {
+                if (score >= CONFIG.WIN_SCORE) {
+                    this.gameOver = true;
+                    this.winner = factionId;
+                    this.emit("win", { winner: factionId });
+                    return;
+                }
             }
         }
+    }
+
+    /** Short label for a faction (HUD scoreboard). */
+    factionLabel(factionId) {
+        const faction = this._factions.find((f) => f.id === factionId);
+        if (!faction) return "";
+        if (this.typeDef.bases) {
+            return faction.id === 1 ? "RED" : "BLUE";
+        }
+        const humans = this._humanTanks.filter((t) => t.team === faction.id);
+        if (humans.length === 1) return `P${this._humanTanks.indexOf(humans[0]) + 1}`;
+        if (humans.length === 0) return "BOT";
+        const col = PLAYER_COLORS.find((c) => c.color === faction.color);
+        return col?.label ?? "TEAM";
     }
 
     /** Label for the winner on the game-over screen. */
     get winnerLabel() {
         if (!this.winner) return "";
-        const def = this.modeDef;
-        const total = def.teams[0][0] + def.teams[0][1] + def.teams[1][0] + def.teams[1][1];
-        if (total === 2 && !def.bases) {
-            // 1v1 duel
-            if (def.teams[1][0] === 0 && def.teams[0][0] === 1) {
-                // Human vs bot
-                return this.winner === 1 ? "PLAYER" : "BOT";
-            }
-            return this.winner === 1 ? "PLAYER 1" : "PLAYER 2";
+        const faction = this._factions.find((f) => f.id === this.winner);
+        if (!faction) return "";
+        if (this.typeDef.bases) {
+            return faction.id === 1 ? "RED TEAM" : "BLUE TEAM";
         }
-        return this.winner === 1 ? "RED TEAM" : "BLUE TEAM";
+        // Skirmish: single-human team → player label; bot → "BOT"; a
+        // multi-human team → its colour label.
+        const humans = this._humanTanks.filter((t) => t.team === faction.id);
+        if (humans.length === 1) {
+            return `PLAYER ${this._humanTanks.indexOf(humans[0]) + 1}`;
+        }
+        if (humans.length === 0) return "BOT";
+        const col = PLAYER_COLORS.find((c) => c.color === faction.color);
+        return `${col?.label ?? "TEAM"} TEAM`;
     }
 
     /* ═══════════════════════════════════════════════════════ *
      *  SHARED helpers                                         *
      * ═══════════════════════════════════════════════════════ */
 
-    _handleFiring(tank, input, keys, dt = 0.016) {
+    _handleFiring(tank, device, dt = 0.016) {
         // Drones don't fire bullets — they detonate on contact
         if (tank.vehicleType === "drone") {
-            this._handleDroneAttack(tank, input, keys);
+            this._handleDroneAttack(tank, device);
             return;
         }
         // SPGs use hold-to-charge mechanic
         if (tank.vehicleType === "spg") {
-            this._handleSPGFiring(tank, input, keys, dt);
+            this._handleSPGFiring(tank, device, dt);
             return;
         }
         // Squads auto-fire per member; FIRE toggles dig-in
         if (tank.vehicleType === "squad") {
-            this._handleSquadFiring(tank, input, keys, dt);
+            this._handleSquadFiring(tank, device, dt);
             return;
         }
-        if (input.isDown(keys.fire) && tank.canFire()) {
+        if (device.isDown(ACTIONS.fire) && tank.canFire()) {
             tank.fire();
             const fireAngle = tank.turretWorld;
             const vStats = VEHICLES[tank.vehicleType];
@@ -502,10 +502,10 @@ export class Game {
         }
     }
 
-    _handleSPGFiring(tank, input, keys, dt) {
+    _handleSPGFiring(tank, device, dt) {
         if (!tank.alive) return;
 
-        const fireHeld = input.isDown(keys.fire);
+        const fireHeld = device.isDown(ACTIONS.fire);
         const vStats = VEHICLES.spg;
 
         if (fireHeld && tank.fireCooldown <= 0) {
@@ -548,12 +548,12 @@ export class Game {
      * from its own position.  FIRE drives the dig-in state machine
      * (roaming → diggingIn → dugIn → roaming).
      */
-    _handleSquadFiring(squad, input, keys, dt) {
+    _handleSquadFiring(squad, device, dt) {
         if (!squad.alive || !squad.squad) return;
         const component = squad.squad;
 
         // Dig-in toggle — humans have edge detection; bots manage dig-in in AI.
-        if (typeof input.wasPressed === "function" && input.wasPressed(keys.fire)) {
+        if (typeof device.wasPressed === "function" && device.wasPressed(ACTIONS.fire)) {
             if (component.digIn.state === "roaming") component.startDigIn();
             else if (component.digIn.state === "diggingIn") component.cancelDigIn();
             else component.standUp();
@@ -689,8 +689,8 @@ export class Game {
         this.emit("artillery_impact", { bullet: b });
     }
 
-    _handleDroneAttack(drone, input, keys) {
-        if (!input.isDown(keys.fire) || !drone.alive) return;
+    _handleDroneAttack(drone, device) {
+        if (!device.isDown(ACTIONS.fire) || !drone.alive) return;
 
         const vStats = VEHICLES.drone;
         const blastR = vStats.blastRadius;
@@ -770,8 +770,8 @@ export class Game {
      * In base modes: timed respawn is handled by _handleRespawns().
      */
     _onKill(killerTeam, deadTank) {
-        if (!this.modeDef.bases) {
-            this._teamScores[killerTeam]++;
+        if (!this.typeDef.bases) {
+            this._scores.set(killerTeam, (this._scores.get(killerTeam) ?? 0) + 1);
             // Set respawn position immediately (tank stays dead for TANK_RESPAWN_TIME)
             const sp = this.map.getSpawnPoint();
             deadTank.respawnAt(sp.x, sp.y);
@@ -984,7 +984,7 @@ export class Game {
     /** Update watch tower firing (auto-targeting enemies in range). */
     _updateWatchTowers(dt) {
         for (const base of this._bases) {
-            const enemyTeam = base.team === 1 ? this._blueTeam : this._redTeam;
+            const enemyTeam = this._allTanks.filter((t) => t.team !== base.team);
             for (const tower of base.towers) {
                 if (!tower.alive) continue;
                 tower.fireCooldown -= dt;

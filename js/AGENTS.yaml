@@ -21,14 +21,13 @@ context:
     when: after
 
   - content: |
-      game.js is the largest module.  It has three code paths:
-        _initDuel / _updateDuel  — pvp and pvb modes
-        _initTeam / _updateTeam  — 5v5 team mode
-        shared helpers           — _handleFiring, _tickBullets, _checkBulletHits,
-                                   _separatePairs, _pushFromTowers, _canStand,
-                                   _updateCamera, _invalidatePathfinders
-      Keep these sections clearly separated.  The allTanks/towers/humanTank
-      getters provide a uniform interface for the renderer across all modes.
+      game.js builds a match from a MatchConfig (gameType, humans with
+      devices/teams, settings).  Faction composition is decided by the pure
+      planFactions() in factions.js (bots fill Battle teams to teamSize;
+      Skirmish adds one bot only when every human is on one team).  game.js
+      materialises that plan into Tank/Camera/AIController entities.
+      The allTanks/factions/humanTanks getters provide a uniform interface
+      for the renderer across game types.
     match: ["game.js"]
     on: read
     when: before
@@ -55,10 +54,10 @@ context:
     when: before
 
   - content: |
-      The AI controller (ai.js) has the same isDown/wasPressed/endFrame
-      interface as InputManager.  It uses virtual key codes from its keyMap
-      (BOT_KEYS in game.js).  Each AI instance has its own keys object —
-      multiple bots sharing the same key codes don't conflict.
+      The AI controller (ai.js) implements the same InputDevice interface
+      (isDown/wasPressed/analog/endFrame) over the ACTIONS vocabulary from
+      config.js.  Each AI instance holds its own `keys` record of action
+      names — multiple bots sharing the same action names don't conflict.
       To add difficulty levels, tune aimWobble, fireDelay, and the
       engagement range in the think() method.
     match: ["ai.js"]

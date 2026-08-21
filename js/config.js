@@ -75,123 +75,104 @@ export const CONFIG = {
     // ── Scoring ──────────────────────────────────────────────
     WIN_SCORE: 10,
 
-    // ── Controls ─────────────────────────────────────────────
-    PLAYER1_KEYS: {
-        forward: "KeyW",
-        backward: "KeyS",
-        left: "KeyA",
-        right: "KeyD",
-        turretLeft: "KeyQ",
-        turretRight: "KeyE",
-        fire: "Space",
-    },
-    PLAYER2_KEYS: {
-        forward: "ArrowUp",
-        backward: "ArrowDown",
-        left: "ArrowLeft",
-        right: "ArrowRight",
-        turretLeft: "Comma",
-        turretRight: "Period",
-        fire: "Enter",
-    },
-
     // ── Gamepad ────────────────────────────────────────────
-    // Pads are polled each frame and translated into the PLAYER*_KEYS
-    // codes above (pad 1 → P1, pad 2 → P2).  See js/input.js.
     GAMEPAD_STICK_DEADZONE: 0.35, // left-stick deflection needed to register a direction
     GAMEPAD_TRIGGER_THRESHOLD: 0.35, // analogue LT/RT pull needed to rotate the turret
 };
 
+/* ═══════════════════════════════════════════════════════════ *
+ *  Players & colours                                          *
+ * ═══════════════════════════════════════════════════════════ */
+
+/** Maximum number of simultaneous local human players. */
+export const MAX_PLAYERS = 4;
+
 /**
- * Game mode definitions.
+ * Player colours in join order (P1 = index 0, P2 = index 1, …).
  *
- * Each mode describes:
- *   category: 'duel' | 'skirmish' | 'battle' — determines which
- *             game options are shown on the pre-game settings screen
- *   teams:    [[humans, bots], [humans, bots]]  — team 1 (red) and team 2 (blue)
- *   split:    true = split screen (requires 2 humans total)
- *   bases:    true = towers + tower-destruction win condition
- *             false = score-based win condition (first to WIN_SCORE kills)
- *   vehicles: array of allowed vehicle type keys from VEHICLES
- *             Humans always spawn as the first entry; bots pick randomly
- *             using spawnWeight from the allowed subset.
- *   defaults: optional overrides for GAME_OPTIONS default indices/values
- *             (e.g. { mapSize: 0 } to default to Small for duels)
+ * A colour is a *team* colour, not a fixed identity: in Skirmish each
+ * player defaults to their own colour and may join another player's
+ * team by adopting its colour; in Battle teams are fixed RED (0) /
+ * BLUE (1).  A player's `P1`…`P4` label is fixed by join order and is
+ * used only for HUD identity.
  */
-export const MODE_DEFS = {
-    duel_split: {
-        category: "duel",
-        teams: [
-            [1, 0],
-            [1, 0],
-        ],
-        split: true,
+export const PLAYER_COLORS = [
+    { color: "#cc3333", darkColor: "#882222", label: "RED" },
+    { color: "#3366dd", darkColor: "#223399", label: "BLUE" },
+    { color: "#3bb54a", darkColor: "#2a8035", label: "GREEN" },
+    { color: "#e8a020", darkColor: "#a5711a", label: "AMBER" },
+];
+
+/**
+ * Input action vocabulary — the single source of truth shared by input
+ * devices (keyboard / gamepad), the AI controller, and gameplay code.
+ *
+ * `left` / `right` are shared between steering and menu navigation;
+ * `up` / `down` are menu-only (a gamepad's face buttons drive
+ * `forward`/`backward` but never menu navigation).
+ */
+export const ACTIONS = Object.freeze({
+    forward: "forward",
+    backward: "backward",
+    left: "left",
+    right: "right",
+    turretLeft: "turretLeft",
+    turretRight: "turretRight",
+    fire: "fire",
+    up: "up",
+    down: "down",
+    confirm: "confirm",
+    back: "back",
+    cycleTeam: "cycleTeam",
+});
+
+/* ═══════════════════════════════════════════════════════════ *
+ *  Game types                                                 *
+ * ═══════════════════════════════════════════════════════════ */
+
+/**
+ * Game type definitions.
+ *
+ * Each type describes the shared match rules; *who* is human vs bot is
+ * decided at match time by the lobby (see the MatchConfig built by
+ * Game), so a game type is a small, stable declaration rather than an
+ * exhaustive list of compositions:
+ *
+ *   win:      'score' — first faction to WIN_SCORE kills (Skirmish)
+ *             'base'  — destroy the enemy HQ (Battle)
+ *   teamSet:  'players' — up to MAX_PLAYERS teams, one per colour (Skirmish)
+ *             'two'     — fixed RED vs BLUE (Battle)
+ *   bases:    whether tower/HQ compounds are built
+ *   vehicles: allowed vehicle type keys from VEHICLES
+ *   options:  GAME_OPTIONS keys shown on the pre-game screen
+ *   defaults: optional per-type option default indices/values
+ */
+export const GAME_TYPES = {
+    skirmish: {
+        win: "score",
+        teamSet: "players",
         bases: false,
         vehicles: ["tank"],
+        options: ["mapSize", "buildingDensity"],
         defaults: { mapSize: 0 },
     },
-    duel_bot: {
-        category: "duel",
-        teams: [
-            [1, 0],
-            [0, 1],
-        ],
-        split: false,
-        bases: false,
-        vehicles: ["tank"],
-        defaults: { mapSize: 0 },
-    },
-    skirmish_coop: {
-        category: "skirmish",
-        teams: [
-            [2, 0],
-            [0, 2],
-        ],
-        split: true,
-        bases: false,
-        vehicles: ["tank"],
-        defaults: { mapSize: 0 },
-    },
-    battle_split: {
-        category: "battle",
-        teams: [
-            [1, 4],
-            [1, 4],
-        ],
-        split: true,
+    battle: {
+        win: "base",
+        teamSet: "two",
         bases: true,
         vehicles: ["tank", "ifv", "drone", "spg", "squad"],
-    },
-    battle_coop: {
-        category: "battle",
-        teams: [
-            [2, 3],
-            [0, 5],
-        ],
-        split: true,
-        bases: true,
-        vehicles: ["tank", "ifv", "drone", "spg", "squad"],
-    },
-    battle_solo: {
-        category: "battle",
-        teams: [
-            [1, 4],
-            [0, 5],
-        ],
-        split: false,
-        bases: true,
-        vehicles: ["tank", "ifv", "drone", "spg", "squad"],
+        options: ["mapSize", "buildingDensity", "baseType", "teamSize"],
     },
 };
 
 /* ═══════════════════════════════════════════════════════════ *
  *  Pre-game options                                           *
  *                                                             *
- *  GAME_OPTIONS     — master list of every option, defined    *
- *                     once with type, labels, and defaults    *
- *  CATEGORY_OPTIONS — which options each mode category shows  *
- *  resolveSettings() — merge defaults + user overrides into   *
- *                      a flat object with concrete values     *
+ *  GAME_OPTIONS       — master list of every option, defined  *
+ *                       once with type, labels, and defaults  *
+ *  GAME_TYPES[].options — which options each game type shows  *
+ *  resolveSettings()  — merge defaults + user overrides into  *
+ *                       a flat object with concrete values    *
  * ═══════════════════════════════════════════════════════════ */
 
 /**
@@ -251,39 +232,31 @@ export const GAME_OPTIONS = [
     },
 ];
 
-/** Which options are shown per mode category. */
-export const CATEGORY_OPTIONS = {
-    duel: ["mapSize", "buildingDensity"],
-    skirmish: ["mapSize", "buildingDensity"],
-    battle: ["mapSize", "buildingDensity", "baseType", "teamSize"],
-};
-
 /** Look up an option definition by key. */
 function _optionDef(key) {
     return GAME_OPTIONS.find((o) => o.key === key);
 }
 
 /**
- * Build the initial option indices/values for a mode, merging:
+ * Build the initial option indices/values for a game type, merging:
  *   1. global GAME_OPTIONS defaults
- *   2. per-mode MODE_DEFS[mode].defaults overrides
+ *   2. per-type GAME_TYPES[gameType].defaults overrides
  *
  * Returns a Map<string, number> where:
  *   enum  options → current choice index
  *   range options → current numeric value
  */
-export function getDefaultOptionValues(mode) {
-    const def = MODE_DEFS[mode];
-    const category = def?.category ?? "duel";
-    const keys = CATEGORY_OPTIONS[category] ?? [];
-    const modeDefaults = def?.defaults ?? {};
+export function getDefaultOptionValues(gameType) {
+    const def = GAME_TYPES[gameType];
+    const keys = def?.options ?? [];
+    const typeDefaults = def?.defaults ?? {};
     const values = new Map();
 
     for (const key of keys) {
         const opt = _optionDef(key);
         if (!opt) continue;
-        if (key in modeDefaults) {
-            values.set(key, modeDefaults[key]);
+        if (key in typeDefaults) {
+            values.set(key, typeDefaults[key]);
         } else if (opt.type === "enum") {
             values.set(key, opt.defaultIndex);
         } else {
