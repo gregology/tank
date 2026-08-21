@@ -52,6 +52,10 @@ export class Bullet {
         this.arcing = arcing;
         this.targetDistance = targetDistance;
 
+        // Vehicle type that fired this bullet — routes arcing shells to the
+        // right behaviour's onShellImpact on landing.
+        this.sourceType = "tank";
+
         // Arcing shells need enough lifetime to reach their target;
         // normal bullets use the global constant (or an explicit value).
         this.lifetime = lifetime ?? (arcing && speed > 0 ? targetDistance / speed + 1.0 : CONFIG.BULLET_LIFETIME);

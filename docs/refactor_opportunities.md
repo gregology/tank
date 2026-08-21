@@ -8,7 +8,7 @@
 
 ## Executive summary
 
-The codebase is cleanly modular at the *file* level (26 small-to-medium ES modules,
+The codebase is cleanly modular at the *file* level (40+ small-to-medium ES modules,
 good separation of `config` → `utils` → logic → `renderer`), but it has one very
 large exception and several cross-cutting smells that will make every future
 feature harder to ship safely:
@@ -27,6 +27,9 @@ feature harder to ship safely:
    `vehicleType === "x"` checks are scattered across `game.js`, `tank.js`, `ai.js`,
    `renderer.js`, `squad.js`, `menu.js`, and `config.js`. Adding a vehicle today touches
    ~6 files.
+   **✅ Fixed (see #3): vehicle behaviour is now a strategy table (`js/vehicles/`),
+   dispatched by `getVehicleBehaviour(type)`; the ~46 logic checks are gone (the only
+   remaining type dispatch is per-sprite drawing in `js/render/`).**
 4. **Backwards-compat cruft and stale docs** remain (`_createBase()` dead code, a
    "backward-compat" field in `test/helpers.js`, `AGENTS.yaml` still describing
    "pvp/pvb/team" modes that no longer exist, a README vehicle table missing SPG/squad).
@@ -43,25 +46,27 @@ they are also each other's prerequisites, so they are intentionally listed toget
 |---|---|---|---|
 | `render/` package (was `renderer.js`) | ~3,020 | ✓ `render.test.js` | ~100 (line) |
 | `renderer.js` (shell) | 65 | ✓ (via render) | 100 |
-| `ai.js` | 1,109 | ✓ `ai.test.js`, `roles.test.js` | 85.3 |
-| `map.js` | 1,095 | ✓ `map.test.js` | 92.0 |
-| `game.js` | 1,065 | ✓ `game.test.js` (Game suite) | ~100 |
+| `ai.js` | 1,005 | ✓ `ai.test.js`, `roles.test.js` | 85.3 |
+| `map.js` | 1,161 | ✓ `map.test.js` | 92.0 |
+| `game.js` | 629 | ✓ `game.test.js` (Game suite) | ~100 |
 | `menu.js` | 743 | ✓ `menu.test.js` | 98.8 |
-| `config.js` | 563 | ✓ (indirect) | 100 |
-| `tank.js` | 434 | ✓ (indirect) | 96.1 |
-| `audio.js` | 404 | ✓ `audio.test.js` | 100 |
+| `config.js` | 615 | ✓ (indirect) | 100 |
+| `tank.js` | 442 | ✓ (indirect) | 96.1 |
+| `audio.js` | 412 | ✓ `audio.test.js` | 100 |
 | `input.js` | 311 | ✓ `input.test.js` | 92.6 |
 | `particles.js` | 289 | ✓ `particles.test.js` | 100 |
 | `pathfinder.js` | 230 | ✓ `pathfinder.test.js` | 100 |
-| `squad.js` | 211 | ✓ `squad.test.js` | 98.1 |
+| `squad.js` | 226 | ✓ `squad.test.js` | 98.1 |
+| `modes.js` | 245 | ✓ `modes.test.js` | ~100 |
+| `vehicles/` package | ~420 | ✓ `vehicles.test.js` | ~95 (line) |
 | `formation.js` | 149 | ✓ (via squad) | 84.6 |
 | `lobby.js` | 144 | ✓ `lobby.test.js` | 99.3 |
-| `bullet.js` | 104 | ✓ (via game) | 94.2 |
+| `bullet.js` | 107 | ✓ (via game) | 94.2 |
 | `camera.js` | 23 | ✓ `camera.test.js` | 100 |
 | rest (entity, utils, layout, factions, collision, draw-helpers) | < 200 each | ✓ | 98–100 |
 
-- **414 tests, 0 failures**, all in Node's built-in runner.
-- Coverage gate passes honestly at ~96% line / ~88% branch / ~94% funcs: every
+- **455 tests, 0 failures**, all in Node's built-in runner.
+- Coverage gate passes honestly at ~97% line / ~90% branch / ~94% funcs: every
   `js/` module is imported by at least one test (no silent exclusions).
 
 ---
@@ -168,6 +173,25 @@ Then re-point `test:coverage` so those files are actually included in the report
 
 ## 3. Replace the vehicle "type code" with polymorphic behaviour
 
+**Status: ✅ implemented.** Vehicle behaviour is now a strategy table in
+`js/vehicles/` — one module per behaviour (`tank.js`, `ifv.js`, `drone.js`,
+`spg.js`, `squad.js`, plus a shared `aoe.js`), dispatched by
+`getVehicleBehaviour(type)` in `js/vehicles/index.js`. Each behaviour is a
+plain object with five hooks: `fire(game, tank, device, dt)` (per-frame
+firing/attack), `update(game, tank, dt)` (component update), `onShellImpact`
+(arcing-shell landing), `aim(ai, me, target, map)` (AI turret-aim strategy),
+and `aiThink(ai, dt, me, enemies, map, objective)` (AI think-level dispatch).
+`game._handleFiring` and the AI's `_aimAndFire`/`think` are now one-line
+dispatches. The remaining `vehicleType === "x"` sites in logic are gone:
+`tank.js` reads data (`VEHICLES[].unitClass` / `.turret` / `.firesBullets`),
+`collision.js` and the crush/push rules read `unitClass`
+(`vehicle` / `infantry` / `air`), and `audio.js` reads `VEHICLES[].fireSound`.
+The only remaining per-type dispatch is sprite drawing in `js/render/` (the
+legitimate visual layer). New suites: `test/vehicles.test.js` (each behaviour
+in isolation against a stub game) and the existing `game.test.js` firing
+tests now drive the behaviours through `_handleFiring`. Adding a vehicle
+today is one `VEHICLES` entry + one behaviour module (or a reused one).
+
 **Impact: very high (the biggest *logic* refactor).** 46 `vehicleType === "x"`
 branches are spread across `game.js` (`_handleFiring`, `_handleSPGFiring`,
 `_handleDroneAttack`, `_handleSquadFiring`, `_handleArtilleryImpact`, `_resolveCrushes`),
@@ -242,6 +266,18 @@ the prototype hack with a real `import`.
 
 ## 5. Consolidate duplicated geometry/queries (line-of-sight, passability)
 
+**Status: ✅ implemented.** The shared geometry API lives on `GameMap`:
+`map.canStand(wx, wy, size)` (the four-corner passability box — movement,
+separation, structure pushing, and base spawn all use it now),
+`map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin })` (the one LOS query —
+tanks, watch towers, squad members, and the AI share it; `skipOrigin` keeps
+the tower-on-its-own-tile exception explicit), and
+`map.hasWalkableLine(x1, y1, x2, y2)` (the AI's waypoint-skip check).
+Deleted: `game._canStand`, `game._hasLineOfSight`, `tank._canOccupy`,
+`ai._los`, `ai._walkable`, and the test helper's private reimplementation
+(`simulateTeam` now calls `map.canStand`). The AI and Game now answer the
+same geometric questions with one implementation.
+
 **Impact: high.** The same few geometric questions are re-implemented in several places
 with subtly different semantics — a classic source of hard-to-find bugs:
 
@@ -302,6 +338,17 @@ Have `renderer.js`, `menu.js`, and the future `render/` package share it.
 ---
 
 ## 7. Introduce a game-mode strategy (Skirmish vs Battle branching in `Game`)
+
+**Status: ✅ implemented.** The mode branching now lives in `js/modes.js`:
+a `skirmish` and a `battle` strategy object (dispatched by
+`getMode(gameType)` in `Game`'s constructor) with hooks for every divergence
+— `init` (battle: compounds + structure map), `spawn`, `setupBot`,
+`aiObjective` / `enemyStructures`, `afterSeparation` / `afterBullets` (battle:
+structure pushing + watch towers), `respawn`, `onKill` (skirmish: score +
+reserved respawn), `checkWin`, and the HUD labels. `Game` no longer branches
+on `typeDef.bases` anywhere; the shared simulation loop is mode-agnostic and
+the mode hooks are unit-tested in isolation (`test/modes.test.js`). Adding a
+third mode = one `GAME_TYPES` entry + one strategy object.
 
 **Impact: medium–high.** `Game` branches on `this.typeDef.bases` throughout `_init`,
 `_spawn`, `_update`, `_handleRespawns`, `_checkWin`, `factionLabel`, and `winnerLabel`.
@@ -428,15 +475,14 @@ vehicle types; SPG/squad mechanics). Add a lightweight "docs drift" check if des
 ## Suggested sequencing
 
 Status: **#1 + #4 + #6 ✅ done** (renderer decomposition, sprite module,
-canvas helpers — one coherent "untangle the render layer" effort) and
-**#2 ✅ done** (test coverage for every previously-unmeasured module:
-game/audio/particles/camera/menu). The remaining plan:
+canvas helpers), **#2 ✅ done** (test coverage for every previously-unmeasured
+module), and **#3 + #5 + #7 ✅ done** (vehicle behaviour strategy,
+consolidated geometry queries, game-mode strategy — the logic-layer
+counterpart, now safely testable). The remaining plan:
 
-1. **#10** (dead code + stale docs) — cheap, and removes misleading guidance before
-   larger work begins.
-2. **#3 + #5 + #7** (vehicle behaviour, geometry queries, game-mode strategy) — the
-   logic-layer counterpart, now safely testable.
-3. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
+1. **#10** (dead code + stale docs) — cheap, and removes misleading guidance
+   before any further work.
+2. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
 
-Each opportunity is independently valuable, but this order maximises safety and
-keeps every large refactor under a growing test net.
+Each opportunity is independently valuable, but this order maximises safety
+and keeps every large refactor under a growing test net.

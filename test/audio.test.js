@@ -77,9 +77,9 @@ function spyOnPlays(audio) {
     for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(audio))) {
         if (typeof audio[key] === "function" && key.startsWith("play")) {
             const original = audio[key].bind(audio);
-            audio[key] = () => {
+            audio[key] = (...args) => {
                 counts[key] = (counts[key] ?? 0) + 1;
-                return original();
+                return original(...args);
             };
         }
     }

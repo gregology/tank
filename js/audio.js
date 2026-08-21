@@ -6,6 +6,8 @@
  * AudioContext, then hook into the Game event bus with `hookIntoGame()`.
  */
 
+import { VEHICLES } from "./config.js";
+
 export class AudioManager {
     constructor() {
         /** @type {AudioContext|null} */
@@ -35,9 +37,7 @@ export class AudioManager {
             if (d.weapon === "rpg") this.playRPGShoot();
             else if (d.weapon === "shotgun") this.playShotgunShoot();
             else if (d.weapon === "rifle" || d.weapon === "mg") this.playRifleShoot();
-            else if (d.tank?.vehicleType === "spg") this.playSPGShoot();
-            else if (d.tank?.vehicleType === "ifv") this.playIFVShoot();
-            else this.playShoot();
+            else this.playVehicleShoot(d.tank);
         });
         game.on("artillery_impact", () => this.playSPGLand());
         game.on("drone_strike", () => this.playDroneStrike());
@@ -46,6 +46,14 @@ export class AudioManager {
         game.on("impact", () => this.playImpact());
         game.on("hit", () => this.playHit());
         game.on("win", () => this.playWin());
+    }
+
+    /** Muzzle sound for a firing vehicle — chosen by its VEHICLES.fireSound. */
+    playVehicleShoot(tank) {
+        const sound = VEHICLES[tank?.vehicleType]?.fireSound;
+        if (sound === "spg") this.playSPGShoot();
+        else if (sound === "ifv") this.playIFVShoot();
+        else this.playShoot();
     }
 
     /* ── sound effects ─────────────────────────────────────── */

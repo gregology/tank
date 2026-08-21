@@ -163,6 +163,21 @@ export class Squad {
     }
 
     /**
+     * Incoming-damage multiplier after cover/dig-in reduction (0..1).
+     * Squads get mechanical cover near intact buildings and a further
+     * reduction while dug in, capped at maxDamageReduction.
+     */
+    damageMultiplier(map) {
+        const v = VEHICLES.squad;
+        let reduction = this.dugIn ? v.digInReduction : 0;
+        if (map.hasIntactBuildingNear(this.tank.x, this.tank.y, v.coverRadius)) {
+            reduction = Math.max(reduction, v.coverReduction);
+        }
+        reduction = Math.min(reduction, v.maxDamageReduction);
+        return 1 - reduction;
+    }
+
+    /**
      * Run over a specific member.
      * @returns {boolean} true if the squad was destroyed (last member).
      */

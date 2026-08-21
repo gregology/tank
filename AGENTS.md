@@ -98,12 +98,17 @@ enough. Rename, extract a function, or simplify — don't annotate.
 ```
 main.js      composition root: state machine (menu ↔ playing) + RAF loop
 config.js    the data "leaf": every constant and data table lives here
-game.js      match simulation: tanks, bullets, bases, win logic, event bus
+game.js      match simulation: tanks, bullets, bases, event bus — the shared
+             loop; mode + vehicle behaviour are delegated to strategies
+modes.js     game-mode strategy: Skirmish vs Battle hooks (spawn, win, scoring)
+vehicles/    per-vehicle behaviour strategies (fire/update/aim/aiThink), one
+             module per vehicle, dispatched from vehicleType
 entity.js    entity hierarchy (GameEntity → Tank / BaseStructure)
-tank.js      vehicle entity + data-driven damage model (applyHit)
+tank.js      vehicle entity + data-driven damage model + hitbox capabilities
 ai.js        bot brain; implements the same InputDevice interface as humans
 pathfinder.js  A* + wall-cost overlay
-map.js       map generation, passability, tile queries
+map.js       map generation, tile queries + the shared geometry API
+             (canStand / hasLineOfSight / hasWalkableLine)
 renderer.js  thin shell: canvas, viewport layout, per-frame draw order
 render/      render package: viewport (two-pass depth sort), tiles,
              buildings, vehicles, structures, effects, HUD, minimap,
@@ -115,7 +120,7 @@ audio.js     procedural Web Audio, subscribes to the game event bus
 particles.js particle system
 camera.js    per-player viewport follow
 bullet.js    projectile entity
-collision.js vehicle separation
+collision.js vehicle separation (data-driven unit classes)
 formation.js squad member formation steering
 factions.js  pure "who fights whom" planner
 layout.js    HUD layout helpers
@@ -150,6 +155,20 @@ around them. (Details live in `js/AGENTS.md`.)
   `game.on(event, fn)`; `game.js` never imports audio. Uniform accessors
   (`allTanks`, `humanTanks`, `factions`, `cameras`, `bases`, `baseStructures`,
   `scores`) keep the renderer game-type-agnostic.
+- **Vehicle behaviour strategy** (`js/vehicles/`) — `getVehicleBehaviour(type)`
+  returns a strategy object (`fire` / `update` / `onShellImpact` / `aim` /
+  `aiThink` hooks). `Game` and `ai.js` never branch on `vehicleType`; adding a
+  vehicle is one `VEHICLES` entry + one behaviour module (or a reused one).
+  Per-vehicle *traits* (`unitClass`, `turret`, `firesBullets`, `fireSound`,
+  `muzzleFlash`) are data fields in `VEHICLES`.
+- **Game-mode strategy** (`modes.js`) — `getMode(gameType)` returns the
+  Skirmish or Battle strategy (spawn, win condition, scoring, labels). The
+  shared simulation loop stays in `Game`; a third mode is one `GAME_TYPES`
+  entry + one strategy object.
+- **Shared geometry API** (`map.js`) — `canStand(wx, wy, size)`,
+  `hasLineOfSight(x1, y1, x2, y2, { skipOrigin })`, and `hasWalkableLine`
+  are the one place movement, separation, spawning, LOS, and the AI answer
+  the same geometric questions.
 - **Component pattern** (`squad.js`) — a squad is *one* `Tank` entity that
   *owns* a `Squad` component (`tank.squad`) of individual soldiers. Prefer
   composition like this over subclass explosion.
@@ -165,13 +184,15 @@ the known structural debt is:
 - The old `renderer.js` god object was split into the `js/render/` package
   (opportunity #1) — keep it that way: new drawing code goes into the right
   `js/render/` module, never back into `renderer.js`.
-- Vehicle behaviour is dispatched by ~47 `vehicleType === "x"` checks across
-  six files ("type code") rather than polymorphism/strategy — despite the
-  vehicles sharing one `Tank` class.
-- Duplicated helpers: line-of-sight and passability queries (the duplicated
-  colour math and `_roundedRect` now live in `js/render/canvas-utils.js`).
+- Vehicle behaviour is now a strategy (opportunity #3) and geometry queries
+  are consolidated on `GameMap` (opportunity #5). The only remaining
+  `vehicleType === "x"` dispatch is per-sprite drawing inside `js/render/` —
+  keep logic out of that dispatch and add new vehicle behaviour to
+  `js/vehicles/` instead.
+- `ai.js` (~1,000 lines) and `map.js` (~1,160 lines) are the two biggest
+  logic modules; their splits are opportunities #8 and #9.
 - Coverage is now honest: every `js/` module is imported by at least one test
-  (opportunity #2 done), and the aggregate gate sits at ~96% line / ~88%
+  (opportunity #2 done), and the aggregate gate sits at ~97% line / ~90%
   branch / ~94% funcs. Keep it that way — a new module that no test imports
   silently drops out of the report, so any new file needs a test suite too.
 

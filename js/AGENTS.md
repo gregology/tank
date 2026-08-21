@@ -11,8 +11,11 @@ leaf):
 
 ```
 main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
-game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js
-ai.js  ──▶ pathfinder.js
+game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js,
+            modes.js, vehicles/
+ai.js  ──▶ pathfinder.js, vehicles/
+modes.js ──▶ config.js, entity.js
+vehicles/ ──▶ config.js, utils.js, bullet.js, squad.js
 renderer.js ──▶ js/render/*, layout.js      (thin shell)
 js/render/ ──▶ config.js, utils.js, draw-helpers.js, formation.js
 everything ──▶ config.js, utils.js   (config.js imports nothing)
@@ -131,13 +134,65 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
   exposes **uniform accessors** — `allTanks`, `humanTanks`, `factions`,
   `cameras`, `bases`, `baseStructures`, `scores`, `winnerColor` — so the
   renderer and HUD stay game-type-agnostic.
+- **`Game` delegates the two real axes of variation.** Per-vehicle
+  firing/attack rules live in the behaviour strategies (`js/vehicles/`,
+  dispatched by `getVehicleBehaviour(tank.vehicleType)`); Skirmish-vs-Battle
+  branching (spawn, win, scoring, labels) lives in the mode strategy
+  (`js/modes.js`, `getMode(gameType)`). New logic belongs behind those seams,
+  not as new `if (vehicleType === …)` / `if (typeDef.bases)` branches here.
 - The **event bus** (`game.on(event, fn)` / `game.emit(event, data)`) decouples
   cross-cutting concerns. Events: `fire`, `hit`, `destroy`, `impact`,
   `destroy_tile`, `win`, `artillery_impact`, `drone_strike`. `audio.js`
   subscribes; `game.js` never imports audio. **Wire new sound/UI reactions
   through an event, not a direct call.**
 
-### 5. The component pattern (`squad.js`)
+### 5. Vehicle behaviour strategies (`js/vehicles/`)
+
+`getVehicleBehaviour(type)` returns a plain strategy object — one module per
+vehicle (`tank.js`, `ifv.js`, `drone.js`, `spg.js`, `squad.js`, plus a shared
+`aoe.js` for structure splash). The hooks:
+
+- `fire(game, tank, device, dt)` — per-frame firing/attack (drone detonation,
+  SPG charge, squad auto-fire, direct fire).
+- `update(game, tank, dt)` — per-frame component updates (squad steering).
+- `onShellImpact(game, bullet)` — arcing-shell landing (SPG splash). Bullets
+  carry `sourceType` so the game routes landings to the right behaviour.
+- `aim(ai, me, target, map)` — the AI's turret-aim strategy (tank turret-aim,
+  IFV opportunistic, SPG hold-to-charge).
+- `aiThink(ai, dt, me, enemies, map, objective)` — AI think-level dispatch;
+  return `true` when the behaviour consumed the whole think (drone flight,
+  squad dig-in hold).
+
+Behaviours share a base (`tank.js`); a new vehicle usually reuses one and
+overrides a hook (`{ ...tank, aim: myAim }`). Per-vehicle *traits* that aren't
+behaviour live in `VEHICLES` as data: `unitClass` (`vehicle` / `infantry` /
+`air` — drives separation, crush, structure pushing, depth-sort), `turret`
+(`independent` / `fixed` — the `fixedGun` capability), `firesBullets`,
+`muzzleFlash`, `fireSound`. **Never branch on `vehicleType` in game logic —
+add a trait to `VEHICLES` or a hook to a behaviour instead.**
+
+### 6. Game-mode strategies (`modes.js`)
+
+`getMode(gameType)` returns the Skirmish or Battle strategy. Each mode is a
+plain object with hooks for everything the modes do differently: `hasBases`,
+`init` (battle: compounds + structure map), `spawn`, `setupBot`,
+`aiObjective` / `enemyStructures`, `afterSeparation` / `afterBullets`,
+`respawn`, `onKill`, `checkWin`, `factionLabel` / `winnerLabel`. The shared
+loop stays in `Game`. **A third mode = one `GAME_TYPES` entry + one strategy
+object — never more `if (typeDef.bases)` sprinkles.**
+
+### 7. Shared geometry API (`map.js`)
+
+One implementation per geometric question; nothing re-implements them:
+
+- `map.canStand(wx, wy, size)` — the four-corner passability box (movement,
+  separation, structure pushing, base spawn).
+- `map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin })` — the LOS query
+  (tanks, towers, squad members, the AI). `skipOrigin` keeps the
+  tower-on-its-own-tile exception explicit; it is harmless for tanks.
+- `map.hasWalkableLine(x1, y1, x2, y2)` — the AI's direct-waypoint check.
+
+### 8. The component pattern (`squad.js`)
 
 A squad is **one** `Tank` entity (the leader) that **owns** a `Squad` component
 (`tank.squad`), created lazily. The component owns the soldiers, the dig-in
@@ -149,7 +204,7 @@ isn't shared by all vehicles, a **component on the entity** (like `Squad`) is
 the established precedent — not a new subclass and not a new `vehicleType`
 switch.
 
-### 6. AI roles and navigation (`ai.js`, `pathfinder.js`)
+### 9. AI roles and navigation (`ai.js`, `pathfinder.js`)
 
 - The AI navigates with A* (`pathfinder.js`), then follows waypoints. Reactive
   obstacle avoidance is a light fallback for dynamic obstacles, not the primary
@@ -176,8 +231,8 @@ The root principles, made concrete for this directory:
   at once — not by adding a fourth copy.
 - **Readability.** Keep functions small and single-responsibility, name them
   for what they do, and let the data table say what varies. If a class needs a
-  diagram, split it (`ai.js` and `game.js` are the current worst cases — see
-  `docs/refactor_opportunities.md`).
+  diagram, split it (`ai.js` and `map.js` are the current biggest modules —
+  see `docs/refactor_opportunities.md`).
 - **Comments.** Explain *why*, never *what*. The codebase's own header blocks
   are good examples of *why*-style documentation; a line comment restating
   `this.hp -= amount` is not.
@@ -192,10 +247,11 @@ make them worse:
   `docs/refactor_opportunities.md`) — do not grow `renderer.js` back into a
   god object; put new drawing code in the right `js/render/` module and keep
   the package's dependency rules intact.
-- `ai.js` and `game.js` — ~1,100 lines each, multiple roles/responsibilities.
-- `vehicleType === "x"` dispatch — ~47 checks across six files: `game.js`,
-  `tank.js`, `ai.js`, `renderer.js`, `collision.js`, `audio.js`.
-- Duplicated colour helpers and line-of-sight / passability queries (the
-  shared `_roundedRect` and colour math are gone — they now live in
-  `js/render/canvas-utils.js`).
-- Dead code: `map.js#_createBase()` is never called.
+- `ai.js` (~1,000 lines) and `map.js` (~1,160 lines) — each mixes several
+  responsibilities; the splits are opportunities #8 and #9.
+- Dead code: `map.js#_createBase()` is never called (opportunity #10).
+
+Done — do not reintroduce: vehicle `vehicleType` dispatch (now a strategy in
+`js/vehicles/`, #3) and duplicated line-of-sight / passability queries (now
+one geometry API on `GameMap`, #5). The only remaining `vehicleType === "x"`
+dispatch is per-sprite drawing inside `js/render/` — keep logic out of it.

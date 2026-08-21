@@ -27,14 +27,14 @@
  *   - 'drone' — FPV kamikaze, 0.25 HP (one tower shot kills), no subsystems
  *   - 'spg'   — hold-to-charge artillery, 5 HP, subsystems at 2 HP
  *   - 'squad' — 5-man infantry squad, one HP per member, auto-fires
- *               (see Game._handleSquadFiring); members drop as it takes
+ *               (see js/vehicles/squad.js); members drop as it takes
  *               damage and it can dig in / use building cover
  */
 
 import { ACTIONS, CONFIG, VEHICLES } from "./config.js";
 import { GameEntity } from "./entity.js";
 import { Squad } from "./squad.js";
-import { normalizeAngle } from "./utils.js";
+import { distance, normalizeAngle } from "./utils.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
 
@@ -81,7 +81,7 @@ export class Tank extends GameEntity {
         this.chargeTime = 0; // seconds fire button has been held
         this.isCharging = false; // true while holding fire to charge range
 
-        // Squad component (lazily created when vehicleType === 'squad')
+        // Squad component (lazily created for infantry units)
         this._squad = null;
 
         // Visual feedback
@@ -101,14 +101,9 @@ export class Tank extends GameEntity {
         return this.leftTrackDisabled || this.rightTrackDisabled;
     }
 
-    /** True if the gun fires only forward (IFV, drone, squad, or disabled turret). */
+    /** True if the gun fires only forward (fixed-turret vehicles, or a disabled turret). */
     get fixedGun() {
-        return (
-            this.vehicleType === "ifv" ||
-            this.vehicleType === "drone" ||
-            this.vehicleType === "squad" ||
-            this.turretDisabled
-        );
+        return this.turretDisabled || VEHICLES[this.vehicleType].turret === "fixed";
     }
 
     /** Collision radius — varies by vehicle type. */
@@ -118,10 +113,10 @@ export class Tank extends GameEntity {
 
     /**
      * The squad component (soldiers, dig-in state machine, damage) for
-     * squad vehicles; null otherwise.  Lazily created on first access.
+     * infantry vehicles; null otherwise.  Lazily created on first access.
      */
     get squad() {
-        if (this.vehicleType !== "squad") return null;
+        if (VEHICLES[this.vehicleType].unitClass !== "infantry") return null;
         if (!this._squad) this._squad = new Squad(this);
         return this._squad;
     }
@@ -133,7 +128,7 @@ export class Tank extends GameEntity {
 
     /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed). */
     get hpFraction() {
-        if (this.vehicleType === "squad" && this.squad) return this.squad.hpFraction;
+        if (this.squad) return this.squad.hpFraction;
         const armour = VEHICLES[this.vehicleType].armour;
         return Math.max(0, 1 - this.damageAccum / armour.hp);
     }
@@ -163,7 +158,29 @@ export class Tank extends GameEntity {
         return true;
     }
     get isShooter() {
-        return this.vehicleType !== "drone";
+        return VEHICLES[this.vehicleType].firesBullets !== false;
+    }
+
+    /* ── distributed-hitbox capabilities (squads use member positions) ── */
+
+    /** Distance from a world point to the vehicle's hitbox (squads use their nearest member). */
+    distanceToPoint(x, y) {
+        if (this.squad) {
+            const d = this.squad.nearestMemberDistance(x, y);
+            if (Number.isFinite(d)) return d;
+        }
+        return distance(x, y, this.x, this.y);
+    }
+
+    /** Radius used for AoE falloff: squads use their soldier radius. */
+    get hitRadius() {
+        return this.squad ? VEHICLES.squad.soldierRadius : this.size;
+    }
+
+    /** True if a point is inside the vehicle's hitbox (squads check each member). */
+    hitTest(x, y) {
+        if (this.squad) return this.squad.bulletHit(x, y);
+        return distance(x, y, this.x, this.y) < this.size;
     }
 
     /* ── per-frame update ─────────────────────────────────── */
@@ -185,18 +202,18 @@ export class Tank extends GameEntity {
 
         const oldX = this.x,
             oldY = this.y;
-        const isIFV = this.vehicleType === "ifv";
-        const isDrone = this.vehicleType === "drone";
+        const v = VEHICLES[this.vehicleType];
+        const flying = v.unitClass === "air";
 
         // ── Hull rotation
         // If a track is disabled, can only pivot in the direction
         // of the working track (left track out → can only turn right,
         // right track out → can only turn left).
-        // Drones have no tracks — always free to rotate.
-        const canRotateLeft = isDrone || !this.rightTrackDisabled;
-        const canRotateRight = isDrone || !this.leftTrackDisabled;
+        // Flying units have no tracks — always free to rotate.
+        const canRotateLeft = flying || !this.rightTrackDisabled;
+        const canRotateRight = flying || !this.leftTrackDisabled;
 
-        const rotSpeed = VEHICLES[this.vehicleType].rotationSpeed;
+        const rotSpeed = v.rotationSpeed;
 
         // Turn/turret amounts are analog (0–1) when the device provides
         // them (gamepad stick/triggers) and binary otherwise (keyboard,
@@ -212,12 +229,12 @@ export class Tank extends GameEntity {
         this.angle = normalizeAngle(this.angle);
 
         // ── Turret rotation (relative to hull, slower)
-        // IFV/Drone/Squad: no turret — fixed forward (always 0)
-        // Disabled by front hit on tanks
-        if (isIFV || isDrone || this.vehicleType === "squad") {
+        // Fixed-turret vehicles have no turret — always aligned forward.
+        // Disabled by front hit on tanks.
+        if (v.turret === "fixed") {
             this.turretAngle = 0;
         } else if (!this.turretDisabled) {
-            const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
+            const turretSpd = v.turretSpeed;
             const turrL = amt(ACTIONS.turretLeft);
             const turrR = amt(ACTIONS.turretRight);
             if (turrL > 0) this.turretAngle -= turretSpd * turrL * dt;
@@ -227,18 +244,19 @@ export class Tank extends GameEntity {
 
         // ── Forward / reverse
         // Disabled if any track is damaged (can only pivot).
-        // Drones always fly freely.
+        // Flying units always move freely.
         // SPGs cannot drive while charging (deployed).
         // Squads are immobile while digging in / dug in; pressing a movement
         // key during the dig-in transition cancels it (back to roaming).
         let move = 0;
-        if (this.vehicleType === "squad" && this.squad && this.squad.digIn.state === "diggingIn") {
+        const squadComponent = this.squad;
+        if (squadComponent?.digIn.state === "diggingIn") {
             if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
-                this.squad.cancelDigIn();
+                squadComponent.cancelDigIn();
             }
         }
-        if (isDrone || !this.trackDamaged) {
-            const squadLocked = this.vehicleType === "squad" && this.squad && !this.squad.canMove;
+        if (flying || !this.trackDamaged) {
+            const squadLocked = squadComponent && !squadComponent.canMove;
             if (this.isCharging || squadLocked) {
                 // SPG deployed / squad digging in or dug in — no movement
             } else {
@@ -248,19 +266,19 @@ export class Tank extends GameEntity {
         }
 
         if (move !== 0) {
-            const baseSpeed = VEHICLES[this.vehicleType].speed;
+            const baseSpeed = v.speed;
             const speed = baseSpeed * move;
             const nx = this.x + Math.cos(this.angle) * speed * dt;
             const ny = this.y + Math.sin(this.angle) * speed * dt;
 
-            if (isDrone) {
-                // Drones fly over all terrain — only check map bounds
+            if (flying) {
+                // Flying units fly over all terrain — only check map bounds
                 if (this._canFly(nx, this.y, map)) this.x = nx;
                 if (this._canFly(this.x, ny, map)) this.y = ny;
             } else {
                 // Slide along obstacles – try each axis independently
-                if (this._canOccupy(nx, this.y, map)) this.x = nx;
-                if (this._canOccupy(this.x, ny, map)) this.y = ny;
+                if (map.canStand(nx, this.y, this.size)) this.x = nx;
+                if (map.canStand(this.x, ny, this.size)) this.y = ny;
             }
         }
 
@@ -320,7 +338,7 @@ export class Tank extends GameEntity {
      */
     applyHit(zone, damage = 1.0) {
         // Squads use their explicit member damage model (see Squad).
-        if (this.vehicleType === "squad" && this.squad) {
+        if (this.squad) {
             const result = this.squad.applyDamage(damage);
             if (result === "destroyed") this.kill();
             return result;
@@ -417,17 +435,7 @@ export class Tank extends GameEntity {
 
     /* ── collision helper ─────────────────────────────────── */
 
-    _canOccupy(wx, wy, map) {
-        const s = VEHICLES[this.vehicleType].size * 0.85;
-        return (
-            map.isPassable(wx - s, wy - s) &&
-            map.isPassable(wx + s, wy - s) &&
-            map.isPassable(wx - s, wy + s) &&
-            map.isPassable(wx + s, wy + s)
-        );
-    }
-
-    /** Drones fly over everything — only check map bounds. */
+    /** Flying units fly over everything — only check map bounds. */
     _canFly(wx, wy, map) {
         return wx > 0.5 && wx < map.width - 0.5 && wy > 0.5 && wy < map.height - 0.5;
     }

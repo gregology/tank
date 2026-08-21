@@ -53,11 +53,13 @@ number lie.
 imported by at least one test. The render layer (`renderer.js` + the whole
 `js/render/` package) is measured via `test/render.test.js`'s
 recording-context smoke tests; the match simulation, menus, audio, particles,
-and camera are measured by `game.test.js` (Game suite), `menu.test.js`,
-`audio.test.js`, `particles.test.js`, and `camera.test.js`. The aggregate
-gate (~96% line / ~88% branch / ~94% funcs at last check) is a floor, not a
-target — keep the untested-modules gap closed: any new module must be
-imported by a test or it silently drops out of the report.
+camera, the game-mode strategies, and the vehicle behaviours are measured by
+`game.test.js` (Game suite), `menu.test.js`, `audio.test.js`,
+`particles.test.js`, `camera.test.js`, `modes.test.js`, and
+`vehicles.test.js`. The aggregate gate (~97% line / ~90% branch / ~94% funcs
+at last check) is a floor, not a target — keep the untested-modules gap
+closed: any new module must be imported by a test or it silently drops out of
+the report.
 
 ### Determinism where it matters; tolerance where it can't be
 
@@ -123,7 +125,22 @@ Reusable, deterministic utilities:
   `update()` (artillery splash, crush resolution, watch towers, structure
   destruction), the suite calls the `_`-prefixed method directly after
   arranging state through public entities — assert on events/state, not
-  internals.
+  internals. Firing tests drive the vehicle behaviours through the Game
+  dispatch seam (`game._handleFiring(tank, device, dt)`), and geometry
+  queries are asserted on the shared API (`game.map.hasLineOfSight`,
+  `game.map.canStand`).
+- **Vehicle behaviour tests** (`vehicles.test.js`) exercise each strategy in
+  `js/vehicles/` in isolation against a minimal stub game (bullets,
+  particles, emit, allTanks, baseStructures, map, applyHitToTank,
+  onStructureDestroyed, damageTileAt) with real `Tank`/`GameMap` entities —
+  this keeps the firing/attack rules unit-testable without a full match. If a
+  behaviour needs a new Game seam, add it to the stub and to the real Game,
+  not around the stub.
+- **Mode tests** (`modes.test.js`) exercise the Skirmish/Battle hooks in
+  `js/modes.js` against a stub game (spawn, checkWin, onKill, respawn,
+  labels, aiObjective, afterSeparation/afterBullets dispatch). Win-condition
+  and scoring rules are tested here in isolation and again through `Game` in
+  `game.test.js`.
 - **Menu tests** (`menu.test.js`) drive `Menu.update` with one-shot fake
   devices — reuse the same device object across frames so the host keeps its
   identity, and re-`press` the action for each frame it should fire.

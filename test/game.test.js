@@ -1251,7 +1251,7 @@ describe("Game – human firing", () => {
         }
         const fires = [];
         game.on("fire", (d) => fires.push(d));
-        game._handleSquadFiring(squad, fakeDevice(), 0.016);
+        game._handleFiring(squad, fakeDevice(), 0.016);
         assert.ok(fires.length >= 1, "squad members fired");
         assert.ok(game.bullets.length >= 1);
     });
@@ -1262,11 +1262,11 @@ describe("Game – human firing", () => {
         squad.vehicleType = "squad";
         const comp = squad.squad;
         const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
-        game._handleSquadFiring(squad, toggle, 0.016);
+        game._handleFiring(squad, toggle, 0.016);
         assert.equal(comp.digIn.state, "diggingIn");
         comp.update(1.1, game.map);
         assert.equal(comp.digIn.state, "dugIn");
-        game._handleSquadFiring(squad, toggle, 0.016);
+        game._handleFiring(squad, toggle, 0.016);
         assert.equal(comp.digIn.state, "roaming");
     });
 });
@@ -1367,6 +1367,7 @@ describe("Game – bullets & damage", () => {
         const impacts = [];
         game.on("artillery_impact", () => impacts.push("artillery"));
         const b = new Bullet(12.5, 12.5, 0, 1, 1, 3.0, 7.0, true, 0.1); // lands immediately
+        b.sourceType = "spg";
         game.bullets.push(b);
         game._tickBullets(0.016);
         assert.equal(impacts.length, 1);
@@ -1391,7 +1392,7 @@ describe("Game – bullets & damage", () => {
         assert.ok(enemy.damaged || !enemy.alive);
     });
 
-    it("_applyHitToTank emits destroy, explosion, and kill credit", () => {
+    it("applyHitToTank emits destroy, explosion, and kill credit", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const enemy = game.allTanks.find((t) => t.team === 2);
         enemy.x = 30.5;
@@ -1399,14 +1400,14 @@ describe("Game – bullets & damage", () => {
         const destroys = [];
         game.on("destroy", (d) => destroys.push(d));
         const before = game.particles.particles.length;
-        game._applyHitToTank({ x: 30.5, y: 30.5, team: 1 }, enemy, 999);
+        game.applyHitToTank({ x: 30.5, y: 30.5, team: 1 }, enemy, 999);
         assert.equal(destroys.length, 1);
         assert.ok(!enemy.alive);
         assert.ok(game.particles.particles.length > before, "explosion particles");
         assert.equal(game.scores.get(1), 1, "kill credited in skirmish");
     });
 
-    it("_applyHitToTank emits hit for subsystem damage only", () => {
+    it("applyHitToTank emits hit for subsystem damage only", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const enemy = game.allTanks.find((t) => t.team === 2);
         enemy.x = 30.5;
@@ -1416,7 +1417,7 @@ describe("Game – bullets & damage", () => {
         game.on("hit", (d) => hits.push(d));
         const destroys = [];
         game.on("destroy", () => destroys.push("destroy"));
-        game._applyHitToTank({ x: 31.5, y: 30.5, team: 1 }, enemy, 3.0);
+        game.applyHitToTank({ x: 31.5, y: 30.5, team: 1 }, enemy, 3.0);
         assert.equal(hits.length, 1);
         assert.equal(destroys.length, 0);
         assert.ok(enemy.alive);
@@ -1431,7 +1432,7 @@ describe("Game – bullets & damage", () => {
         comp.startDigIn();
         comp.update(1.1, game.map); // now dugIn
         const membersBefore = comp.membersAlive;
-        game._applyHitToTank({ x: squad.x, y: squad.y, team: 2 }, squad, 1.0);
+        game.applyHitToTank({ x: squad.x, y: squad.y, team: 2 }, squad, 1.0);
         assert.ok(membersBefore > comp.membersAlive || squad.alive, "damage applied through reduction");
     });
 
@@ -1442,9 +1443,9 @@ describe("Game – bullets & damage", () => {
         const comp = squad.squad;
         comp.members[0].x = squad.x + 5;
         comp.members[0].y = squad.y;
-        const d = game._entityDistance({ x: squad.x + 5, y: squad.y }, squad);
+        const d = squad.distanceToPoint(squad.x + 5, squad.y);
         assert.equal(d, 0);
-        assert.equal(game._entityRadius(squad), VEHICLES.squad.soldierRadius);
+        assert.equal(squad.hitRadius, VEHICLES.squad.soldierRadius);
     });
 });
 
@@ -1474,7 +1475,7 @@ describe("Game – separation, crush, structures, towers", () => {
         assert.ok(comp.membersAlive < membersBefore, "a soldier was crushed");
     });
 
-    it("_pushFromStructures pushes tanks out of structure tiles", () => {
+    it("pushFromStructures pushes tanks out of structure tiles", () => {
         const game = new Game(battleConfig([human(1), human(2)]));
         // Corner towers are isolated (no adjacent structure within the push
         // radius), so the tank can only be pushed one way.
@@ -1491,20 +1492,20 @@ describe("Game – separation, crush, structures, towers", () => {
         tank.x = tower.x + 0.3; // just east of the tower centre
         tank.y = tower.y;
         const before = Math.hypot(tank.x - tower.x, tank.y - tower.y);
-        game._pushFromStructures();
+        game.pushFromStructures();
         const after = Math.hypot(tank.x - tower.x, tank.y - tower.y);
         assert.ok(after > before, `tank pushed away from the tower (${before} → ${after})`);
         assert.ok(after >= VEHICLES.tank.size + 0.5 - 0.05, `tank at min distance (${after})`);
     });
 
-    it("_getStructureAt finds structures by tile and _onStructureDestroyed clears them", () => {
+    it("_getStructureAt finds structures by tile and onStructureDestroyed clears them", () => {
         const game = new Game(battleConfig([human(1), human(2)]));
         const structure = game.baseStructures[0];
         const pos = structure.tilePositions[0];
         assert.equal(game._getStructureAt(pos.gx, pos.gy), structure);
         const destroys = [];
         game.on("destroy", (d) => destroys.push(d));
-        game._onStructureDestroyed(structure);
+        game.onStructureDestroyed(structure);
         assert.equal(destroys.length, 1);
         assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
         assert.equal(game._getStructureAt(pos.gx, pos.gy), null);
@@ -1524,34 +1525,34 @@ describe("Game – separation, crush, structures, towers", () => {
         enemy.alive = true;
         const fires = [];
         game.on("fire", (d) => fires.push(d));
-        game._updateWatchTowers(0.016);
+        game.updateWatchTowers(0.016);
         assert.ok(
             fires.some((f) => f.tower === tower),
             "tower fired",
         );
     });
 
-    it("_hasLineOfSight is blocked by projectile-blocking terrain", () => {
+    it("map.hasLineOfSight is blocked by projectile-blocking terrain", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         for (let gx = 0; gx < 20; gx++) {
             game.map.setTile(gx, 5, T.GRASS);
             game.map.setTile(gx, 6, T.GRASS);
         }
-        assert.equal(game._hasLineOfSight(2.5, 5.5, 15.5, 5.5), true);
+        assert.equal(game.map.hasLineOfSight(2.5, 5.5, 15.5, 5.5, { skipOrigin: true }), true);
         game.map.setTile(8, 5, T.HILL);
-        assert.equal(game._hasLineOfSight(2.5, 5.5, 15.5, 5.5), false);
+        assert.equal(game.map.hasLineOfSight(2.5, 5.5, 15.5, 5.5, { skipOrigin: true }), false);
     });
 
-    it("_canStand reflects passability", () => {
+    it("map.canStand reflects passability", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         game.map.setTile(5, 5, T.GRASS);
         game.map.setTile(5, 6, T.GRASS);
         game.map.setTile(6, 5, T.GRASS);
         game.map.setTile(6, 6, T.GRASS);
         // Tank corners (size*0.85 ≈ 0.38) from (5.7, 5.7) reach tile (6,6).
-        assert.equal(game._canStand(5.7, 5.7), true);
+        assert.equal(game.map.canStand(5.7, 5.7), true);
         game.map.setTile(6, 6, T.HILL);
-        assert.equal(game._canStand(5.7, 5.7), false);
+        assert.equal(game.map.canStand(5.7, 5.7), false);
     });
 
     it("_nearestEnemy returns the closest alive enemy", () => {
@@ -1649,9 +1650,9 @@ describe("Game – deeper coverage", () => {
         squad.vehicleType = "squad";
         const comp = squad.squad;
         const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
-        game._handleSquadFiring(squad, toggle, 0.016); // roaming → diggingIn
+        game._handleFiring(squad, toggle, 0.016); // roaming → diggingIn
         assert.equal(comp.digIn.state, "diggingIn");
-        game._handleSquadFiring(squad, toggle, 0.016); // diggingIn → cancel → roaming
+        game._handleFiring(squad, toggle, 0.016); // diggingIn → cancel → roaming
         assert.equal(comp.digIn.state, "roaming");
     });
 
@@ -1659,7 +1660,7 @@ describe("Game – deeper coverage", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const spg = game.humanTank;
         spg.vehicleType = "spg";
-        game._handleSPGFiring(spg, fakeDevice(), 0.016); // not held, not charging
+        game._handleFiring(spg, fakeDevice(), 0.016); // not held, not charging
         assert.equal(spg.isCharging, false);
         assert.equal(spg.chargeTime, 0);
     });
@@ -1668,6 +1669,7 @@ describe("Game – deeper coverage", () => {
         const game = new Game(battleConfig([human(1), human(2)]));
         const tower = game.bases[1].towers[0];
         const b = new Bullet(tower.x, tower.y, 0, 1, 1, 10, 7.0, true, 0.05);
+        b.sourceType = "spg";
         game.bullets.push(b);
         game._tickBullets(0.016); // lands immediately
         assert.ok(!b.alive);
@@ -1681,6 +1683,7 @@ describe("Game – deeper coverage", () => {
         const events = [];
         game.on("destroy_tile", (d) => events.push(d));
         const b = new Bullet(9, 10.5, 0, 1, 1, 3.0, 7.0, true, 1.5); // lands at ~(11.1, 10.5)
+        b.sourceType = "spg";
         game.bullets.push(b);
         for (let i = 0; i < 40 && b.alive; i++) game._tickBullets(0.016);
         assert.ok(!b.alive);
@@ -1697,7 +1700,7 @@ describe("Game – deeper coverage", () => {
         const tower = game.bases[1].towers[0];
         drone.x = tower.x + 1;
         drone.y = tower.y;
-        game._handleDroneAttack(drone, fakeDevice({ held: [ACTIONS.fire] }));
+        game._handleFiring(drone, fakeDevice({ held: [ACTIONS.fire] }));
         assert.ok(!drone.alive);
         assert.ok(tower.hp < BASE_STRUCTURES.baseTower.hp, "tower damaged by blast");
     });
@@ -1710,7 +1713,7 @@ describe("Game – deeper coverage", () => {
         game.map.setTile(30, 30, T.BLDG_SMALL); // intact building
         squad.x = 30.5;
         squad.y = 31.5; // 1 unit below the building centre (inside coverRadius)
-        game._applyHitToTank({ x: 30.5, y: 30.5, team: 2 }, squad, 1.0);
+        game.applyHitToTank({ x: 30.5, y: 30.5, team: 2 }, squad, 1.0);
         assert.ok(comp.partialDamage > 0 && comp.partialDamage < 1.0, "damage reduced by cover");
         assert.equal(comp.membersAlive, 5);
     });

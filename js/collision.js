@@ -3,13 +3,17 @@
  *
  * Solid vehicles are pushed apart so they don't overlap, but two
  * exceptions allow units to pass through each other:
- *   - drones fly over ground vehicles (and ground vehicles under them)
- *   - enemy vehicles drive through squads so they can run soldiers over;
- *     friendly vehicles still treat squads as solid
+ *   - air units fly over ground units (and ground units under them)
+ *   - enemy vehicles drive through infantry so they can run soldiers
+ *     over; friendly vehicles still treat infantry as solid
  *
- * Kept as a pure function so the policy is unit-testable without
- * constructing a full Game.
+ * The classes are data-driven (VEHICLES[type].unitClass: "vehicle" /
+ * "infantry" / "air"), so a new air or infantry unit inherits the
+ * interaction policy automatically.  Kept as a pure function so the
+ * policy is unit-testable without constructing a full Game.
  */
+
+import { VEHICLES } from "./config.js";
 
 /**
  * Whether two alive vehicles should be pushed apart by the separation pass.
@@ -19,14 +23,14 @@
  * @returns {boolean}
  */
 export function vehiclesSeparate(a, b) {
-    // Drones fly over ground vehicles (and vice versa).
-    if ((a.vehicleType === "drone") !== (b.vehicleType === "drone")) return false;
+    // Air units fly over ground units (and vice versa).
+    if ((VEHICLES[a.vehicleType].unitClass === "air") !== (VEHICLES[b.vehicleType].unitClass === "air")) return false;
 
-    // Squads are soft against enemy vehicles (run-over), but friendly
-    // vehicles still treat them as solid.
-    const aSquad = a.vehicleType === "squad";
-    const bSquad = b.vehicleType === "squad";
-    if (aSquad !== bSquad && a.team !== b.team) return false;
+    // Infantry is soft against enemy vehicles (run-over), but friendly
+    // vehicles still treat it as solid.
+    const aInfantry = VEHICLES[a.vehicleType].unitClass === "infantry";
+    const bInfantry = VEHICLES[b.vehicleType].unitClass === "infantry";
+    if (aInfantry !== bInfantry && a.team !== b.team) return false;
 
     return true;
 }

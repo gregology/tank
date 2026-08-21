@@ -111,6 +111,78 @@ export class GameMap {
     }
 
     /**
+     * Can a vehicle of `size` radius stand at continuous world position
+     * (wx, wy)?  Checks the four corners of its bounding box (the 0.85
+     * corner inset is the shared collision geometry for all vehicles —
+     * movement, separation, structure pushing, and spawn all use this).
+     *
+     * @param {number} wx   world X of the vehicle centre
+     * @param {number} wy   world Y of the vehicle centre
+     * @param {number} size vehicle collision radius (defaults to tank)
+     * @returns {boolean}
+     */
+    canStand(wx, wy, size = VEHICLES.tank.size) {
+        const s = size * 0.85;
+        return (
+            this.isPassable(wx - s, wy - s) &&
+            this.isPassable(wx + s, wy - s) &&
+            this.isPassable(wx - s, wy + s) &&
+            this.isPassable(wx + s, wy + s)
+        );
+    }
+
+    /** Sample points along a line, excluding the origin tile when `skipOrigin`. */
+    _lineSamples(x1, y1, x2, y2, skipOrigin) {
+        const dx = x2 - x1,
+            dy = y2 - y1;
+        const d = Math.hypot(dx, dy);
+        const n = Math.ceil(d * 3);
+        const originGx = Math.floor(x1),
+            originGy = Math.floor(y1);
+        const samples = [];
+        for (let i = 1; i < n; i++) {
+            const t = i / n;
+            const sx = x1 + dx * t,
+                sy = y1 + dy * t;
+            if (skipOrigin && Math.floor(sx) === originGx && Math.floor(sy) === originGy) continue;
+            samples.push([sx, sy]);
+        }
+        return samples;
+    }
+
+    /**
+     * Is the straight line between two points clear of projectile-blocking
+     * terrain?  The shared LOS query — tanks, watch towers, squad members,
+     * and the AI all use it.
+     *
+     * @param {object} [opts]
+     * @param {boolean} [opts.skipOrigin]  skip the shooter's own tile so a
+     *        structure standing on a blocking tile (e.g. a watch tower) does
+     *        not block itself.  Harmless for tanks (they never stand on
+     *        blocking tiles).
+     */
+    hasLineOfSight(x1, y1, x2, y2, { skipOrigin = false } = {}) {
+        for (const [sx, sy] of this._lineSamples(x1, y1, x2, y2, skipOrigin)) {
+            if (this.blocksProjectile(sx, sy)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Is the straight line between two points fully walkable (passable
+     * tiles, endpoints included)?  Used by the AI to pick a direct
+     * waypoint skip when a path leg has no obstacles.
+     */
+    hasWalkableLine(x1, y1, x2, y2) {
+        for (const [sx, sy] of this._lineSamples(x1, y1, x2, y2, false)) {
+            if (!this.isPassable(sx, sy)) return false;
+        }
+        // Sample the endpoint too — the waypoint tile itself must be passable.
+        if (!this.isPassable(x2, y2)) return false;
+        return true;
+    }
+
+    /**
      * Count projectile-blocking tiles within a radius of a world position.
      * Used by AI to evaluate how much cover a position offers.
      *
@@ -649,7 +721,6 @@ export class GameMap {
      * @param {number} cy  compound centre grid Y
      */
     getBaseSpawnPoint(cx, cy) {
-        const s = VEHICLES.tank.size * 0.85;
         const tier = this._compoundTier ?? "small";
         const half = tier === "small" ? 5 : tier === "medium" ? 7 : 10;
         const interior = (half - 1) * 2;
@@ -661,12 +732,7 @@ export class GameMap {
             const gy = oy + 1 + Math.floor(Math.random() * interior);
             const wx = gx + 0.5,
                 wy = gy + 0.5;
-            if (
-                this.isPassable(wx - s, wy - s) &&
-                this.isPassable(wx + s, wy - s) &&
-                this.isPassable(wx - s, wy + s) &&
-                this.isPassable(wx + s, wy + s)
-            ) {
+            if (this.canStand(wx, wy, VEHICLES.tank.size)) {
                 return { x: wx, y: wy };
             }
         }

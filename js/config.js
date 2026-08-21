@@ -328,9 +328,24 @@ export function resolveSettings(optionValues) {
  *
  * The applyHit() method in tank.js reads this table generically --
  * adding a new vehicle or tweaking durability is purely a config change.
+ *
+ * Behaviour fields (consumed by js/vehicles/, js/modes.js, ai.js, audio.js):
+ *   unitClass    "vehicle" (ground vehicles: run over infantry, pushed by
+ *                 structures), "infantry" (soft against enemy vehicles),
+ *                 or "air" (flies over everything, no separation).
+ *   turret       "independent" (aims independently of the hull) or "fixed"
+ *                 (fires straight ahead — the fixedGun capability).
+ *   firesBullets false only for vehicles whose "fire" detonates instead of
+ *                 shooting (drone).  Defaults to true.
+ *   muzzleFlash  which muzzle-flash particle a direct fire uses: default
+ *                 "muzzle", or "ifv" for the autocannon flash.
+ *   fireSound    sound key used by audio.js when this vehicle fires:
+ *                 "tank" (default), "ifv", or "spg".
  */
 export const VEHICLES = {
     tank: {
+        unitClass: "vehicle",
+        turret: "independent",
         speed: 3.0,
         rotationSpeed: 3.5,
         turretSpeed: 2.0,
@@ -354,6 +369,10 @@ export const VEHICLES = {
         },
     },
     ifv: {
+        unitClass: "vehicle",
+        turret: "fixed",
+        muzzleFlash: "ifv",
+        fireSound: "ifv",
         speed: 4.5,
         rotationSpeed: 4.0,
         turretSpeed: 0,
@@ -376,6 +395,9 @@ export const VEHICLES = {
         },
     },
     drone: {
+        unitClass: "air",
+        turret: "fixed",
+        firesBullets: false,
         speed: 6.0,
         rotationSpeed: 5.0,
         turretSpeed: 0,
@@ -397,6 +419,9 @@ export const VEHICLES = {
         },
     },
     spg: {
+        unitClass: "vehicle",
+        turret: "independent",
+        fireSound: "spg",
         speed: 2.0,
         rotationSpeed: 2.0,
         turretSpeed: 1.0,
@@ -425,6 +450,8 @@ export const VEHICLES = {
         },
     },
     squad: {
+        unitClass: "infantry",
+        turret: "fixed",
         speed: 2.6,
         rotationSpeed: 4.0,
         turretSpeed: 0,
@@ -440,7 +467,7 @@ export const VEHICLES = {
         // Squads are never defenders — they advance/flank under cover.
         roleWeights: { cavalry: 3, sniper: 0, defender: 0, scout: 3 },
         targetPriority: { spg: 8, tank: 6, ifv: 5, drone: 3, squad: 6, baseWall: 8, baseTower: 8, baseHQ: 8 },
-        // Cover/dig-in damage model (see Game._applyHitToTank):
+        // Cover/dig-in damage model (see Squad.damageMultiplier):
         //  coverReduction  — incoming damage multiplier while adjacent to
         //                    an intact building (mechanical cover)
         //  digInReduction  — incoming damage multiplier while dug in

@@ -38,6 +38,7 @@
 
 import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
+import { getVehicleBehaviour } from "./vehicles/index.js";
 
 /* ── Role names ───────────────────────────────────────────── */
 
@@ -143,6 +144,18 @@ export class AIController {
         this.evading = false;
     }
 
+    /** Deterministic random source (injected rng, defaults to Math.random). */
+    rng() {
+        return this._rng();
+    }
+
+    /** Hold position: clear navigation and stuck state. */
+    holdPosition() {
+        this._path = [];
+        this._posHistory = [];
+        this.stuckTime = 0;
+    }
+
     /* ════════════════════════════════════════════════════════ *
      *  Main think                                              *
      * ════════════════════════════════════════════════════════ */
@@ -157,25 +170,9 @@ export class AIController {
         this._updateWobble(dt);
         this._updateStuck(dt, me);
 
-        // ── Squad: decide whether to dig in (cover + enemy nearby) ──
-        if (me.vehicleType === "squad" && me.squad) {
-            this._updateSquadDigIn(me, enemies, map);
-            if (me.squad.digIn.state !== "roaming") {
-                // Digging in / dug in: hold position (auto-fire is handled
-                // by game.js) and clear stuck state so standing still doesn't
-                // trigger the "blow through a wall" escape behaviour.
-                this._path = [];
-                this._posHistory = [];
-                this.stuckTime = 0;
-                return;
-            }
-        }
-
-        // ── Drones: simplified AI (fly direct, no pathfinding) ──
-        if (me.vehicleType === "drone") {
-            this._thinkDrone(dt, me, enemies, map, objective);
-            return;
-        }
+        // Vehicle behaviours that drive the whole think (drones fly their
+        // own loop; squads hold while digging in) consume the frame.
+        if (getVehicleBehaviour(me.vehicleType).aiThink(this, dt, me, enemies, map, objective)) return;
 
         // ── Tracks disabled: can only pivot and shoot ──
         if (me.trackDamaged) {
@@ -481,7 +478,7 @@ export class AIController {
             const rangeScore = Math.max(0, 1 - rangeError);
 
             // ── LOS score (0 or 1): can we see the objective?
-            const losScore = weights.los > 0 ? (this._los(c.x, c.y, objective.x, objective.y, map) ? 1 : 0) : 0;
+            const losScore = weights.los > 0 ? (map.hasLineOfSight(c.x, c.y, objective.x, objective.y) ? 1 : 0) : 0;
 
             const score =
                 coverScore * (weights.cover || 0) +
@@ -643,7 +640,7 @@ export class AIController {
      * Detonation respects targetPriority: the drone won't waste its
      * one-shot explosion on a target with priority 0 (e.g. other drones).
      */
-    _thinkDrone(dt, me, enemies, _map, objective) {
+    thinkDrone(dt, me, enemies, _map, objective) {
         const { navGoal, fireTarget } = this._chooseGoalAndTarget(dt, me, enemies, _map, objective);
 
         // If we have a fire target nearby, prioritise diving at it
@@ -759,7 +756,7 @@ export class AIController {
         let best = 0;
         const limit = Math.min(this._path.length - 1, 8);
         for (let i = limit; i > 0; i--) {
-            if (this._walkable(me.x, me.y, this._path[i].x, this._path[i].y, map)) {
+            if (map.hasWalkableLine(me.x, me.y, this._path[i].x, this._path[i].y)) {
                 best = i;
                 break;
             }
@@ -772,96 +769,19 @@ export class AIController {
      * ════════════════════════════════════════════════════════ */
 
     /**
-     * Rotate turret toward the target and fire when aimed.
-     * If turret is disabled, aims by rotating the hull instead.
-     * If IFV, fires opportunistically without overriding navigation.
+     * Rotate turret toward the target and fire when aimed — dispatched to
+     * the vehicle's aim strategy (tank turret-aim, IFV opportunistic,
+     * SPG hold-to-charge).  If turret is disabled, aims by rotating the
+     * hull instead.
      */
     _aimAndFire(me, target, map) {
-        const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
-
-        // ── SPG: hold fire to charge, release when range matches target ──
-        if (me.vehicleType === "spg") {
-            this._steerTurretTo(me, desiredWorld);
-
-            const turretWorld = me.turretWorld;
-            let diffT = desiredWorld - turretWorld;
-            while (diffT > Math.PI) diffT -= Math.PI * 2;
-            while (diffT < -Math.PI) diffT += Math.PI * 2;
-            if (Math.abs(diffT) > 0.3) return; // not aimed yet
-
-            const dist = target.dist;
-            const vStats = VEHICLES.spg;
-            if (dist < vStats.minRange * 0.5 || dist > vStats.maxRange * 1.1) return;
-            if (me.fireCooldown > 0) return;
-
-            // Compute charge time needed for this distance
-            const clampedDist = Math.max(vStats.minRange, Math.min(dist, vStats.maxRange));
-            const neededCharge = (clampedDist - vStats.minRange) / vStats.chargeRate;
-
-            // Hold fire key while charge hasn't reached needed level
-            if (me.chargeTime < neededCharge + 0.05) {
-                this.keys[ACTIONS.fire] = true;
-            }
-            // Else: don't set fire → release → game fires the shell
-            return;
-        }
-
-        // ── IFV: fire opportunistically without overriding navigation ──
-        // The hull is already being steered toward the nav goal, so don't
-        // fight it — just fire when the forward gun happens to aim near a target.
-        if (me.vehicleType === "ifv") {
-            const turretWorld = me.turretWorld;
-            let diff = desiredWorld - turretWorld;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-
-            if (Math.abs(diff) > 0.4) return;
-            if (this.fireDelay > 0) return;
-
-            if (this._los(me.x, me.y, target.x, target.y, map)) {
-                this.keys[ACTIONS.fire] = true;
-                this.fireDelay = 0.1 + this._rng() * 0.08;
-            }
-            return;
-        }
-
-        // ── Tank with disabled turret: aim by rotating hull ──
-        if (me.turretDisabled) {
-            let diff = desiredWorld - me.angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-
-            if (diff > 0.08) this.keys[ACTIONS.right] = true;
-            if (diff < -0.08) this.keys[ACTIONS.left] = true;
-
-            if (Math.abs(diff) > 0.3) return;
-        } else {
-            // Normal turret aiming
-            this._steerTurretTo(me, desiredWorld);
-
-            const turretWorld = me.turretWorld;
-            let diff = desiredWorld - turretWorld;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-
-            if (Math.abs(diff) > 0.3) return;
-        }
-
-        if (this.fireDelay > 0) return;
-
-        if (this._los(me.x, me.y, target.x, target.y, map)) {
-            this.keys[ACTIONS.fire] = true;
-            this.fireDelay = 0.25 + this._rng() * 0.35;
-            return;
-        }
-
-        this._tryShootWall(me, map);
+        getVehicleBehaviour(me.vehicleType).aim(this, me, target, map);
     }
 
     /**
      * Steer turret offset so turretWorld approaches desiredWorldAngle.
      */
-    _steerTurretTo(me, desiredWorld) {
+    steerTurretTo(me, desiredWorld) {
         let desiredOffset = desiredWorld - me.angle;
         while (desiredOffset > Math.PI) desiredOffset -= Math.PI * 2;
         while (desiredOffset < -Math.PI) desiredOffset += Math.PI * 2;
@@ -883,7 +803,7 @@ export class AIController {
      * available; otherwise they stay mobile.  (Human squads toggle
      * dig-in with FIRE, handled in game.js.)
      */
-    _updateSquadDigIn(me, enemies, map) {
+    updateSquadDigIn(me, enemies, map) {
         const component = me.squad;
         if (!component) return;
         const v = VEHICLES.squad;
@@ -906,7 +826,7 @@ export class AIController {
             this.keys[k.backward] = true;
             this.keys[this._rng() > 0.5 ? k.right : k.left] = true;
             if (!me.fixedGun) this._aimTurretForward(me);
-            this._tryShootWall(me, map);
+            this.tryShootWall(me, map);
         } else if (this.stuckTime < 2.5) {
             this.evading = true;
             this.evadeTimer = 0.6 + this._rng() * 0.8;
@@ -922,7 +842,7 @@ export class AIController {
         this.keys[this.evadeDir > 0 ? k.right : k.left] = true;
         this.keys[k.forward] = true;
         if (!me.fixedGun) this._aimTurretForward(me);
-        this._tryShootWall(me, map);
+        this.tryShootWall(me, map);
         if (this.evadeTimer <= 0) {
             this.evading = false;
             this.stuckTime = 0;
@@ -932,14 +852,14 @@ export class AIController {
     }
 
     _aimTurretForward(me) {
-        this._steerTurretTo(me, me.angle);
+        this.steerTurretTo(me, me.angle);
     }
 
     /* ════════════════════════════════════════════════════════ *
      *  Terrain shooting                                        *
      * ════════════════════════════════════════════════════════ */
 
-    _tryShootWall(me, map) {
+    tryShootWall(me, map) {
         if (this.fireDelay > 0) return;
         const tw = me.turretWorld;
         for (const d of [0.6, 1.0, 1.5]) {
@@ -971,7 +891,7 @@ export class AIController {
         }
 
         if (!me.fixedGun) {
-            this._steerTurretTo(me, bestA);
+            this.steerTurretTo(me, bestA);
         } else {
             // IFV / fixed gun: rotate hull to face wall
             let diff = bestA - me.angle;
@@ -1081,29 +1001,5 @@ export class AIController {
         if (!bk(a - 0.5, 0.8)) this.keys[k.left] = true;
         else if (!bk(a + 0.5, 0.8)) this.keys[k.right] = true;
         else this.keys[k.forward] = false;
-    }
-
-    _walkable(x1, y1, x2, y2, map) {
-        const dx = x2 - x1,
-            dy = y2 - y1;
-        const d = Math.hypot(dx, dy);
-        const n = Math.ceil(d * 3);
-        for (let i = 1; i <= n; i++) {
-            const t = i / n;
-            if (!map.isPassable(x1 + dx * t, y1 + dy * t)) return false;
-        }
-        return true;
-    }
-
-    _los(x1, y1, x2, y2, map) {
-        const dx = x2 - x1,
-            dy = y2 - y1;
-        const d = Math.hypot(dx, dy);
-        const n = Math.ceil(d * 3);
-        for (let i = 1; i < n; i++) {
-            const t = i / n;
-            if (map.blocksProjectile(x1 + dx * t, y1 + dy * t)) return false;
-        }
-        return true;
     }
 }

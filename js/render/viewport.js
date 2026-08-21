@@ -136,8 +136,8 @@ export function collectDepthItems(game, visLeft, visRight, visTop, visBottom) {
 
     for (const t of game.allTanks) {
         if (t.alive || t.respawnTimer > 0) {
-            // Drones fly above buildings — render them later (higher depth)
-            const depthBonus = t.vehicleType === "drone" ? 2 : 0;
+            // Air units fly above buildings — render them later (higher depth)
+            const depthBonus = VEHICLES[t.vehicleType].unitClass === "air" ? 2 : 0;
             addEntity("vehicle", t, t.x, t.y, depthBonus);
         }
     }

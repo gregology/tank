@@ -229,3 +229,58 @@ describe("Base compounds", () => {
         }
     });
 });
+
+describe("Consolidated geometry queries", () => {
+    it("canStand checks the four corners of the vehicle box", () => {
+        const map = new GameMap();
+        for (let y = 4; y <= 8; y++) for (let x = 4; x <= 8; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.canStand(5.5, 5.5), true);
+        // A blocking tile at one corner (6,6) flips the box at (5.7, 5.7):
+        // tank corners (size*0.85 ≈ 0.38) reach tile (6,6).
+        map.setTile(6, 6, T.HILL);
+        assert.equal(map.canStand(5.7, 5.7), false);
+    });
+
+    it("canStand respects the vehicle size argument", () => {
+        const map = new GameMap();
+        for (let y = 4; y <= 7; y++) for (let x = 4; x <= 8; x++) map.setTile(x, y, T.GRASS);
+        map.setTile(7, 5, T.HILL);
+        // At (6.7, 5.5) a small vehicle's corners (size*0.85 = 0.085) stay in
+        // tile (6,5), but a tank's corners (0.38) reach the hill at (7,5).
+        assert.equal(map.canStand(6.7, 5.5, 0.1), true, "small vehicle clears the hill");
+        assert.equal(map.canStand(6.7, 5.5, VEHICLES.tank.size), false, "tank reaches the hill corner");
+    });
+
+    it("hasLineOfSight is clear across open ground and blocked by a hill", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.hasLineOfSight(2.5, 5.5, 15.5, 5.5), true);
+        map.setTile(8, 5, T.HILL);
+        assert.equal(map.hasLineOfSight(2.5, 5.5, 15.5, 5.5), false);
+    });
+
+    it("hasLineOfSight skipOrigin lets a shooter on a blocking tile see out", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        // A watch tower sits on a BASE_STRUCTURE tile; without skipping the
+        // origin tile it would block its own view.
+        map.setTile(5, 5, T.BASE_STRUCTURE);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 15.5, 5.5, { skipOrigin: true }), true);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 15.5, 5.5), false, "origin tile blocks by default");
+    });
+
+    it("hasWalkableLine is clear across passable ground and blocked by obstacles", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), true);
+        map.setTile(8, 5, T.HILL);
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), false);
+    });
+
+    it("hasWalkableLine requires the endpoint tile to be passable", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        map.setTile(15, 5, T.HILL); // the destination tile itself
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), false);
+    });
+});

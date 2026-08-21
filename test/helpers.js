@@ -265,15 +265,7 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         bots.push(b);
     }
 
-    const canStand = (x, y) => {
-        const s = VEHICLES.tank.size * 0.85;
-        return (
-            map.isPassable(x - s, y - s) &&
-            map.isPassable(x + s, y - s) &&
-            map.isPassable(x - s, y + s) &&
-            map.isPassable(x + s, y + s)
-        );
-    };
+    const canStand = (x, y) => map.canStand(x, y);
 
     for (let f = 0; f < frames; f++) {
         const allTanks = bots.map((b) => b.tank);
