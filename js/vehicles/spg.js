@@ -11,6 +11,7 @@
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
+import { chargeRange } from "../utils.js";
 import { groundMove } from "./tank.js";
 
 /**
@@ -43,7 +44,7 @@ export const spg = {
             const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
             if (charge.chargeTime > maxCharge) charge.chargeTime = maxCharge;
         } else if (charge.isCharging && !fireHeld) {
-            const range = Math.min(vStats.minRange + charge.chargeTime * vStats.chargeRate, vStats.maxRange);
+            const range = chargeRange(vStats.minRange, vStats.maxRange, vStats.chargeRate, charge.chargeTime);
             charge.isCharging = false;
             charge.chargeTime = 0;
             tank.fire();
@@ -59,7 +60,7 @@ export const spg = {
                 speed: vStats.bulletSpeed,
                 arcing: true,
                 targetDistance: range,
-                flash: "spg",
+                flash: "spgFlash",
                 flashOffset: CONFIG.TANK_BARREL_LENGTH,
             });
             game.emit(GAME_EVENTS.FIRE, { source: tank, bullet: b, sound: VEHICLES.spg.fireSound ?? "tank" });

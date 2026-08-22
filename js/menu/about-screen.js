@@ -179,11 +179,7 @@ function drawStatCompare(ctx, cx, y, activeType, activeColor, canvasW) {
         ctx.textAlign = "left";
         ctx.font = '9px "Courier New", monospace';
         ctx.fillStyle = "#666";
-        ctx.fillText(
-            m.key === "rof" && activeType === "drone" ? "N/A" : val.toFixed(1),
-            startX + barW + 6,
-            my + barH / 2 + 3,
-        );
+        ctx.fillText(val == null ? "N/A" : val.toFixed(1), startX + barW + 6, my + barH / 2 + 3);
         ctx.textAlign = "right";
     }
     ctx.textAlign = "center";

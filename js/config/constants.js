@@ -41,8 +41,7 @@ export const CONFIG = {
     SNIPER_ENGAGE_RANGE: 6, // only fights enemies this close
     DEFENDER_PATROL_RADIUS: 10, // patrol radius around friendly tower
     DEFENDER_ENGAGE_RANGE: 18, // intercepts enemies this close to tower
-    SCOUT_FLANK_OFFSET: 20, // perpendicular offset for flanking route
-    SNIPER_FLANK_OFFSET: 15, // perpendicular offset for sniper flanking route
+    AIM_DEADZONE: 0.08, // turret/hull aim tolerance (radians) before steering
 
     // Position scoring weights: { cover, flank, range, los }
     // Each role scores candidate positions with these weights.

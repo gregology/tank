@@ -8,7 +8,7 @@
  * the bot's own state (`ai.keys`, `ai.stuckTime`, `ai.evading`, …).
  */
 
-import { ACTIONS } from "../config.js";
+import { ACTIONS, CONFIG } from "../config.js";
 import { aimTurretForward, steerTurretTo } from "./aiming.js";
 
 /**
@@ -120,8 +120,8 @@ export function blastNearestWall(ai, me, map) {
         let diff = bestA - me.angle;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        if (diff > 0.08) ai.keys[k.right] = true;
-        if (diff < -0.08) ai.keys[k.left] = true;
+        if (diff > CONFIG.AIM_DEADZONE) ai.keys[k.right] = true;
+        if (diff < -CONFIG.AIM_DEADZONE) ai.keys[k.left] = true;
     }
 
     const tw = me.turretWorld;

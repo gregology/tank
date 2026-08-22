@@ -12,7 +12,7 @@
  * stays as is.
  */
 
-import { ACTIONS } from "../config.js";
+import { ACTIONS, CONFIG } from "../config.js";
 
 /**
  * Recompute the A* route when the goal moved, the route is empty, or
@@ -85,8 +85,8 @@ export function steerToPoint(ai, me, point, { hasPath, map }) {
         ai.keys[ACTIONS.forward] = true;
     }
 
-    if (driveDiff > 0.08) ai.keys[ACTIONS.right] = true;
-    if (driveDiff < -0.08) ai.keys[ACTIONS.left] = true;
+    if (driveDiff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
+    if (driveDiff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
     if (ai.keys[ACTIONS.forward]) {
         nudge(ai, me, map);

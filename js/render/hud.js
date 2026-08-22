@@ -8,7 +8,7 @@
  */
 
 import { CONFIG, VEHICLES } from "../config.js";
-import { distance } from "../utils.js";
+import { chargeRange, distance } from "../utils.js";
 import { roundedRect } from "./canvas-utils.js";
 import { drawMinimap } from "./minimap.js";
 
@@ -184,7 +184,7 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
     if (focusTank.chargeable) {
         if (focusTank.charge?.isCharging) {
             const vStats = VEHICLES[focusTank.vehicleType];
-            const range = Math.min(vStats.minRange + focusTank.charge.chargeTime * vStats.chargeRate, vStats.maxRange);
+            const range = chargeRange(vStats.minRange, vStats.maxRange, vStats.chargeRate, focusTank.charge.chargeTime);
             const frac = (range - vStats.minRange) / (vStats.maxRange - vStats.minRange);
             const barW = 100,
                 barH = 8;

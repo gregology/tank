@@ -10,7 +10,7 @@
 import { patrol } from "../ai/navigation.js";
 import { chooseGoalAndTarget } from "../ai/roles.js";
 import { targetPriorityOf } from "../ai/targeting.js";
-import { ACTIONS, BASE_STRUCTURES, VEHICLES } from "../config.js";
+import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
 import { applyBlast } from "./aoe.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
@@ -64,8 +64,8 @@ export const drone = {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        if (diff > 0.08) ai.keys[ACTIONS.right] = true;
-        if (diff < -0.08) ai.keys[ACTIONS.left] = true;
+        if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
+        if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
         const dist = Math.hypot(target.x - me.x, target.y - me.y);
         if (Math.abs(diff) < Math.PI * 0.7 && dist > 0.5) {

@@ -13,7 +13,7 @@
  */
 
 import { VEHICLES } from "../config.js";
-import { clamp, worldToScreen } from "../utils.js";
+import { chargeRange, clamp, worldToScreen } from "../utils.js";
 import { PALETTE, rgb } from "./canvas-utils.js";
 import { drawBullet, drawParticle } from "./effects.js";
 import { drawTargetIndicator } from "./overlay.js";
@@ -73,7 +73,7 @@ export function renderViewport(ctx, game, focusTank, camera, vx, vy, vw, vh) {
     // ── Charging vehicle's targeting indicator (drawn in camera space) ──
     if (focusTank.alive && focusTank.charge?.isCharging) {
         const vStats = VEHICLES[focusTank.vehicleType];
-        const range = Math.min(vStats.minRange + focusTank.charge.chargeTime * vStats.chargeRate, vStats.maxRange);
+        const range = chargeRange(vStats.minRange, vStats.maxRange, vStats.chargeRate, focusTank.charge.chargeTime);
         const tAngle = focusTank.turretWorld;
         const targetWX = focusTank.x + Math.cos(tAngle) * range;
         const targetWY = focusTank.y + Math.sin(tAngle) * range;

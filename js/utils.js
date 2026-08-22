@@ -43,3 +43,16 @@ export function randomInt(lo, hi) {
 export function randomFloat(lo, hi) {
     return Math.random() * (hi - lo) + lo;
 }
+
+/* ── Chargeable-weapon range ───────────────────────────────── */
+
+/** Current charged range of a hold-to-charge weapon (clamped to max). */
+export function chargeRange(minRange, maxRange, chargeRate, chargeTime) {
+    return Math.min(minRange + chargeTime * chargeRate, maxRange);
+}
+
+/** Charge progress (0..1) toward the weapon's maximum range. */
+export function chargeFraction(minRange, maxRange, chargeRate, chargeTime) {
+    const maxCharge = (maxRange - minRange) / chargeRate;
+    return Math.min(1, chargeTime / maxCharge);
+}

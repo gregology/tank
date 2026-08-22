@@ -12,11 +12,9 @@
 
 import { Bullet } from "./bullet.js";
 
-/** Emit the muzzle flash for a shot, dispatched by its data key. */
+/** Emit the muzzle flash for a shot — `flash` is the `EFFECTS` key directly. */
 export function flashMuzzle(game, flash, x, y, angle) {
-    if (flash === "ifv") game.particles.emit("ifvFlash", x, y, angle);
-    else if (flash === "spg") game.particles.emit("spgFlash", x, y, angle);
-    else if (flash === "muzzle") game.particles.emit("muzzleFlash", x, y, angle);
+    if (flash) game.particles.emit(flash, x, y, angle);
 }
 
 /**

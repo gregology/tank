@@ -112,29 +112,16 @@ export const VEHICLE_INFO = [
  */
 export const STAT_METRICS = [
     { label: "SPEED", key: "speed", max: 7, value: (v) => v.speed },
-    // Squad members fight individually (SQUAD_MEMBERS) — the leader's
-    // placeholder bullet stats would read as zero, so the squad's damage
-    // bar is a hand-tuned display value.
-    {
-        label: "DAMAGE",
-        key: "dmg",
-        max: 2,
-        value: (v, type) => (type === "squad" ? 1.0 : (v.blastDamage ?? v.bulletDamage ?? 0)),
-    },
-    // "Armour" is the player-facing hit count: the 2-hit directional
-    // tank is 2, everything else is one-shot (squads drop members).
-    {
-        label: "ARMOUR",
-        key: "armour",
-        max: 3,
-        value: (_v, type) => (type === "tank" ? 2 : 1),
-    },
-    // Drones have no gun (0 shots/sec); squads auto-fire as a group.
+    // Player-facing simplifications override the raw gameplay numbers via
+    // explicit `display*` fields on VEHICLES (see config/vehicles.js).
+    { label: "DAMAGE", key: "dmg", max: 2, value: (v) => v.displayDamage ?? v.blastDamage ?? v.bulletDamage ?? 0 },
+    { label: "ARMOUR", key: "armour", max: 3, value: (v) => v.displayArmour ?? 1 },
     {
         label: "FIRE RATE",
         key: "rof",
         max: 6,
-        value: (v, type) => (type === "squad" ? 6 : v.bulletCooldown > 0 ? 1 / v.bulletCooldown : 0),
+        value: (v) =>
+            v.firesBullets === false ? null : (v.displayFireRate ?? (v.bulletCooldown > 0 ? 1 / v.bulletCooldown : 0)),
     },
 ];
 

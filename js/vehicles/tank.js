@@ -146,8 +146,8 @@ export function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    if (diff > 0.08) ai.keys[ACTIONS.right] = true;
-    if (diff < -0.08) ai.keys[ACTIONS.left] = true;
+    if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
+    if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
     // Also aim the turret if it is functional.
     ai.aimAndFire(me, target, map);
@@ -171,7 +171,7 @@ export const tank = {
             damage: vStats.bulletDamage,
             speed: vStats.bulletSpeed,
             tracer: vStats.tracer ?? false,
-            flash: vStats.muzzleFlash ?? "muzzle",
+            flash: vStats.muzzleFlash ?? "muzzleFlash",
             flashOffset: CONFIG.TANK_BARREL_LENGTH,
         });
         game.emit(GAME_EVENTS.FIRE, { source: tank, bullet: b, sound: vStats.fireSound ?? "tank" });
@@ -197,8 +197,8 @@ export const tank = {
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            if (diff > 0.08) ai.keys[ACTIONS.right] = true;
-            if (diff < -0.08) ai.keys[ACTIONS.left] = true;
+            if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
+            if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
             if (Math.abs(diff) > 0.3) return;
         } else {
