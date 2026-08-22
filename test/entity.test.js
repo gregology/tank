@@ -91,7 +91,7 @@ describe("Base – compound container", () => {
         const hq = new BaseStructure("baseHQ", 1, "#f00", "#800");
         hq.x = 5;
         hq.y = 5;
-        b.hq = hq;
+        b.structures.push(hq);
         assert.equal(b.alive, true);
         assert.equal(b.x, 5);
         assert.equal(b.y, 5);
@@ -99,12 +99,15 @@ describe("Base – compound container", () => {
         assert.equal(b.alive, false);
     });
 
-    it("allStructures includes all parts", () => {
+    it("allStructures includes all parts, with filtered views", () => {
         const b = new Base(1, "#f00", "#800");
-        b.hq = new BaseStructure("baseHQ", 1, "#f00", "#800");
-        b.walls.push(new BaseStructure("baseWall", 1, "#f00", "#800"));
-        b.towers.push(new BaseStructure("baseTower", 1, "#f00", "#800"));
+        b.structures.push(new BaseStructure("baseHQ", 1, "#f00", "#800"));
+        b.structures.push(new BaseStructure("baseWall", 1, "#f00", "#800"));
+        b.structures.push(new BaseStructure("baseTower", 1, "#f00", "#800"));
         assert.equal(b.allStructures.length, 3);
+        assert.equal(b.hq.entityType, "baseHQ");
+        assert.equal(b.walls.length, 1);
+        assert.equal(b.towers.length, 1);
     });
 
     it("x/y fallback to center when no HQ", () => {

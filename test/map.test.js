@@ -129,6 +129,9 @@ describe("Destructible terrain", () => {
 });
 
 describe("Base compounds", () => {
+    const countBy = (layout, type) => layout.structures.filter((s) => s.type === type).length;
+    const hqTiles = (layout) => layout.structures.find((s) => s.type === "baseHQ").tiles.length;
+
     it("places compounds on opposite sides of the island", () => {
         const map = new GameMap();
         const [l1, l2] = map.buildBaseCompounds();
@@ -173,26 +176,29 @@ describe("Base compounds", () => {
     it("small compound (64x64) has 2 watch towers", () => {
         const map = new GameMap(64, 64);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 2, "should have 2 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
-        assert.ok(l1.walls.length > 20, `should have many walls, got ${l1.walls.length}`);
+        assert.equal(countBy(l1, "baseTower"), 2, "should have 2 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
+        assert.ok(countBy(l1, "baseWall") > 20, `should have many walls, got ${countBy(l1, "baseWall")}`);
     });
 
     it("medium compound (128x128) has 4 corner towers", () => {
         const map = new GameMap(128, 128);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 4, "should have 4 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(countBy(l1, "baseTower"), 4, "should have 4 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
         assert.equal(l1.size, 14, "compound size should be 14");
     });
 
     it("large compound (192x192) has 6 towers and is circular", () => {
         const map = new GameMap(192, 192);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 6, "should have 6 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(countBy(l1, "baseTower"), 6, "should have 6 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
         assert.equal(l1.size, 21, "compound size should be 21 (diameter of r=10 circle)");
-        assert.ok(l1.walls.length > 30, `circular compound should have many walls, got ${l1.walls.length}`);
+        assert.ok(
+            countBy(l1, "baseWall") > 30,
+            `circular compound should have many walls, got ${countBy(l1, "baseWall")}`,
+        );
     });
 
     it("base spawn points are fully passable", () => {

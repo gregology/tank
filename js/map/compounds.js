@@ -12,6 +12,9 @@ import { distance, randomInt } from "../utils.js";
 import { layDirtRoad } from "./generation.js";
 import { canStand } from "./queries.js";
 
+/** Half-extent (tiles) of each compound tier; full size and spawn radius derive from it. */
+const COMPOUND_HALF = { small: 5, medium: 7, large: 10 };
+
 /**
  * Build two base compounds on opposite sides of the island.
  *
@@ -33,7 +36,7 @@ export function buildBaseCompounds(grid, baseType) {
     // Pick compound tier based on map size
     const mapMin = Math.min(grid.width, grid.height);
     grid._compoundTier = mapMin <= 80 ? "small" : mapMin <= 160 ? "medium" : "large";
-    const compoundR = grid._compoundTier === "small" ? 7 : grid._compoundTier === "medium" ? 10 : 14;
+    const compoundR = COMPOUND_HALF[grid._compoundTier] + 2;
 
     // Scale spatial parameters from island radius
     const clearR = Math.round(maxR * 0.25); // clear terrain radius around base
@@ -116,8 +119,8 @@ function angleToCardinal(angle) {
 /* -- Small compound (64x64): 10x10 square, 2 entrance towers -- */
 
 function stampCompoundSmall(grid, cx, cy, dir, baseType) {
-    const SIZE = 10;
-    const half = 5;
+    const half = COMPOUND_HALF.small;
+    const SIZE = half * 2;
     const ox = cx - half,
         oy = cy - half;
     const hqOnly = baseType === "hq_only";
@@ -148,8 +151,8 @@ function stampCompoundSmall(grid, cx, cy, dir, baseType) {
 /* -- Medium compound (128x128): 14x14 square, 4 corner towers -- */
 
 function stampCompoundMedium(grid, cx, cy, dir, baseType) {
-    const SIZE = 14;
-    const half = 7;
+    const half = COMPOUND_HALF.medium;
+    const SIZE = half * 2;
     const ox = cx - half,
         oy = cy - half;
     const hqOnly = baseType === "hq_only";
@@ -186,7 +189,7 @@ function stampCompoundMedium(grid, cx, cy, dir, baseType) {
 /* -- Large compound (192x192): circular r=10, 6 towers -- */
 
 function stampCompoundLarge(grid, cx, cy, dir, baseType) {
-    const RADIUS = 10; // circle radius in tiles
+    const RADIUS = COMPOUND_HALF.large; // circle radius in tiles
     const SIZE = RADIUS * 2 + 1; // bounding box
     const half = RADIUS;
     const ox = cx - half,
@@ -331,15 +334,18 @@ function finishLayout(grid, ox, oy, half, size, walls, towers, hqTilesArr, dir) 
         y: (hqTilesArr[0].gy + hqTilesArr[1].gy) / 2 + 0.5,
     };
     return {
-        walls,
-        towers,
-        hqTiles: hqTilesArr,
+        structures: [
+            ...towers.map((p) => ({ type: "baseTower", tiles: [{ gx: p.gx, gy: p.gy }] })),
+            ...walls.map((p) => ({ type: "baseWall", tiles: [{ gx: p.gx, gy: p.gy }] })),
+            { type: "baseHQ", tiles: hqTilesArr.map((t) => ({ gx: t.gx, gy: t.gy })), center: hqCenter },
+        ],
         hqCenter,
         center: { x: ox + half, y: oy + half },
         dir,
         ox,
         oy,
         size,
+        half,
     };
 }
 
@@ -389,7 +395,7 @@ function connectCompoundToRoad(grid, layout) {
  */
 export function getBaseSpawnPoint(grid, cx, cy) {
     const tier = grid._compoundTier ?? "small";
-    const half = tier === "small" ? 5 : tier === "medium" ? 7 : 10;
+    const half = COMPOUND_HALF[tier] ?? COMPOUND_HALF.small;
     const interior = (half - 1) * 2;
     const ox = Math.floor(cx) - half,
         oy = Math.floor(cy) - half;

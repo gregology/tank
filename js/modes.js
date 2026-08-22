@@ -40,26 +40,12 @@ function buildBase(layout, team, color, darkColor) {
     base.entranceDir = layout.dir;
     base.compoundSize = layout.size;
 
-    const hq = new BaseStructure("baseHQ", team, color, darkColor);
-    hq.x = layout.hqCenter.x;
-    hq.y = layout.hqCenter.y;
-    hq.tilePositions = layout.hqTiles.map((t) => ({ gx: t.gx, gy: t.gy }));
-    base.hq = hq;
-
-    for (const pos of layout.walls) {
-        const w = new BaseStructure("baseWall", team, color, darkColor);
-        w.x = pos.gx + 0.5;
-        w.y = pos.gy + 0.5;
-        w.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
-        base.walls.push(w);
-    }
-
-    for (const pos of layout.towers) {
-        const t = new BaseStructure("baseTower", team, color, darkColor);
-        t.x = pos.gx + 0.5;
-        t.y = pos.gy + 0.5;
-        t.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
-        base.towers.push(t);
+    for (const spec of layout.structures) {
+        const structure = new BaseStructure(spec.type, team, color, darkColor);
+        structure.tilePositions = spec.tiles;
+        structure.x = spec.center?.x ?? spec.tiles[0].gx + 0.5;
+        structure.y = spec.center?.y ?? spec.tiles[0].gy + 0.5;
+        base.structures.push(structure);
     }
 
     return base;

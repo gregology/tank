@@ -136,19 +136,26 @@ export class Base {
         this.team = team;
         this.color = color;
         this.darkColor = darkColor;
-        this.hq = null;
-        this.walls = [];
-        this.towers = [];
+        /** Every structure in the compound (walls, towers, HQ) in one list. */
+        this.structures = [];
         this.center = { x: 0, y: 0 };
         this.origin = { x: 0, y: 0 };
         this.entranceDir = "E";
         this.compoundSize = 10;
     }
 
+    /** The HQ structure (null if the compound has none). */
+    get hq() {
+        return this.structures.find((s) => s.entityType === "baseHQ") ?? null;
+    }
+    get walls() {
+        return this.structures.filter((s) => s.entityType === "baseWall");
+    }
+    get towers() {
+        return this.structures.filter((s) => s.entityType === "baseTower");
+    }
     get allStructures() {
-        const out = [...this.walls, ...this.towers];
-        if (this.hq) out.push(this.hq);
-        return out;
+        return this.structures;
     }
 
     get alive() {
