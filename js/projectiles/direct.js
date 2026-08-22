@@ -36,7 +36,7 @@ export const direct = {
         game.emit(GAME_EVENTS.IMPACT, { bullet: b });
         const gx = Math.floor(b.x),
             gy = Math.floor(b.y);
-        const structure = game._getStructureAt(gx, gy);
+        const structure = game.structureAt(gx, gy);
         if (structure) {
             if (b.team !== structure.team && structure.applyDamage(b.damage) === "destroyed") {
                 game.onStructureDestroyed(structure);

@@ -1495,17 +1495,17 @@ describe("Game – separation, crush, structures, towers", () => {
         assert.ok(after >= VEHICLES.tank.size + 0.5 - 0.05, `tank at min distance (${after})`);
     });
 
-    it("_getStructureAt finds structures by tile and onStructureDestroyed clears them", () => {
+    it("structureAt finds structures by tile and onStructureDestroyed clears them", () => {
         const game = new Game(battleConfig([human(1), human(2)]));
         const structure = game.baseStructures[0];
         const pos = structure.tilePositions[0];
-        assert.equal(game._getStructureAt(pos.gx, pos.gy), structure);
+        assert.equal(game.structureAt(pos.gx, pos.gy), structure);
         const destroys = [];
         game.on("destroy", (d) => destroys.push(d));
         game.onStructureDestroyed(structure);
         assert.equal(destroys.length, 1);
         assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
-        assert.equal(game._getStructureAt(pos.gx, pos.gy), null);
+        assert.equal(game.structureAt(pos.gx, pos.gy), null);
     });
 
     it("watch towers fire at enemies in range with LOS", () => {

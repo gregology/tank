@@ -440,8 +440,13 @@ export class Game {
     }
 
     /** Look up the structure entity occupying tile (gx, gy). */
-    _getStructureAt(gx, gy) {
+    structureAt(gx, gy) {
         return this._structureMap.get(`${gx},${gy}`) ?? null;
+    }
+
+    /** The full bot handle (`{ ai, tank, enemies }`) for a tank, or null. */
+    getBot(tank) {
+        return this._bots.find((b) => b.tank === tank) ?? null;
     }
 
     /** Handle a structure being destroyed: clear tiles, particles, events. */

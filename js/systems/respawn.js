@@ -22,8 +22,8 @@ export function handleRespawns(game, dt) {
             t.flashTimer = 1;
             // Re-randomise vehicle type on respawn.
             t.vehicleType = pickVehicleType(game.typeDef.vehicles);
-            // Re-assign AI role for bots (raw `_bots` — the system needs the ai handle).
-            const bot = game._bots.find((b) => b.tank === t);
+            // Re-assign AI role for bots (via the public world-model handle).
+            const bot = game.getBot(t);
             if (bot) {
                 bot.ai.role = pickRoleForVehicle(t.vehicleType);
                 bot.ai.resetLife();
