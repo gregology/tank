@@ -4,22 +4,7 @@
  * a border tinted with the local player's team colour.
  */
 
-import { TILES as T } from "../config.js";
-
-const TILE_COLORS = {
-    [T.DEEP_WATER]: "#1a3252",
-    [T.SHALLOW_WATER]: "#265a80",
-    [T.SAND]: "#c8b490",
-    [T.DIRT]: "#9b8260",
-    [T.PAVED]: "#8c8a82",
-    [T.GRASS]: "#487c3c",
-    [T.DARK_GRASS]: "#3a6c2a",
-    [T.HILL]: "#8c7350",
-    [T.ROCK]: "#808080",
-    [T.BLDG_SMALL]: "#b4a08c",
-    [T.BLDG_MEDIUM]: "#a0a0b0",
-    [T.BLDG_LARGE]: "#707080",
-};
+import { TILE_VISUALS } from "../config.js";
 
 const ROLE_LETTERS = { cavalry: "C", sniper: "S", defender: "D", scout: "F" };
 
@@ -40,7 +25,7 @@ export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
     for (let gy = 0; gy < map.height; gy++) {
         for (let gx = 0; gx < map.width; gx++) {
             const t = map.getTile(gx, gy);
-            ctx.fillStyle = TILE_COLORS[t] ?? "#000";
+            ctx.fillStyle = TILE_VISUALS[t]?.mapColor ?? "#000";
             ctx.fillRect(mmX + gx * px, mmY + gy * px, px, px);
         }
     }

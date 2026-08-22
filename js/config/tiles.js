@@ -141,3 +141,40 @@ export const TILE_PROPS = Object.freeze([
         hp: 0,
     },
 ]);
+
+/**
+ * Per-tile *visual* semantics, indexed by the `TILES` id (the render-only
+ * companion to `TILE_PROPS`).  `draw` selects the draw kind; `color` /
+ * `top|left|right` are keys into the render `PALETTE`; `variation` is the
+ * per-channel colour jitter for flat tiles; `mapColor` is the minimap fill.
+ * The tile renderer (`js/render/tiles.js`) and the minimap both read this
+ * table, so a new tile type is one `TILES` id + one `TILE_PROPS` row + one
+ * `TILE_VISUALS` row — no draw switch or colour table to edit.
+ */
+export const TILE_VISUALS = Object.freeze([
+    /* 0 DEEP_WATER    */ { draw: "water", color: "deepWater", mapColor: "#1a3252" },
+    /* 1 SHALLOW_WATER */ { draw: "water", color: "shallowWater", mapColor: "#265a80" },
+    /* 2 SAND          */ { draw: "flat", color: "sand", variation: { r: 3, g: 3, b: 2 }, mapColor: "#c8b490" },
+    /* 3 GRASS         */ { draw: "flat", color: "grass", variation: { r: 4, g: 4, b: 3 }, mapColor: "#487c3c" },
+    /* 4 DARK_GRASS    */ { draw: "flat", color: "darkGrass", variation: { r: 3, g: 3, b: 2 }, mapColor: "#3a6c2a" },
+    /* 5 HILL          */ {
+        draw: "elevated",
+        top: "hillTop",
+        left: "hillLeft",
+        right: "hillRight",
+        mapColor: "#8c7350",
+    },
+    /* 6 ROCK          */ {
+        draw: "elevated",
+        top: "rockTop",
+        left: "rockLeft",
+        right: "rockRight",
+        mapColor: "#808080",
+    },
+    /* 7 DIRT          */ { draw: "flat", color: "dirt", variation: { r: 3, g: 3, b: 2 }, mapColor: "#9b8260" },
+    /* 8 PAVED         */ { draw: "flat", color: "paved", variation: { r: 2, g: 2, b: 2 }, mapColor: "#8c8a82" },
+    /* 9 BLDG_SMALL    */ { draw: "building", mapColor: "#b4a08c" },
+    /* 10 BLDG_MEDIUM  */ { draw: "building", mapColor: "#a0a0b0" },
+    /* 11 BLDG_LARGE   */ { draw: "building", mapColor: "#707080" },
+    /* 12 BASE_STRUCTURE */ { draw: "none", mapColor: "#000" },
+]);

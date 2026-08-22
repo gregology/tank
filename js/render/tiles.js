@@ -7,7 +7,7 @@
  * `viewport.js` for the two-pass orchestration.
  */
 
-import { TILES as T } from "../config.js";
+import { TILE_VISUALS } from "../config.js";
 import { drawBuilding } from "./buildings.js";
 import { PALETTE, rgb } from "./canvas-utils.js";
 import { drawDamageOverlay } from "./damage.js";
@@ -18,81 +18,41 @@ import { TH, TW } from "./projection.js";
  * @param {{gx:number, gy:number, tile:number, sx:number, sy:number}} tilePos
  */
 export function drawTile(ctx, { gx, gy, tile, sx, sy }, time, map) {
-    // Colour variation per tile based on position
+    const visual = TILE_VISUALS[tile];
+    if (!visual) return;
+
+    // Colour variation per tile based on position.
     const v = ((gx * 7 + gy * 13) % 5) - 2; // −2 … +2
 
-    switch (tile) {
-        case T.DEEP_WATER:
-        case T.SHALLOW_WATER: {
-            const base = tile === T.DEEP_WATER ? PALETTE.deepWater : PALETTE.shallowWater;
-            const wave = Math.sin(time * 1.8 + gx * 1.3 + gy * 0.9) * 0.5 + 0.5;
-            const r = base.r + v * 2 + wave * 12;
-            const g = base.g + v * 2 + wave * 16;
-            const b = base.b + v * 2 + wave * 22;
-            drawDiamond(ctx, sx, sy, rgb(r, g, b));
-            // subtle wave highlight
-            if (wave > 0.7) {
-                ctx.globalAlpha = (wave - 0.7) * 1.5;
-                drawDiamond(ctx, sx, sy, "rgba(180,210,240,0.15)");
-                ctx.globalAlpha = 1;
-            }
-            break;
+    if (visual.draw === "water") {
+        const base = PALETTE[visual.color];
+        const wave = Math.sin(time * 1.8 + gx * 1.3 + gy * 0.9) * 0.5 + 0.5;
+        drawDiamond(
+            ctx,
+            sx,
+            sy,
+            rgb(base.r + v * 2 + wave * 12, base.g + v * 2 + wave * 16, base.b + v * 2 + wave * 22),
+        );
+        // subtle wave highlight
+        if (wave > 0.7) {
+            ctx.globalAlpha = (wave - 0.7) * 1.5;
+            drawDiamond(ctx, sx, sy, "rgba(180,210,240,0.15)");
+            ctx.globalAlpha = 1;
         }
-
-        case T.SAND: {
-            const c = PALETTE.sand;
-            drawDiamond(ctx, sx, sy, rgb(c.r + v * 3, c.g + v * 3, c.b + v * 2));
-            break;
-        }
-
-        case T.DIRT: {
-            const c = PALETTE.dirt;
-            drawDiamond(ctx, sx, sy, rgb(c.r + v * 3, c.g + v * 3, c.b + v * 2));
-            break;
-        }
-
-        case T.PAVED: {
-            const c = PALETTE.paved;
-            drawDiamond(ctx, sx, sy, rgb(c.r + v * 2, c.g + v * 2, c.b + v * 2));
-            break;
-        }
-
-        case T.GRASS: {
-            const c = PALETTE.grass;
-            drawDiamond(ctx, sx, sy, rgb(c.r + v * 4, c.g + v * 4, c.b + v * 3));
-            break;
-        }
-
-        case T.DARK_GRASS: {
-            const c = PALETTE.darkGrass;
-            drawDiamond(ctx, sx, sy, rgb(c.r + v * 3, c.g + v * 3, c.b + v * 2));
-            break;
-        }
-
-        case T.HILL: {
-            const frac = map.getDamageFraction(gx, gy);
-            const h = Math.round(map.tileHeight(T.HILL) * frac);
-            drawElevatedTile(ctx, sx, sy, h, PALETTE.hillTop, PALETTE.hillLeft, PALETTE.hillRight, v);
-            if (frac < 1) drawDamageOverlay(ctx, sx, sy, h, frac, time);
-            break;
-        }
-
-        case T.ROCK: {
-            const frac = map.getDamageFraction(gx, gy);
-            const h = Math.round(map.tileHeight(T.ROCK) * frac);
-            drawElevatedTile(ctx, sx, sy, h, PALETTE.rockTop, PALETTE.rockLeft, PALETTE.rockRight, v);
-            if (frac < 1) drawDamageOverlay(ctx, sx, sy, h, frac, time);
-            break;
-        }
-
-        case T.BLDG_SMALL:
-        case T.BLDG_MEDIUM:
-        case T.BLDG_LARGE: {
-            const frac = map.getDamageFraction(gx, gy);
-            drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time);
-            break;
-        }
+    } else if (visual.draw === "flat") {
+        const c = PALETTE[visual.color];
+        const m = visual.variation;
+        drawDiamond(ctx, sx, sy, rgb(c.r + v * m.r, c.g + v * m.g, c.b + v * m.b));
+    } else if (visual.draw === "elevated") {
+        const frac = map.getDamageFraction(gx, gy);
+        const h = Math.round(map.tileHeight(tile) * frac);
+        drawElevatedTile(ctx, sx, sy, h, PALETTE[visual.top], PALETTE[visual.left], PALETTE[visual.right], v);
+        if (frac < 1) drawDamageOverlay(ctx, sx, sy, h, frac, time);
+    } else if (visual.draw === "building") {
+        const frac = map.getDamageFraction(gx, gy);
+        drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time);
     }
+    // "none" (base-structure tile) draws nothing — its structure sprite draws it.
 }
 
 /** Draw a flat isometric diamond (top face of a ground-level tile). */
