@@ -101,8 +101,9 @@ Reusable, deterministic utilities:
   report as isDown/analog, `pressed` actions are consumed by a single
   `wasPressed` call (edge-triggered across frames). Use it to drive human
   tanks and menu navigation.
-- `randomMap(...)` — random map (note: currently returns a legacy `towers`
-  field that should be treated as removable debt).
+- `randomMap()` — random map with base compounds; returns
+  `{ map, layouts }`. Derive passable spawn points near a compound centre
+  with `map.getBaseSpawnPoint(layout.center.x, layout.center.y)`.
 
 ### Per-suite notes
 

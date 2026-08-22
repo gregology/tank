@@ -1,32 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-    clamp,
-    distance,
-    lerp,
-    normalizeAngle,
-    randomFloat,
-    randomInt,
-    screenToWorld,
-    worldDirToScreen,
-    worldToScreen,
-} from "../js/utils.js";
+import { clamp, distance, lerp, normalizeAngle, randomFloat, randomInt, worldToScreen } from "../js/utils.js";
 
 describe("Isometric projection", () => {
-    it("worldToScreen round-trips with screenToWorld", () => {
-        const wx = 10,
-            wy = 20;
-        const s = worldToScreen(wx, wy);
-        const w = screenToWorld(s.x, s.y);
-        assert.ok(Math.abs(w.x - wx) < 0.001);
-        assert.ok(Math.abs(w.y - wy) < 0.001);
+    it("worldToScreen maps the world origin to the screen origin", () => {
+        const s = worldToScreen(0, 0);
+        assert.equal(s.x, 0);
+        assert.equal(s.y, 0);
     });
 
-    it("worldDirToScreen returns screen-space direction", () => {
-        const d = worldDirToScreen(1, 0);
-        assert.ok(typeof d.x === "number");
-        assert.ok(typeof d.y === "number");
-        assert.ok(d.x !== 0 || d.y !== 0);
+    it("worldToScreen projects the world axes onto the screen diagonals", () => {
+        const right = worldToScreen(1, 0);
+        const down = worldToScreen(0, 1);
+        // +x and +y both move down-screen; +x drifts right, +y drifts left
+        assert.ok(right.x > 0 && right.y > 0);
+        assert.ok(down.x < 0 && down.y > 0);
     });
 });
 

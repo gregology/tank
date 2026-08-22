@@ -29,7 +29,7 @@ Choose from the start menu:
 | Mode | Description |
 |------|-------------|
 | **Skirmish** | Kill race to 10. Up to 4 players; defaults to a free-for-all (each player a different colour) but players can team up. One player faces a single bot. |
-| **Battle** | Tower/base objective. Two teams (RED vs BLUE), all vehicle types; bots fill each team to the chosen team size. |
+| **Battle** | Base objective: destroy the enemy HQ. Two teams (RED vs BLUE), all vehicle types; bots fill each team to the chosen team size. |
 
 ## Controls
 
@@ -79,9 +79,9 @@ Keyboard and gamepads can be used at the same time (e.g. one player on the keybo
   - **Second hit from any direction** — destroyed
 - Damaged tanks trail **smoke** and show visual damage (broken tracks, locked turret with red ✕, darkened hull).
 - In **Skirmish**, the first player or team to **10 kills** wins.
-- In **Battle**, each team has a **tower** at their base. Destroy the enemy tower to win (towers take 10 hits). Tanks respawn at their team's base.
+- In **Battle**, each team has a **base compound** (HQ, walls, and watch towers) at their side. Destroy the enemy **HQ** to win (it takes 20 hits); watch towers fire at enemies, and walls block movement. Tanks respawn inside their team's compound.
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
-- Each viewport has a **minimap** in the corner showing the full island, all players, and towers.
+- Each viewport has a **minimap** in the corner showing the full island, all players, base structures, and role letters.
 
 ## Development
 
@@ -110,24 +110,29 @@ Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
 ## Vehicle Types
 
-In **Battle**, each vehicle is **randomly assigned** at spawn and respawn (50% tank, 30% IFV, 20% drone). Skirmish always uses tanks.
+In **Battle**, each vehicle is **randomly assigned** at spawn and respawn from the five types — tank, IFV, drone, SPG, squad — each with equal weight. Skirmish always uses tanks.
 
-| Stat | Tank | IFV | Drone |
-|------|------|---------|-------|
-| Speed | 1× | 1.5× | 2× |
-| Armour | 2 hits | 1 hit | 1 hit |
-| Firepower | 1× (full damage) | 0.25× (rapid fire) | Kamikaze (1× at point blank) |
-| Bullet speed | 1× | 1.5× | N/A |
-| Turret | Independent rotation | Fixed (fires forward) | N/A |
-| Movement | Ground only | Ground only | **Flies over everything** |
+| Stat | Tank | IFV | Drone | SPG | Squad |
+|------|------|---------|-------|-----|-------|
+| Speed | 1× | 1.5× | 2× | 0.7× | 0.9× |
+| Armour | 2 hits | 1 hit | 1 hit | 1 hit | 5 members |
+| Firepower | 1× (full damage) | 0.25× (rapid fire) | Kamikaze (1× at point blank) | 1× arcing shell + splash | Auto-fire (rifle/RPG) |
+| Bullet speed | 1× | 1.5× | N/A | N/A (arcing shell) | N/A (member weapons) |
+| Turret | Independent rotation | Fixed (fires forward) | N/A | Independent (slow) | N/A (auto-target) |
+| Movement | Ground only | Ground only | **Flies over everything** | Ground only | Ground only |
+| Minimap | ■ | ◇ | ✕ | ▲ | ● |
 
 **Tanks** are the default — tough, versatile, with an independently rotating turret. Two hits to destroy (with directional subsystem damage), or one rear shot.
 
-**IFVs** are glass cannons — faster movement, rapid-fire autocannon with 1.5× bullet speed, but destroyed by a single hit from anything. Their gun is fixed forward (no turret rotation), so they must aim by steering. The HUD shows your current vehicle type. On the minimap, IFVs appear as diamonds ◇ while tanks are squares ■.
+**IFVs** are glass cannons — faster movement, rapid-fire autocannon with 1.5× bullet speed, but destroyed by a single hit from anything. Their gun is fixed forward (no turret rotation), so they must aim by steering. The HUD shows your current vehicle type.
 
 IFV bullets deal 25% damage — four hits equal one tank hit. This creates an asymmetric dynamic: IFVs harass and whittle down tanks, but one return shot ends them.
 
-**Drones** are FPV kamikaze quadcopters inspired by modern warfare. They fly over all terrain — buildings, hills, rocks, and water — at 2× speed. They carry no gun; instead, the pilot flies into a target and presses fire to **detonate**. Damage falls off with distance: point-blank deals 1.0 (equivalent to a tank shell), dropping linearly to 0 at the blast radius edge (2.5 tiles). Directional armour applies based on the drone's approach angle — diving into a tank's rear is an instant kill, while a sloppy approach from the front only disables the turret. The drone is always destroyed on detonation, even if it misses. On the minimap, drones appear as crosses ✕.
+**Drones** are FPV kamikaze quadcopters inspired by modern warfare. They fly over all terrain — buildings, hills, rocks, and water — at 2× speed. They carry no gun; instead, the pilot flies into a target and presses fire to **detonate**. Damage falls off with distance: point-blank deals 1.0 (equivalent to a tank shell), dropping linearly to 0 at the blast radius edge (2.5 tiles). Directional armour applies based on the drone's approach angle — diving into a tank's rear is an instant kill, while a sloppy approach from the front only disables the turret. The drone is always destroyed on detonation, even if it misses.
+
+**SPGs** are heavy self-propelled artillery. Hold **fire** to charge range, then release to launch — the longer the hold, the further the shell flies (up to 25 tiles). Shells arc **over** terrain obstacles and detonate with splash damage, so an SPG can bombard enemies hiding behind buildings. Its gun is an independently rotating turret, but the vehicle is slow and fragile — one hit destroys it, so it must stay at range.
+
+**Squads** are five-man infantry fireteams that fight on their own. Members auto-target and auto-fire independently: the RPG engages vehicles and base structures, the shotgun is a dedicated counter to drones, and rifles/machine-guns engage enemy squads. The squad loses members one by one as it takes damage, and pressing **fire** makes it dig in for reduced incoming damage; buildings provide cover.
 
 ## AI Bot Roles
 
@@ -135,10 +140,10 @@ In **Battle**, each AI bot is randomly assigned a **role** at spawn and respawn.
 
 | Role | Symbol | Behaviour |
 |------|--------|-----------|
-| **Cavalry** | C | Aggressive rush straight to the enemy tower. Engages anything in its path. First to arrive but often first to die. |
-| **Sniper** | S | Finds a firing position at range from the enemy tower and bombards it from a distance. Avoids close combat (self-defence only). |
-| **Defender** | D | Patrols near the friendly tower and intercepts incoming enemies. Switches to cavalry if the tower falls. |
-| **Scout** | F | Takes a wide flanking route to reach the enemy tower from an unexpected angle. Engages enemies only in close range. |
+| **Cavalry** | C | Aggressive rush straight to the enemy base. Engages anything in its path. First to arrive but often first to die. |
+| **Sniper** | S | Finds a firing position at range from the enemy base and bombards it from a distance. Avoids close combat (self-defence only). |
+| **Defender** | D | Patrols near the friendly base and intercepts incoming enemies. Switches to cavalry if the base falls. |
+| **Scout** | F | Takes a wide flanking route to reach the enemy base from an unexpected angle. Engages enemies only in close range. |
 
 Role letters appear on the minimap next to allied bot dots, and an allied roster is shown in the bottom-left of the HUD.
 
@@ -151,7 +156,7 @@ The mix of roles creates more dynamic and unpredictable battles instead of two b
 - **Map generation** uses seeded value noise (fBm) for the island shape, then stamps village clusters with paved road networks and connects them with dirt roads using a cardinal-step algorithm.
 - **Tank graphics** are fully projected — every polygon is defined in local space, rotated by the tank's angle, and projected through the isometric transform. Hull and tracks use hull angle; turret and barrel use independent turret angle. Layers are stacked with visible 3D extrusion. Damage is shown through colour changes (broken tracks, grey locked turret, darkened hull).
 - **Directional armour** uses bearing-based hit detection: the angle from the tank centre to the bullet contact point, relative to the hull facing, determines the hit zone (front ±45°, rear ±45°, sides fill the remainder).
-- **Vehicle types** — tanks, IFVs, and drones share the Tank class but differ in speed, armour, and attack behaviour. Bullets carry damage and speed values. Partial damage accumulates: four 0.25-damage hits trigger the same directional armour effect as one full hit. Drones use `_canFly()` instead of `_canOccupy()` for movement, bypassing terrain collision. Drone detonation is area-of-effect with linear distance falloff.
+- **Vehicle types** — all five types (tank, IFV, drone, SPG, squad) share the Tank class but differ through per-type behaviour strategies in `js/vehicles/`. Bullets carry damage and speed values. Partial damage accumulates: four 0.25-damage hits trigger the same directional armour effect as one full hit. Drones fly over terrain (map-bounds check instead of passability); their detonation is area-of-effect with linear distance falloff. SPG shells arc over obstacles and splash on impact; a squad is one entity owning five independently firing soldiers (the `Squad` component).
 - **Sound** is 100% procedural: noise buffers through bandpass filters for gunshots, low oscillators for explosions, metallic clangs for subsystem hits, sine tones for UI feedback.
 - **Pathfinding** uses A\* with an octile heuristic and a wall-proximity cost overlay. Binary min-heap open set. Under 1ms per search on 64×64.
 - **Collision** is axis-separated (tanks slide along obstacles) with passability-checked separation to prevent tanks being pushed into walls.

@@ -2,9 +2,15 @@ context:
   - content: |
       The module dependency graph is:
         main.js → game.js, renderer.js, audio.js, menu.js, input.js
-        game.js → map.js, tank.js, bullet.js, particles.js, camera.js, ai.js
-        ai.js → pathfinder.js
-        renderer.js → js/render/*, layout.js   (thin shell)
+        game.js → map.js, tank.js, bullet.js, particles.js, camera.js,
+                  ai.js, modes.js, vehicles/
+        ai.js → pathfinder.js, vehicles/, ai/   (thin controller)
+        ai/ → config.js
+        menu.js → lobby.js, menu/               (thin shell)
+        menu/ → config.js, render/vehicles.js, render/canvas-utils.js
+        config.js → config/                     (barrel; config/ imports nothing)
+        modes.js → config.js, entity.js
+        renderer.js → js/render/*, layout.js    (thin shell)
         js/render/* → config.js, utils.js, draw-helpers.js, formation.js
       All modules import config.js and utils.js.  Avoid circular dependencies.
     match: ["**"]
@@ -37,8 +43,9 @@ context:
       map.js generation order matters:
         1. _baseTile() — water/sand/grass for every cell
         2. _placeVillages() — stamps paved roads, buildings, then dirt roads
-        3. findTowerPositions() called separately by game.js — stamps sand bases,
-           clears radius-10 around bases, clears path between bases
+        3. buildBaseCompounds() called by battle mode init (js/modes.js) —
+           clears terrain around the two bases, stamps compound walls/towers/HQ,
+           carves a path between them
       Village placement enforces 14-tile minimum separation between centres.
       Dirt roads use cardinal-step algorithm (no diagonal-only connections).
     match: ["map.js"]

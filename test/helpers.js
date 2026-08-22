@@ -52,9 +52,7 @@ export function seededRng(seed) {
 export function randomMap() {
     const map = new GameMap();
     const layouts = map.buildBaseCompounds();
-    // Backward-compat: "towers" returns passable spawn points near compound centres
-    const towers = layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y));
-    return { map, layouts, towers };
+    return { map, layouts };
 }
 
 /**

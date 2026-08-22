@@ -17,6 +17,11 @@ import {
     wallV,
 } from "./helpers.js";
 
+/** Passable spawn points near each compound centre (battle maps). */
+function baseSpawns(map, layouts) {
+    return layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y));
+}
+
 /* ── Helper: run a navigation scenario across N fixed seeds ── *
  *                                                                *
  * Each seed produces a fully deterministic AI run on a             *
@@ -128,10 +133,8 @@ describe("AI Navigation – cross-map (random terrain)", () => {
     it("reaches the opposite tower on 10 random maps", () => {
         let failures = 0;
         for (let i = 0; i < 10; i++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const rng = seededRng(i + 100);
             const bot = createBot(tp1.x, tp1.y, 0, map, rng);
             const result = simulateNavigation(bot, { x: tp2.x, y: tp2.y }, map, {
@@ -208,10 +211,8 @@ describe("AI Team mode – 5v5 objective push", () => {
         let totalStuck = 0,
             totalBots = 0;
         for (let trial = 0; trial < 10; trial++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const results = simulateTeam(map, tp1, tp2, tp2, tp1, { seconds: 60, botsPerTeam: 5 });
             const startDist = Math.hypot(tp2.x - tp1.x, tp2.y - tp1.y);
             for (const r of results) {
@@ -225,10 +226,8 @@ describe("AI Team mode – 5v5 objective push", () => {
 
     it("bots are never pushed into impassable terrain", () => {
         for (let trial = 0; trial < 5; trial++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const _results = simulateTeam(map, tp1, tp2, tp2, tp1, { seconds: 15, botsPerTeam: 5 });
         }
         assert.ok(true);

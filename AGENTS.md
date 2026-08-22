@@ -41,10 +41,11 @@ Do not preserve an old shape "just in case". Dead code, legacy fields, and
 
 - When an API changes, **migrate every call site** and delete the old path.
   Two live ways to do one thing is worse than a temporary broken window.
-- Examples already flagged for removal: `js/map.js#_createBase()` (dead),
-  the `randomMap().towers` backward-compat field in `test/helpers.js`, and
-  stale mode text in the older YAML files and `README.md`. These should be
-  deleted, not maintained.
+- Examples already removed (opportunity #10): `js/map.js#_createBase()`
+  (dead code), the `randomMap().towers` backward-compat field in
+  `test/helpers.js`, the unused `utils.js` projection helpers, and stale
+  mode text in `AGENTS.yaml` / `README.md`. Keep new changes free of such
+  shims.
 
 ### 3. Larger refactors beat quick fixes
 
@@ -204,10 +205,10 @@ the known structural debt is:
   keep logic out of that dispatch and add new vehicle behaviour to
   `js/vehicles/` instead.
 - The module decompositions are done: `ai.js` (→ `js/ai/`, #8), `menu.js`
-  and `config.js` (→ `js/menu/` and `js/config/`, #9). `map.js` (~1,160
-  lines) is now the largest single logic module and the natural next split
-  candidate; opportunity #10 (dead code + stale docs) is the remaining
-  scheduled cleanup.
+  and `config.js` (→ `js/menu/` and `js/config/`, #9), and the dead code /
+  stale docs cleanup (#10) is done too. `map.js` (~1,140 lines) is now the
+  largest single logic module and the natural next split candidate; it is
+  the only item left on the opportunity list.
 - Coverage is now honest: every `js/` module (including each file under
   `js/ai/`, `js/menu/`, `js/config/`) is imported by at least one test
   (opportunity #2 done), and the aggregate gate sits at ~97% line / ~90%

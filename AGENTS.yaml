@@ -25,7 +25,7 @@ context:
            js/render/minimap.js (TILE_COLORS), and js/render/canvas-utils.js
            (PALETTE) as needed
         5. Update test/helpers.js if the tile appears in test maps
-    match: ["js/config.js", "js/map.js", "js/renderer.js", "js/render/*"]
+    match: ["js/config.js", "js/config/*", "js/map.js", "js/renderer.js", "js/render/*"]
     on: create
     when: before
 
@@ -43,18 +43,21 @@ context:
 
   - content: |
       To add a new game mode:
-        1. Add a new entry to menu.modes in menu.js
-        2. Handle the mode string in Game constructor (game.js) — add
-           _init and _update methods following the duel/team pattern
-        3. Wire up input sources and camera in main.js and renderer.js
-    match: ["js/menu.js", "js/game.js", "js/main.js", "js/renderer.js"]
+        1. Add a GAME_TYPES entry in js/config/options.js (win, teamSet,
+           bases, vehicles, options)
+        2. Add a mode strategy object in js/modes.js with the hooks the
+           mode differs on (init, spawn, checkWin, onKill, labels) and
+           register it in MODES
+    match: ["js/config/*", "js/modes.js", "js/game.js", "js/main.js"]
     on: create
     when: before
 
   - content: |
-      The game has three modes: pvp (split screen), pvb (human vs AI, full
-      screen), and team (5v5 with towers, full screen).  Any new feature
-      must work in all three modes or be explicitly scoped to one.
+      The game has two modes: skirmish (score race to 10, no bases, tanks
+      only, any number of players up to 4) and battle (RED vs BLUE, base
+      compounds with HQ/walls/watch towers, all five vehicle types,
+      bot-filled teams).  Any new feature must work in both modes or be
+      explicitly scoped to one.
     match: ["js/game.js", "js/renderer.js", "js/main.js"]
     on: [edit, create]
     when: before
@@ -79,7 +82,7 @@ context:
       Navigation and combat are separated — bots always navigate toward
       their objective (tower) and fire at enemies they pass, rather than
       chasing enemies and abandoning the objective.
-    match: ["js/ai.js"]
+    match: ["js/ai.js", "js/ai/*"]
     on: [edit, create]
     when: before
 

@@ -813,26 +813,6 @@ export class GameMap {
         return true;
     }
 
-    /**
-     * Stamp a circular sand base around (gx, gy).
-     * Radius 5: everything inside becomes sand, all terrain removed.
-     */
-    _createBase(gx, gy) {
-        const R = 5;
-        for (let dy = -R; dy <= R; dy++) {
-            for (let dx = -R; dx <= R; dx++) {
-                if (dx * dx + dy * dy > R * R) continue; // circular
-                const tx = gx + dx,
-                    ty = gy + dy;
-                const t = this.getTile(tx, ty);
-                // Only overwrite land tiles (not water)
-                if (t !== T.DEEP_WATER && t !== T.SHALLOW_WATER) {
-                    this.setTile(tx, ty, T.SAND);
-                }
-            }
-        }
-    }
-
     /** Find a random passable spawn point, far from (ax, ay). */
     getSpawnPoint(ax, ay, minDist = 10) {
         for (let attempt = 0; attempt < 300; attempt++) {

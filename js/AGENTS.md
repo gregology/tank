@@ -293,14 +293,15 @@ make them worse:
   `docs/refactor_opportunities.md`) — do not grow `renderer.js` back into a
   god object; put new drawing code in the right `js/render/` module and keep
   the package's dependency rules intact.
-- `map.js` (~1,160 lines) is the largest single logic module; it is not
+- `map.js` (~1,140 lines) is the largest single logic module; it is not
   currently scheduled for a split (its geometry queries already live on the
   shared `GameMap` API, #5).
-- Dead code: `map.js#_createBase()` is never called (opportunity #10).
 
 Done — do not reintroduce: vehicle `vehicleType` dispatch (now a strategy in
 `js/vehicles/`, #3), duplicated line-of-sight / passability queries (now one
 geometry API on `GameMap`, #5), the old god-object shapes of `ai.js`,
 `menu.js`, and `config.js` (now thin shells over the `js/ai/`, `js/menu/`,
-and `js/config/` packages, #8/#9). The only remaining `vehicleType === "x"`
+and `js/config/` packages, #8/#9), and dead code / backward-compat shims
+(`map.js#_createBase()`, the `randomMap().towers` field, unused projection
+helpers — removed in #10). The only remaining `vehicleType === "x"`
 dispatch is per-sprite drawing inside `js/render/` — keep logic out of it.

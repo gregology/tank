@@ -33,6 +33,7 @@ feature harder to ship safely:
 4. **Backwards-compat cruft and stale docs** remain (`_createBase()` dead code, a
    "backward-compat" field in `test/helpers.js`, `AGENTS.yaml` still describing
    "pvp/pvb/team" modes that no longer exist, a README vehicle table missing SPG/squad).
+   **✅ Fixed (see #10): all of it is removed or reconciled.**
 
 The opportunities below are ordered by how much long-term leverage they provide.
 Opportunities 1 and 2 are explicitly the "larger refactors" the team asked for;
@@ -48,7 +49,7 @@ they are also each other's prerequisites, so they are intentionally listed toget
 | `renderer.js` (shell) | 65 | ✓ (via render) | 100 |
 | `ai.js` (controller) | 343 | ✓ `ai.test.js`, `roles.test.js`, `ai-modules.test.js` | ~97 |
 | `ai/` package (roles/targeting/navigation/recovery/aiming) | ~765 | ✓ `ai-modules.test.js` | 89–100 (line) |
-| `map.js` | 1,161 | ✓ `map.test.js` | 92.0 |
+| `map.js` | 1,141 | ✓ `map.test.js` | 92.0 |
 | `game.js` | 629 | ✓ `game.test.js` (Game suite) | ~100 |
 | `menu.js` (shell) | 71 | ✓ `menu.test.js` | 100 |
 | `menu/` package (screens/background/vehicle-info/input) | ~640 | ✓ `menu.test.js`, `render.test.js` | 94–100 (line) |
@@ -501,14 +502,45 @@ package of focused modules, measured by the coverage gate.
 
 ## 10. Remove dead code and stale docs (backward-compat debt)
 
+**Status: ✅ implemented.** Dead code removed and docs reconciled:
+
+- `js/map.js#_createBase()` deleted — base construction has been
+  `buildBaseCompounds` / `_stampCompound*` for a long time (it was the
+  predecessor that those superseded).
+- `test/helpers.js:randomMap()` now returns only `{ map, layouts }`; the
+  `// Backward-compat` `towers` field is gone and the three consumers in
+  `test/ai.test.js` derive spawn points from `layouts` via the public
+  `map.getBaseSpawnPoint` (a small `baseSpawns` helper in that file).
+- `js/utils.js` no longer exports the unused `screenToWorld` /
+  `worldDirToScreen` (only `utils.test.js` used them); the projection
+  tests now pin `worldToScreen` behaviour directly (origin + axis
+  diagonal directions).
+- `AGENTS.yaml` reconciled: the stale "three modes: pvp (split screen),
+  pvb (human vs AI), team (5v5)" block now documents `skirmish` / `battle`,
+  and the "To add a new game mode" recipe points at `GAME_TYPES`
+  (`js/config/options.js`) + a mode strategy in `js/modes.js` instead of
+  the long-gone `menu.modes`. `js/AGENTS.yaml`'s dependency graph and
+  map-generation steps were also updated to match the `js/ai/`, `js/menu/`,
+  `js/config/` packages and `buildBaseCompounds`.
+- `README.md` reconciled: five vehicle types with equal spawn weights (was
+  "50% tank, 30% IFV, 20% drone"), a stat table with SPG and squad rows
+  (plus a minimap-shape row), SPG/squad prose, the battle win condition
+  (destroy the enemy HQ — 20 hits — inside a compound with walls and watch
+  towers; was "towers take 10 hits"), and accurate technical notes.
+
+The bullets below describe the original problem; the approach is what was
+built (minus the optional "docs drift" check, which was not added).
+
 **Impact: medium (explicitly requested).** The team asked that backwards compatibility
 be treated as debt and removed. Concrete instances found:
 
 - `js/map.js:_createBase()` — dead code, never called anywhere (superseded by
   `buildBaseCompounds` / `_stampCompound*`). Remove.
 - `test/helpers.js:randomMap()` returns a `towers` field with a literal
-  `// Backward-compat` comment; its consumers only use `map`/`layouts`. Remove the
-  vestigial field and update the helper contract.
+  `// Backward-compat` comment; consumers (`test/ai.test.js`) only use it as
+  passable spawn points near compound centres — derivable from `layouts` via
+  `map.getBaseSpawnPoint`. Remove the vestigial field and update the helper
+  contract.
 - `AGENTS.yaml` is stale: it still documents "three modes: pvp (split screen),
   pvb (human vs AI), and team (5v5)" and a "duel/team pattern" — the actual modes are
   `skirmish` / `battle`. The "To add a new game mode" recipe points at a `menu.modes`
@@ -538,20 +570,17 @@ vehicle types; SPG/squad mechanics). Add a lightweight "docs drift" check if des
 
 ## Suggested sequencing
 
-Status: **#1 + #4 + #6 ✅ done** (renderer decomposition, sprite module,
-canvas helpers), **#2 ✅ done** (test coverage for every previously-unmeasured
-module), **#3 + #5 + #7 ✅ done** (vehicle behaviour strategy,
-consolidated geometry queries, game-mode strategy — the logic-layer
-counterpart, now safely testable), and **#8 + #9 ✅ done** (AI split into
+Status: **all ten opportunities are ✅ done.** #1 + #4 + #6 (renderer
+decomposition, sprite module, canvas helpers), #2 (test coverage for every
+previously-unmeasured module), #3 + #5 + #7 (vehicle behaviour strategy,
+consolidated geometry queries, game-mode strategy), #8 + #9 (AI split into
 `js/ai/` roles/targeting/navigation/recovery/aiming; menu and config split
-into `js/menu/` screens and the `js/config/` data package — the remaining
-module decomposition). The remaining plan:
+into `js/menu/` screens and the `js/config/` data package), and **#10**
+(dead code + stale docs: map.js `_createBase()`, the `randomMap().towers`
+backward-compat field, the unused `utils.js` projection helpers, and the
+stale `AGENTS.yaml` / `README.md` text).
 
-1. **#10** (dead code + stale docs) — cheap, and removes misleading guidance
-   (map.js `_createBase()`, the `randomMap().towers` backward-compat field,
-   the stale `AGENTS.yaml`, the README vehicle table).
-
-`map.js` (~1,160 lines) is now the largest single logic module; it is not
+`map.js` (~1,140 lines) is now the largest single logic module; it is not
 currently scheduled for a split — any future decomposition should start
 there (the opportunity list above already subsumed its geometry queries
 into the shared `GameMap` API in #5).

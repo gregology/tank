@@ -16,24 +16,6 @@ export function worldToScreen(wx, wy) {
     };
 }
 
-export function screenToWorld(sx, sy) {
-    return {
-        x: (sx / HALF_TW + sy / HALF_TH) / 2,
-        y: (sy / HALF_TH - sx / HALF_TW) / 2,
-    };
-}
-
-/**
- * Convert a world-space direction vector to screen-space.
- * Useful for barrels, bullet trails, etc.
- */
-export function worldDirToScreen(dx, dy) {
-    return {
-        x: (dx - dy) * HALF_TW,
-        y: (dx + dy) * HALF_TH,
-    };
-}
-
 /* ── General math ─────────────────────────────────────────── */
 
 export function clamp(v, lo, hi) {
