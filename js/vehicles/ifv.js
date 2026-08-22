@@ -8,6 +8,7 @@
  */
 
 import { ACTIONS } from "../config.js";
+import { angleDiff } from "../utils.js";
 import { tank } from "./tank.js";
 
 export const ifv = {
@@ -15,12 +16,7 @@ export const ifv = {
 
     aim(ai, me, target, map) {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
-        const turretWorld = me.turretWorld;
-        let diff = desiredWorld - turretWorld;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-
-        if (Math.abs(diff) > 0.4) return;
+        if (Math.abs(angleDiff(me.turretWorld, desiredWorld)) > 0.4) return;
         if (ai.fireDelay > 0) return;
 
         if (map.hasLineOfSight(me.x, me.y, target.x, target.y)) {

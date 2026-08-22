@@ -12,6 +12,7 @@ import { chooseGoalAndTarget } from "../ai/roles.js";
 import { targetPriorityOf } from "../ai/targeting.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
+import { angleDiff } from "../utils.js";
 import { applyBlast } from "./aoe.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
@@ -60,9 +61,7 @@ export const drone = {
 
         // Navigate directly (drones fly over everything).
         const desired = Math.atan2(target.y - me.y, target.x - me.x);
-        let diff = desired - me.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
+        const diff = angleDiff(me.angle, desired);
 
         if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
         if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;

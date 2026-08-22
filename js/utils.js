@@ -36,6 +36,19 @@ export function normalizeAngle(a) {
     return a;
 }
 
+/** Wrap an angle to [-PI, PI]. */
+export function normalizeAngleSigned(a) {
+    let r = a % (Math.PI * 2);
+    if (r > Math.PI) r -= Math.PI * 2;
+    if (r < -Math.PI) r += Math.PI * 2;
+    return r;
+}
+
+/** Shortest signed angle from `a` to `b`, wrapped to [-PI, PI]. */
+export function angleDiff(a, b) {
+    return normalizeAngleSigned(b - a);
+}
+
 export function randomInt(lo, hi) {
     return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }

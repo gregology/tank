@@ -198,12 +198,8 @@ export const VEHICLES = {
         rotationSpeed: 4.0,
         turretSpeed: 0,
         size: 0.4,
-        // Squad members fire their own weapons (see SQUAD_MEMBERS);
-        // these single-shot fields are unused but keep the VEHICLES
-        // shape uniform for pickVehicleType / menu stat bars.
-        bulletSpeed: 0,
-        bulletDamage: 0,
-        bulletCooldown: 0,
+        // Squad members fire their own weapons (see SQUAD_MEMBERS); the
+        // menu stat bars read the explicit display fields below instead.
         displayDamage: 1.0,
         displayFireRate: 6,
         spawnWeight: 3,

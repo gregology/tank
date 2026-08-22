@@ -11,7 +11,7 @@
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
-import { chargeRange } from "../utils.js";
+import { angleDiff, chargeRange } from "../utils.js";
 import { groundMove } from "./tank.js";
 
 /**
@@ -82,11 +82,7 @@ export const spg = {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
         ai.steerTurretTo(me, desiredWorld);
 
-        const turretWorld = me.turretWorld;
-        let diffT = desiredWorld - turretWorld;
-        while (diffT > Math.PI) diffT -= Math.PI * 2;
-        while (diffT < -Math.PI) diffT += Math.PI * 2;
-        if (Math.abs(diffT) > 0.3) return;
+        if (Math.abs(angleDiff(me.turretWorld, desiredWorld)) > 0.3) return;
 
         const dist = target.dist;
         const vStats = VEHICLES.spg;

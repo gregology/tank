@@ -25,7 +25,7 @@ import { bestTarget } from "../ai/targeting.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
-import { normalizeAngle } from "../utils.js";
+import { angleDiff, normalizeAngle } from "../utils.js";
 
 /* ── shared movement primitives ───────────────────────────── */
 
@@ -142,9 +142,7 @@ export function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
 
     // Rotate the hull toward the target (since we can't drive).
     const desired = Math.atan2(target.y - me.y, target.x - me.x);
-    let diff = desired - me.angle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
+    const diff = angleDiff(me.angle, desired);
 
     if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
     if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
@@ -193,9 +191,7 @@ export const tank = {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
 
         if (me.turretDisabled) {
-            let diff = desiredWorld - me.angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
+            const diff = angleDiff(me.angle, desiredWorld);
 
             if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
             if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
@@ -204,12 +200,7 @@ export const tank = {
         } else {
             ai.steerTurretTo(me, desiredWorld);
 
-            const turretWorld = me.turretWorld;
-            let diff = desiredWorld - turretWorld;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-
-            if (Math.abs(diff) > 0.3) return;
+            if (Math.abs(angleDiff(me.turretWorld, desiredWorld)) > 0.3) return;
         }
 
         if (ai.fireDelay > 0) return;

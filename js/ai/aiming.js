@@ -11,24 +11,14 @@
  */
 
 import { ACTIONS } from "../config.js";
+import { angleDiff } from "../utils.js";
 
 /**
  * Steer the turret offset so that `me.turretWorld` approaches
  * `desiredWorld` (a world-space angle).
  */
 export function steerTurretTo(ai, me, desiredWorld) {
-    let desiredOffset = desiredWorld - me.angle;
-    while (desiredOffset > Math.PI) desiredOffset -= Math.PI * 2;
-    while (desiredOffset < -Math.PI) desiredOffset += Math.PI * 2;
-
-    let currentOffset = me.turretAngle;
-    while (currentOffset > Math.PI) currentOffset -= Math.PI * 2;
-    while (currentOffset < -Math.PI) currentOffset += Math.PI * 2;
-
-    let diff = desiredOffset - currentOffset;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-
+    const diff = angleDiff(me.turretWorld, desiredWorld);
     if (diff > 0.05) ai.keys[ACTIONS.turretRight] = true;
     if (diff < -0.05) ai.keys[ACTIONS.turretLeft] = true;
 }
