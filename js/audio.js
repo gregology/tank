@@ -2,11 +2,169 @@
  * Procedural sound effects via the Web Audio API.
  *
  * All sounds are synthesised at runtime — no audio files needed.
+ * Sounds are data-driven: a `SOUNDS` table of synth "voices" (an oscillator
+ * or a filtered noise burst, each with an envelope) played through one
+ * `play(soundKey)` engine.  Adding a sound is a table row, not a new method.
+ *
  * Call `init()` on a user gesture (click / keypress) to unlock the
  * AudioContext, then hook into the Game event bus with `hookIntoGame()`.
+ * Menu screens call `play("select")` / `play("confirm")` directly.
  */
 
-import { VEHICLES } from "./config.js";
+/**
+ * Synth voices, keyed by sound name.
+ *
+ * Each voice is one of:
+ *   { kind: "osc",  wave, freq, to?, sweep?, delay?, peak, decay, dur }
+ *   { kind: "noise", filter, q?, freq, to?, sweep?, delay?, peak, decay, dur }
+ *
+ * `freq` is the start frequency (or the fixed frequency when `to` is
+ * omitted); `to` + `sweep` describe an exponential ramp.  `peak`/`decay`
+ * describe the gain envelope, and `dur` is the stop time from the voice's
+ * own start (after `delay`).
+ */
+export const SOUNDS = {
+    tank: {
+        voices: [
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 2,
+                freq: 2500,
+                to: 400,
+                sweep: 0.1,
+                peak: 0.3,
+                decay: 0.12,
+                dur: 0.15,
+            },
+            { kind: "osc", wave: "sine", freq: 160, to: 40, sweep: 0.1, peak: 0.35, decay: 0.1, dur: 0.15 },
+        ],
+    },
+    ifv: {
+        voices: [
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 3,
+                freq: 3500,
+                to: 800,
+                sweep: 0.05,
+                peak: 0.15,
+                decay: 0.06,
+                dur: 0.08,
+            },
+            { kind: "osc", wave: "sine", freq: 220, to: 80, sweep: 0.04, peak: 0.12, decay: 0.05, dur: 0.06 },
+        ],
+    },
+    rifle: {
+        voices: [
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 4,
+                freq: 4200,
+                to: 1200,
+                sweep: 0.04,
+                peak: 0.14,
+                decay: 0.05,
+                dur: 0.07,
+            },
+        ],
+    },
+    rpg: {
+        voices: [
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 1.5,
+                freq: 900,
+                to: 3000,
+                sweep: 0.18,
+                peak: 0.25,
+                decay: 0.22,
+                dur: 0.25,
+            },
+            { kind: "osc", wave: "sine", freq: 140, to: 50, sweep: 0.15, peak: 0.3, decay: 0.18, dur: 0.2 },
+        ],
+    },
+    shotgun: {
+        voices: [
+            { kind: "noise", filter: "lowpass", freq: 2600, to: 120, sweep: 0.12, peak: 0.4, decay: 0.16, dur: 0.2 },
+            { kind: "osc", wave: "sine", freq: 120, to: 30, sweep: 0.12, peak: 0.35, decay: 0.16, dur: 0.18 },
+        ],
+    },
+    droneStrike: {
+        voices: [
+            { kind: "osc", wave: "sawtooth", freq: 2000, to: 200, sweep: 0.15, peak: 0.2, decay: 0.18, dur: 0.2 },
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 2,
+                freq: 3000,
+                to: 200,
+                sweep: 0.2,
+                delay: 0.05,
+                peak: 0.4,
+                decay: 0.25,
+                dur: 0.3,
+            },
+        ],
+    },
+    spg: {
+        voices: [
+            {
+                kind: "noise",
+                filter: "bandpass",
+                q: 1.5,
+                freq: 1800,
+                to: 200,
+                sweep: 0.25,
+                peak: 0.45,
+                decay: 0.3,
+                dur: 0.35,
+            },
+            { kind: "osc", wave: "sine", freq: 100, to: 25, sweep: 0.3, peak: 0.5, decay: 0.35, dur: 0.4 },
+        ],
+    },
+    spgLand: {
+        voices: [
+            { kind: "noise", filter: "lowpass", freq: 3000, to: 60, sweep: 0.5, peak: 0.45, decay: 0.6, dur: 0.7 },
+            { kind: "osc", wave: "sine", freq: 70, to: 15, sweep: 0.5, peak: 0.5, decay: 0.55, dur: 0.7 },
+        ],
+    },
+    explosion: {
+        voices: [
+            { kind: "noise", filter: "lowpass", freq: 4000, to: 80, sweep: 0.6, peak: 0.5, decay: 0.7, dur: 0.8 },
+            { kind: "osc", wave: "sine", freq: 90, to: 18, sweep: 0.6, peak: 0.55, decay: 0.6, dur: 0.8 },
+        ],
+    },
+    impact: {
+        voices: [{ kind: "noise", filter: "bandpass", q: 3, freq: 3500, peak: 0.12, decay: 0.07, dur: 0.1 }],
+    },
+    hit: {
+        voices: [
+            { kind: "osc", wave: "square", freq: 800, to: 200, sweep: 0.15, peak: 0.3, decay: 0.2, dur: 0.25 },
+            { kind: "noise", filter: "bandpass", q: 4, freq: 2000, peak: 0.2, decay: 0.1, dur: 0.12 },
+        ],
+    },
+    select: {
+        voices: [{ kind: "osc", wave: "sine", freq: 660, peak: 0.15, decay: 0.1, dur: 0.12 }],
+    },
+    confirm: {
+        voices: [
+            { kind: "osc", wave: "sine", freq: 520, peak: 0.18, decay: 0.12, dur: 0.15 },
+            { kind: "osc", wave: "sine", freq: 780, delay: 0.08, peak: 0.18, decay: 0.12, dur: 0.15 },
+        ],
+    },
+    win: {
+        voices: [
+            { kind: "osc", wave: "square", freq: 523, peak: 0.12, decay: 0.2, dur: 0.25 },
+            { kind: "osc", wave: "square", freq: 659, delay: 0.13, peak: 0.12, decay: 0.2, dur: 0.25 },
+            { kind: "osc", wave: "square", freq: 784, delay: 0.26, peak: 0.12, decay: 0.2, dur: 0.25 },
+            { kind: "osc", wave: "square", freq: 1047, delay: 0.39, peak: 0.12, decay: 0.2, dur: 0.25 },
+        ],
+    },
+};
 
 export class AudioManager {
     constructor() {
@@ -33,365 +191,62 @@ export class AudioManager {
 
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
-        game.on("fire", (d) => {
-            if (d.weapon === "rpg") this.playRPGShoot();
-            else if (d.weapon === "shotgun") this.playShotgunShoot();
-            else if (d.weapon === "rifle" || d.weapon === "mg") this.playRifleShoot();
-            else this.playVehicleShoot(d.tank);
-        });
-        game.on("artillery_impact", () => this.playSPGLand());
-        game.on("drone_strike", () => this.playDroneStrike());
-        game.on("destroy", () => this.playExplosion());
-        game.on("destroy_tile", () => this.playExplosion());
-        game.on("impact", () => this.playImpact());
-        game.on("hit", () => this.playHit());
-        game.on("win", () => this.playWin());
+        game.on("fire", (d) => this.play(d.sound ?? "tank"));
+        game.on("artillery_impact", () => this.play("spgLand"));
+        game.on("drone_strike", () => this.play("droneStrike"));
+        game.on("destroy", () => this.play("explosion"));
+        game.on("destroy_tile", () => this.play("explosion"));
+        game.on("impact", () => this.play("impact"));
+        game.on("hit", () => this.play("hit"));
+        game.on("win", () => this.play("win"));
     }
 
-    /** Muzzle sound for a firing vehicle — chosen by its VEHICLES.fireSound. */
-    playVehicleShoot(tank) {
-        const sound = VEHICLES[tank?.vehicleType]?.fireSound;
-        if (sound === "spg") this.playSPGShoot();
-        else if (sound === "ifv") this.playIFVShoot();
-        else this.playShoot();
-    }
+    /* ── sound engine ──────────────────────────────────────── */
 
-    /* ── sound effects ─────────────────────────────────────── */
-
-    playShoot() {
+    /** Play a sound by key (a `SOUNDS` entry); unknown keys are a no-op. */
+    play(soundKey) {
         if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Noise burst through bandpass sweep
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 2;
-        nf.frequency.setValueAtTime(2500, t);
-        nf.frequency.exponentialRampToValueAtTime(400, t + 0.1);
-        const ng = this._env(t, 0.3, 0.12);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.15);
-
-        // Low thud
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(160, t);
-        o.frequency.exponentialRampToValueAtTime(40, t + 0.1);
-        const og = this._env(t, 0.35, 0.1);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.15);
+        const sound = SOUNDS[soundKey];
+        if (!sound) return;
+        for (const voice of sound.voices) this._playVoice(voice);
     }
 
-    /** Lighter, snappier autocannon sound for IFV rapid fire. */
-    playIFVShoot() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
+    /** Build one synth voice (oscillator or filtered noise) + its envelope. */
+    _playVoice(v) {
+        const { ctx } = this;
+        const t = ctx.currentTime + (v.delay ?? 0);
 
-        // Quick high-frequency crack
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 3;
-        nf.frequency.setValueAtTime(3500, t);
-        nf.frequency.exponentialRampToValueAtTime(800, t + 0.05);
-        const ng = this._env(t, 0.15, 0.06);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.08);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(v.peak, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + v.decay);
+        gain.connect(ctx.destination);
 
-        // Tiny thud (much lighter than tank)
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(220, t);
-        o.frequency.exponentialRampToValueAtTime(80, t + 0.04);
-        const og = this._env(t, 0.12, 0.05);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.06);
-    }
+        let node;
+        if (v.kind === "noise") {
+            node = this._noiseSrc();
+            const filter = ctx.createBiquadFilter();
+            filter.type = v.filter;
+            if (v.q != null) filter.Q.value = v.q;
+            filter.frequency.setValueAtTime(v.freq, t);
+            if (v.to != null) filter.frequency.exponentialRampToValueAtTime(v.to, t + v.sweep);
+            node.connect(filter);
+            filter.connect(gain);
+        } else {
+            node = ctx.createOscillator();
+            node.type = v.wave;
+            node.frequency.setValueAtTime(v.freq, t);
+            if (v.to != null) node.frequency.exponentialRampToValueAtTime(v.to, t + v.sweep);
+            node.connect(gain);
+        }
 
-    /** Sharp small-arms crack for rifle / MG fire. */
-    playRifleShoot() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 4;
-        nf.frequency.setValueAtTime(4200, t);
-        nf.frequency.exponentialRampToValueAtTime(1200, t + 0.04);
-        const ng = this._env(t, 0.14, 0.05);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.07);
-    }
-
-    /** Rocket whoosh + thud for the RPG soldier. */
-    playRPGShoot() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Whoosh (rising noise sweep)
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 1.5;
-        nf.frequency.setValueAtTime(900, t);
-        nf.frequency.exponentialRampToValueAtTime(3000, t + 0.18);
-        const ng = this._env(t, 0.25, 0.22);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.25);
-
-        // Low launch thump
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(140, t);
-        o.frequency.exponentialRampToValueAtTime(50, t + 0.15);
-        const og = this._env(t, 0.3, 0.18);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.2);
-    }
-
-    /** Deep blast for the counter-drone shotgun. */
-    playShotgunShoot() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "lowpass";
-        nf.frequency.setValueAtTime(2600, t);
-        nf.frequency.exponentialRampToValueAtTime(120, t + 0.12);
-        const ng = this._env(t, 0.4, 0.16);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.2);
-
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(120, t);
-        o.frequency.exponentialRampToValueAtTime(30, t + 0.12);
-        const og = this._env(t, 0.35, 0.16);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.18);
-    }
-
-    /** High-pitched whine + crunch when a drone detonates. */
-    playDroneStrike() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Descending whine (FPV dive sound)
-        const o = ctx.createOscillator();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(2000, t);
-        o.frequency.exponentialRampToValueAtTime(200, t + 0.15);
-        const og = this._env(t, 0.2, 0.18);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.2);
-
-        // Sharp crack
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 2;
-        nf.frequency.setValueAtTime(3000, t + 0.05);
-        nf.frequency.exponentialRampToValueAtTime(200, t + 0.25);
-        const ng = this._env(t + 0.05, 0.4, 0.25);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t + 0.05);
-        n.stop(t + 0.35);
-    }
-
-    /** Deep booming artillery shot — low frequency, longer than tank. */
-    playSPGShoot() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Heavy noise burst (big muzzle blast)
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.Q.value = 1.5;
-        nf.frequency.setValueAtTime(1800, t);
-        nf.frequency.exponentialRampToValueAtTime(200, t + 0.25);
-        const ng = this._env(t, 0.45, 0.3);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.35);
-
-        // Very deep thud (lower than tank)
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(100, t);
-        o.frequency.exponentialRampToValueAtTime(25, t + 0.3);
-        const og = this._env(t, 0.5, 0.35);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.4);
-    }
-
-    /** Distant crump of artillery landing. */
-    playSPGLand() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Delayed crump
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "lowpass";
-        nf.frequency.setValueAtTime(3000, t);
-        nf.frequency.exponentialRampToValueAtTime(60, t + 0.5);
-        const ng = this._env(t, 0.45, 0.6);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.7);
-
-        // Low rumble
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(70, t);
-        o.frequency.exponentialRampToValueAtTime(15, t + 0.5);
-        const og = this._env(t, 0.5, 0.55);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.7);
-    }
-
-    playExplosion() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Long noise burst
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "lowpass";
-        nf.frequency.setValueAtTime(4000, t);
-        nf.frequency.exponentialRampToValueAtTime(80, t + 0.6);
-        const ng = this._env(t, 0.5, 0.7);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.8);
-
-        // Low rumble
-        const o = ctx.createOscillator();
-        o.frequency.setValueAtTime(90, t);
-        o.frequency.exponentialRampToValueAtTime(18, t + 0.6);
-        const og = this._env(t, 0.55, 0.6);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.8);
-    }
-
-    playImpact() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-        const n = this._noiseSrc();
-        const f = ctx.createBiquadFilter();
-        f.type = "bandpass";
-        f.frequency.value = 3500;
-        f.Q.value = 3;
-        const g = this._env(t, 0.12, 0.07);
-        n.connect(f).connect(g).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.1);
-    }
-
-    /** Metallic clang for subsystem damage (hit but not destroyed). */
-    playHit() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-
-        // Metallic ping
-        const o = ctx.createOscillator();
-        o.type = "square";
-        o.frequency.setValueAtTime(800, t);
-        o.frequency.exponentialRampToValueAtTime(200, t + 0.15);
-        const og = this._env(t, 0.3, 0.2);
-        o.connect(og).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.25);
-
-        // Short noise for impact texture
-        const n = this._noiseSrc();
-        const nf = ctx.createBiquadFilter();
-        nf.type = "bandpass";
-        nf.frequency.value = 2000;
-        nf.Q.value = 4;
-        const ng = this._env(t, 0.2, 0.1);
-        n.connect(nf).connect(ng).connect(ctx.destination);
-        n.start(t);
-        n.stop(t + 0.12);
-    }
-
-    playSelect() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-        const o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.value = 660;
-        const g = this._env(t, 0.15, 0.1);
-        o.connect(g).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.12);
-    }
-
-    playConfirm() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-        [520, 780].forEach((freq, i) => {
-            const o = ctx.createOscillator();
-            o.type = "sine";
-            o.frequency.value = freq;
-            const g = this._env(t + i * 0.08, 0.18, 0.12);
-            o.connect(g).connect(ctx.destination);
-            o.start(t + i * 0.08);
-            o.stop(t + i * 0.08 + 0.15);
-        });
-    }
-
-    playWin() {
-        if (!this._ok()) return;
-        const { ctx } = this,
-            t = ctx.currentTime;
-        [523, 659, 784, 1047].forEach((freq, i) => {
-            const o = ctx.createOscillator();
-            o.type = "square";
-            o.frequency.value = freq;
-            const g = this._env(t + i * 0.13, 0.12, 0.2);
-            o.connect(g).connect(ctx.destination);
-            o.start(t + i * 0.13);
-            o.stop(t + i * 0.13 + 0.25);
-        });
+        node.start(t);
+        node.stop(t + v.dur);
     }
 
     /* ── internal helpers ──────────────────────────────────── */
 
     _ok() {
         return this.initialized && !this.muted;
-    }
-
-    /** Create a gain node with an exponential attack→decay envelope. */
-    _env(t, peak, dur) {
-        const g = this.ctx.createGain();
-        g.gain.setValueAtTime(peak, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-        return g;
     }
 
     /** 1-second white-noise AudioBuffer (cached). */

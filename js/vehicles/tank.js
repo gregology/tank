@@ -173,7 +173,7 @@ export const tank = {
             flash: vStats.muzzleFlash ?? "muzzle",
             flashOffset: CONFIG.TANK_BARREL_LENGTH,
         });
-        game.emit("fire", { tank, bullet: b });
+        game.emit("fire", { tank, bullet: b, sound: vStats.fireSound ?? "tank" });
     },
 
     /** Ground movement: tracks lock the drive but still allow pivoting. */

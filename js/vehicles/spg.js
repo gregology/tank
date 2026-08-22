@@ -61,7 +61,7 @@ export const spg = {
                 flash: "spg",
                 flashOffset: CONFIG.TANK_BARREL_LENGTH,
             });
-            game.emit("fire", { tank, bullet: b });
+            game.emit("fire", { tank, bullet: b, sound: VEHICLES.spg.fireSound ?? "tank" });
         } else {
             charge.isCharging = false;
             charge.chargeTime = 0;

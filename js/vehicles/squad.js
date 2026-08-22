@@ -42,9 +42,9 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
         });
     }
 
-    // Muzzle flash + event (the weapon tag drives the sound)
+    // Muzzle flash + event (the weapon's sound key drives the audio)
     flashMuzzle(game, "ifv", memberPos.x + Math.cos(angle) * 0.3, memberPos.y + Math.sin(angle) * 0.3, angle);
-    game.emit("fire", { tank: squad, bullet: game.bullets[game.bullets.length - 1], weapon: weapon.weapon });
+    game.emit("fire", { tank: squad, bullet: game.bullets[game.bullets.length - 1], sound: weapon.sound });
 }
 
 export const squad = {

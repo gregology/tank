@@ -20,21 +20,21 @@ export const aboutScreen = {
             menu._aboutIndex = (menu._aboutIndex - 1 + VEHICLE_INFO.length) % VEHICLE_INFO.length;
             if (audio) {
                 audio.init();
-                audio.playSelect();
+                audio.play("select");
             }
         }
         if (right) {
             menu._aboutIndex = (menu._aboutIndex + 1) % VEHICLE_INFO.length;
             if (audio) {
                 audio.init();
-                audio.playSelect();
+                audio.play("select");
             }
         }
         if (back || go) {
             menu.show("main");
             if (audio) {
                 audio.init();
-                audio.playConfirm();
+                audio.play("confirm");
             }
         }
     },

@@ -20,6 +20,7 @@ export const BASE_STRUCTURES = {
         bulletSpeed: 13.0,
         bulletDamage: 0.1,
         bulletCooldown: 0.15,
+        fireSound: "ifv",
         targetPriority: { spg: 3, tank: 3, drone: 10, ifv: 3, squad: 5 },
     },
     baseHQ: {

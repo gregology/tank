@@ -46,7 +46,7 @@ export function updateWatchTowers(game, dt) {
                 flash: "ifv",
                 flashOffset: 0.3,
             });
-            game.emit("fire", { tower, bullet: b });
+            game.emit("fire", { tower, bullet: b, sound: cfg.fireSound ?? "tower" });
         }
     }
 }

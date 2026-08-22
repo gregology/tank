@@ -17,7 +17,7 @@ export const mainScreen = {
             menu.lobby.cursor = 0;
             if (audio) {
                 audio.init();
-                audio.playConfirm();
+                audio.play("confirm");
             }
             return;
         }
@@ -27,7 +27,7 @@ export const mainScreen = {
             menu._aboutIndex = 0;
             if (audio) {
                 audio.init();
-                audio.playConfirm();
+                audio.play("confirm");
             }
         }
     },

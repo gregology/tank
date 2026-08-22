@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AudioManager } from "../js/audio.js";
+import { AudioManager, SOUNDS } from "../js/audio.js";
 
 /**
  * A recording fake AudioContext: every node factory returns a node that
@@ -71,19 +71,15 @@ function withAudioContext(fn) {
     }
 }
 
-/** Count calls to named play* methods on a fresh AudioManager. */
-function spyOnPlays(audio) {
-    const counts = Object.create(null);
-    for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(audio))) {
-        if (typeof audio[key] === "function" && key.startsWith("play")) {
-            const original = audio[key].bind(audio);
-            audio[key] = (...args) => {
-                counts[key] = (counts[key] ?? 0) + 1;
-                return original(...args);
-            };
-        }
-    }
-    return counts;
+/** Spy on `play`, recording every sound key it is asked to play. */
+function spyOnPlay(audio) {
+    const played = [];
+    const original = audio.play.bind(audio);
+    audio.play = (key) => {
+        played.push(key);
+        return original(key);
+    };
+    return played;
 }
 
 describe("AudioManager – lifecycle", () => {
@@ -150,67 +146,61 @@ describe("AudioManager – lifecycle", () => {
             a.init();
             a.muted = true;
             const before = ctx.nodes.length;
-            a.playShoot();
-            a.playExplosion();
-            a.playWin();
+            a.play("tank");
+            a.play("explosion");
+            a.play("win");
             assert.equal(ctx.nodes.length, before);
         });
     });
 });
 
 describe("AudioManager – sound effects", () => {
-    const playMethods = [
-        "playShoot",
-        "playIFVShoot",
-        "playRifleShoot",
-        "playRPGShoot",
-        "playShotgunShoot",
-        "playDroneStrike",
-        "playSPGShoot",
-        "playSPGLand",
-        "playExplosion",
-        "playImpact",
-        "playHit",
-        "playSelect",
-        "playConfirm",
-        "playWin",
-    ];
-
-    for (const method of playMethods) {
-        it(`${method} synthesises nodes and routes them to the destination`, () => {
-            withAudioContext((ctx) => {
-                const a = new AudioManager();
-                a.init();
+    it("every sound synthesises nodes through the play() engine", () => {
+        withAudioContext((ctx) => {
+            const a = new AudioManager();
+            a.init();
+            for (const key of Object.keys(SOUNDS)) {
                 const before = ctx.nodes.length;
-                assert.doesNotThrow(() => a[method]());
-                assert.ok(ctx.nodes.length > before, `${method} created nodes`);
+                assert.doesNotThrow(() => a.play(key), key);
+                assert.ok(ctx.nodes.length > before, `${key} created nodes`);
                 assert.ok(
                     ctx.nodes.some((n) => n.started),
-                    `${method} started nodes`,
+                    `${key} started nodes`,
                 );
-            });
+            }
         });
-    }
+    });
 
-    it("play methods are no-ops before init", () => {
+    it("unknown sound keys are a no-op", () => {
+        withAudioContext((ctx) => {
+            const a = new AudioManager();
+            a.init();
+            const before = ctx.nodes.length;
+            a.play("notARealSound");
+            assert.equal(ctx.nodes.length, before);
+        });
+    });
+
+    it("play is a no-op before init", () => {
         const a = new AudioManager();
-        assert.doesNotThrow(() => a.playShoot());
-        assert.doesNotThrow(() => a.playWin());
+        assert.doesNotThrow(() => a.play("tank"));
+        assert.doesNotThrow(() => a.play("win"));
     });
 });
 
 describe("AudioManager – event wiring", () => {
-    it("hooks the full game event vocabulary", () => {
+    it("maps the full game event vocabulary to sounds", () => {
         withAudioContext(() => {
             const a = new AudioManager();
-            const counts = spyOnPlays(a);
+            a.init();
+            const played = spyOnPlay(a);
 
             const handlers = new Map();
             const game = { on: (event, fn) => handlers.set(event, fn) };
             a.hookIntoGame(game);
 
             const emit = (event, data) => handlers.get(event)?.(data);
-            emit("fire", {});
+            emit("fire", { sound: "tank" });
             emit("artillery_impact", {});
             emit("drone_strike", {});
             emit("destroy", {});
@@ -219,66 +209,49 @@ describe("AudioManager – event wiring", () => {
             emit("hit", {});
             emit("win", {});
 
-            assert.equal(counts.playShoot, 1);
-            assert.equal(counts.playSPGLand, 1);
-            assert.equal(counts.playDroneStrike, 1);
-            assert.equal(counts.playExplosion, 2); // destroy + destroy_tile
-            assert.equal(counts.playImpact, 1);
-            assert.equal(counts.playHit, 1);
-            assert.equal(counts.playWin, 1);
+            assert.deepEqual(played, [
+                "tank",
+                "spgLand",
+                "droneStrike",
+                "explosion",
+                "explosion",
+                "impact",
+                "hit",
+                "win",
+            ]);
         });
     });
 
-    it("dispatches the fire event by weapon tag", () => {
+    it("plays the fire event's sound key", () => {
         withAudioContext(() => {
             const a = new AudioManager();
-            const counts = spyOnPlays(a);
+            a.init();
+            const played = spyOnPlay(a);
 
             const handlers = new Map();
             const game = { on: (event, fn) => handlers.set(event, fn) };
             a.hookIntoGame(game);
             const fire = (d) => handlers.get("fire")(d);
 
-            fire({ weapon: "rpg" });
-            fire({ weapon: "shotgun" });
-            fire({ weapon: "rifle" });
-            fire({ weapon: "mg" });
-            fire({ weapon: "rifle" });
-            assert.equal(counts.playRPGShoot, 1);
-            assert.equal(counts.playShotgunShoot, 1);
-            assert.equal(counts.playRifleShoot, 3); // rifle + mg + rifle
+            fire({ sound: "rpg" });
+            fire({ sound: "shotgun" });
+            fire({ sound: "rifle" });
+            fire({ sound: "spg" });
+            fire({ sound: "ifv" });
+            assert.deepEqual(played, ["rpg", "shotgun", "rifle", "spg", "ifv"]);
         });
     });
 
-    it("dispatches the fire event by vehicle type", () => {
+    it("defaults the fire sound to tank when the payload carries none", () => {
         withAudioContext(() => {
             const a = new AudioManager();
-            const counts = spyOnPlays(a);
-
+            a.init();
+            const played = spyOnPlay(a);
             const handlers = new Map();
             const game = { on: (event, fn) => handlers.set(event, fn) };
             a.hookIntoGame(game);
-            const fire = (d) => handlers.get("fire")(d);
-
-            fire({ tank: { vehicleType: "spg" } });
-            fire({ tank: { vehicleType: "ifv" } });
-            fire({ tank: { vehicleType: "tank" } });
-            assert.equal(counts.playSPGShoot, 1);
-            assert.equal(counts.playIFVShoot, 1);
-            assert.equal(counts.playShoot, 1);
-        });
-    });
-
-    it("squad weapons fall through to the generic shoot sound", () => {
-        withAudioContext(() => {
-            const a = new AudioManager();
-            const counts = spyOnPlays(a);
-            const handlers = new Map();
-            const game = { on: (event, fn) => handlers.set(event, fn) };
-            a.hookIntoGame(game);
-            handlers.get("fire")({ tank: { vehicleType: "squad" }, weapon: "rifle" });
-            handlers.get("fire")({ tank: { vehicleType: "squad" }, weapon: "mg" });
-            assert.equal(counts.playRifleShoot, 2);
+            handlers.get("fire")({});
+            assert.deepEqual(played, ["tank"]);
         });
     });
 });

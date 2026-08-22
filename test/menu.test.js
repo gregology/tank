@@ -36,8 +36,7 @@ function spyAudio() {
     return {
         calls,
         init: () => calls.push("init"),
-        playConfirm: () => calls.push("playConfirm"),
-        playSelect: () => calls.push("playSelect"),
+        play: (key) => calls.push(`play:${key}`),
     };
 }
 
@@ -69,7 +68,7 @@ describe("Menu – main screen", () => {
         assert.equal(menu.lobby.players.length, 1);
         assert.equal(menu.lobby.host.device, menu.lobby.players[0].device);
         assert.ok(audio.calls.includes("init"));
-        assert.ok(audio.calls.includes("playConfirm"));
+        assert.ok(audio.calls.includes("play:confirm"));
     });
 
     it("back opens the vehicle info screen", () => {
@@ -80,7 +79,7 @@ describe("Menu – main screen", () => {
         menu.update(0.016, input(kb), audio);
         assert.equal(menu._screen, "about");
         assert.equal(menu._aboutIndex, 0);
-        assert.ok(audio.calls.includes("playConfirm"));
+        assert.ok(audio.calls.includes("play:confirm"));
     });
 });
 

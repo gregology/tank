@@ -26,7 +26,7 @@ export const lobbyScreen = {
                 menu.lobby.join(device);
                 if (audio) {
                     audio.init();
-                    audio.playConfirm();
+                    audio.play("confirm");
                 }
             }
         }
@@ -44,7 +44,7 @@ export const lobbyScreen = {
                 menu.lobby.cycleTeam(p);
                 if (audio) {
                     audio.init();
-                    audio.playSelect();
+                    audio.play("select");
                 }
             }
             if (p.device.wasPressed(ACTIONS.back)) menu.lobby.leave(p);
@@ -60,21 +60,21 @@ export const lobbyScreen = {
                 menu.lobby.cursor = (menu.lobby.cursor - 1 + rows.length) % rows.length;
                 if (audio) {
                     audio.init();
-                    audio.playSelect();
+                    audio.play("select");
                 }
             }
             if (d.wasPressed(ACTIONS.down)) {
                 menu.lobby.cursor = (menu.lobby.cursor + 1) % rows.length;
                 if (audio) {
                     audio.init();
-                    audio.playSelect();
+                    audio.play("select");
                 }
             }
             if (d.wasPressed(ACTIONS.left) || d.wasPressed(ACTIONS.right)) {
                 menu.lobby.changeRow(rows[menu.lobby.cursor], d.wasPressed(ACTIONS.right));
                 if (audio) {
                     audio.init();
-                    audio.playSelect();
+                    audio.play("select");
                 }
             }
             if (d.wasPressed(ACTIONS.confirm)) menu.startMatch();
