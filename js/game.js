@@ -85,6 +85,11 @@ export class Game {
     }
 
     /* ── accessors ────────────────────────────────────────── */
+    // This is the world-model surface the mode strategies (js/modes.js)
+    // and vehicle behaviours (js/vehicles/) are written against.  They
+    // read these getters and call the public mutators below
+    // (`setBases`, `creditKill`, `nearestEnemy`) — never the `_`-prefixed
+    // fields, which are Game-internal.
 
     /** Every tank in the game. */
     get allTanks() {
@@ -239,7 +244,7 @@ export class Game {
     }
 
     /** Nearest alive tank in a different faction. */
-    _nearestEnemy(tank) {
+    nearestEnemy(tank) {
         let best = null;
         let bestD = Infinity;
         for (const e of this._allTanks) {
@@ -251,6 +256,11 @@ export class Game {
             }
         }
         return best;
+    }
+
+    /** Credit one kill to a faction's score (skirmish scoring). */
+    creditKill(factionId) {
+        this._scores.set(factionId, (this._scores.get(factionId) ?? 0) + 1);
     }
 
     /* ═══════════════════════════════════════════════════════ *
@@ -548,6 +558,18 @@ export class Game {
     }
 
     /* ── Base compound helpers ─────────────────────────────── */
+
+    /** Register the mode's base compounds and their structures (battle init). */
+    setBases(bases) {
+        this._bases = bases;
+        this._allStructures = bases.flatMap((b) => b.allStructures);
+        this._structureMap = new Map();
+        for (const s of this._allStructures) {
+            for (const pos of s.tilePositions) {
+                this._structureMap.set(`${pos.gx},${pos.gy}`, s);
+            }
+        }
+    }
 
     /** Look up the structure entity occupying tile (gx, gy). */
     _getStructureAt(gx, gy) {

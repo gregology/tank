@@ -1555,7 +1555,7 @@ describe("Game – separation, crush, structures, towers", () => {
         assert.equal(game.map.canStand(5.7, 5.7), false);
     });
 
-    it("_nearestEnemy returns the closest alive enemy", () => {
+    it("nearestEnemy returns the closest alive enemy", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const me = game.humanTank;
         me.x = 10;
@@ -1563,9 +1563,9 @@ describe("Game – separation, crush, structures, towers", () => {
         const near = game.allTanks.find((t) => t.team === 2);
         near.x = 11;
         near.y = 10;
-        assert.equal(game._nearestEnemy(me), near);
+        assert.equal(game.nearestEnemy(me), near);
         near.alive = false;
-        assert.equal(game._nearestEnemy(me), null);
+        assert.equal(game.nearestEnemy(me), null);
     });
 });
 

@@ -1,6 +1,8 @@
 /**
  * Game-mode strategy tests (js/modes.js) — each hook is exercised with
- * a minimal stub game, so the Skirmish-vs-Battle branching is
+ * a minimal stub game exposing the public world-model surface the modes
+ * use (allTanks / humanTanks / factions / bases / scores + setBases /
+ * creditKill / nearestEnemy), so the Skirmish-vs-Battle branching is
  * unit-testable without a full match.
  */
 
@@ -12,24 +14,38 @@ import { getMode } from "../js/modes.js";
 import { Tank } from "../js/tank.js";
 import { randomMap } from "./helpers.js";
 
-/** A stub Game with the fields a mode hook reads/writes. */
+/** A stub Game with the public fields and methods a mode hook reads/writes. */
 function stubGame(overrides = {}) {
     const game = {
         map: new GameMap(),
         settings: {},
-        _factions: [],
-        _bases: [],
-        _allStructures: [],
-        _structureMap: new Map(),
-        _humanTanks: [],
-        _scores: new Map(),
-        _allTanks: [],
+        factions: [],
+        bases: [],
+        baseStructures: [],
+        structureMap: new Map(),
+        humanTanks: [],
+        scores: new Map(),
+        allTanks: [],
         pushFromStructures: () => {
             game.pushed = true;
         },
         updateWatchTowers: () => {
             game.towersUpdated = true;
         },
+        setBases: (bases) => {
+            game.bases = bases;
+            game.baseStructures = bases.flatMap((b) => b.allStructures);
+            game.structureMap = new Map();
+            for (const s of game.baseStructures) {
+                for (const pos of s.tilePositions) {
+                    game.structureMap.set(`${pos.gx},${pos.gy}`, s);
+                }
+            }
+        },
+        creditKill: (factionId) => {
+            game.scores.set(factionId, (game.scores.get(factionId) ?? 0) + 1);
+        },
+        nearestEnemy: () => null,
         ...overrides,
     };
     return game;
@@ -46,26 +62,26 @@ describe("mode dispatch", () => {
 describe("battle mode", () => {
     it("init builds two compounds and registers their structures", () => {
         const game = stubGame({
-            _factions: [
+            factions: [
                 { id: 1, color: "#cc3333", darkColor: "#882222" },
                 { id: 2, color: "#3366dd", darkColor: "#223399" },
             ],
         });
         getMode("battle").init(game);
-        assert.equal(game._bases.length, 2);
-        for (const base of game._bases) {
+        assert.equal(game.bases.length, 2);
+        for (const base of game.bases) {
             assert.ok(base.hq, "HQ built");
             assert.ok(base.towers.length > 0, "watch towers built");
         }
-        assert.ok(game._allStructures.length >= 2, "structures registered");
-        assert.ok(game._structureMap.size > 0, "tile → structure map populated");
-        const pos = game._allStructures[0].tilePositions[0];
-        assert.equal(game._structureMap.get(`${pos.gx},${pos.gy}`), game._allStructures[0]);
+        assert.ok(game.baseStructures.length >= 2, "structures registered");
+        assert.ok(game.structureMap.size > 0, "tile → structure map populated");
+        const pos = game.baseStructures[0].tilePositions[0];
+        assert.equal(game.structureMap.get(`${pos.gx},${pos.gy}`), game.baseStructures[0]);
     });
 
     it("spawn places tanks inside their own compound", () => {
         const game = stubGame({
-            _factions: [
+            factions: [
                 { id: 1, color: "#cc3333", darkColor: "#882222", entities: [] },
                 { id: 2, color: "#3366dd", darkColor: "#223399", entities: [] },
             ],
@@ -76,13 +92,13 @@ describe("battle mode", () => {
         tank1.team = 1;
         const tank2 = new Tank(1, "#3366dd", "#223399");
         tank2.team = 2;
-        game._allTanks = [tank1, tank2];
-        game._factions = [
+        game.allTanks = [tank1, tank2];
+        game.factions = [
             { id: 1, entities: [tank1] },
             { id: 2, entities: [tank2] },
         ];
         mode.spawn(game);
-        const base1 = game._bases.find((b) => b.team === 1);
+        const base1 = game.bases.find((b) => b.team === 1);
         assert.ok(
             Math.abs(tank1.x - base1.center.x) < 20 && Math.abs(tank1.y - base1.center.y) < 20,
             "team 1 tank spawned near its compound",
@@ -92,14 +108,14 @@ describe("battle mode", () => {
     it("checkWin returns the surviving faction when an HQ is destroyed", () => {
         const mode = getMode("battle");
         const game = stubGame({
-            _bases: [
+            bases: [
                 { alive: false, team: 1 },
                 { alive: true, team: 2 },
             ],
         });
         assert.equal(mode.checkWin(game), 2);
         const noWinner = stubGame({
-            _bases: [
+            bases: [
                 { alive: true, team: 1 },
                 { alive: true, team: 2 },
             ],
@@ -109,21 +125,21 @@ describe("battle mode", () => {
 
     it("onKill does not score (respawns are timed)", () => {
         const mode = getMode("battle");
-        const game = stubGame({ _scores: new Map([[1, 3]]) });
+        const game = stubGame({ scores: new Map([[1, 3]]) });
         mode.onKill(game, 1, {});
-        assert.equal(game._scores.get(1), 3);
+        assert.equal(game.scores.get(1), 3);
     });
 
     it("respawn returns a compound spawn while the base lives, else a free spawn", () => {
         const mode = getMode("battle");
         const withBase = stubGame({
-            _bases: [{ team: 1, alive: true, center: { x: 30, y: 30 } }],
+            bases: [{ team: 1, alive: true, center: { x: 30, y: 30 } }],
         });
         const sp = mode.respawn(withBase, { team: 1 });
         assert.ok(sp && typeof sp.x === "number", "compound spawn point returned");
 
         const deadBase = stubGame({
-            _bases: [{ team: 1, alive: false, center: { x: 30, y: 30 } }],
+            bases: [{ team: 1, alive: false, center: { x: 30, y: 30 } }],
         });
         const free = mode.respawn(deadBase, { team: 1 });
         assert.ok(free && typeof free.x === "number", "fallback free spawn returned");
@@ -132,14 +148,14 @@ describe("battle mode", () => {
     it("aiObjective is the enemy base while alive, then null", () => {
         const mode = getMode("battle");
         const game = stubGame({
-            _bases: [
+            bases: [
                 { team: 1, alive: true, id: "base1" },
                 { team: 2, alive: true, id: "base2" },
             ],
         });
         const bot = { tank: { team: 1 } };
-        assert.equal(mode.aiObjective(game, bot), game._bases[1]);
-        game._bases[1].alive = false;
+        assert.equal(mode.aiObjective(game, bot), game.bases[1]);
+        game.bases[1].alive = false;
         assert.equal(mode.aiObjective(game, bot), null);
     });
 
@@ -147,7 +163,7 @@ describe("battle mode", () => {
         const mode = getMode("battle");
         const structures = [{ a: 1 }, { a: 2 }];
         const game = stubGame({
-            _bases: [
+            bases: [
                 { team: 1, allStructures: [] },
                 { team: 2, allStructures: structures },
             ],
@@ -178,24 +194,24 @@ describe("skirmish mode", () => {
     it("checkWin returns the first faction at WIN_SCORE", () => {
         const mode = getMode("skirmish");
         const game = stubGame({
-            _scores: new Map([
+            scores: new Map([
                 [1, CONFIG.WIN_SCORE],
                 [2, 3],
             ]),
         });
         assert.equal(mode.checkWin(game), 1);
-        const noWinner = stubGame({ _scores: new Map([[1, CONFIG.WIN_SCORE - 1]]) });
+        const noWinner = stubGame({ scores: new Map([[1, CONFIG.WIN_SCORE - 1]]) });
         assert.equal(mode.checkWin(noWinner), null);
     });
 
     it("onKill credits the killer and reserves the dead tank's respawn spot", () => {
         const mode = getMode("skirmish");
-        const game = stubGame({ _scores: new Map([[1, 0]]) });
+        const game = stubGame({ scores: new Map([[1, 0]]) });
         const dead = new Tank(1, "#c33", "#822");
         dead.x = 1;
         dead.y = 1;
         mode.onKill(game, 1, dead);
-        assert.equal(game._scores.get(1), 1, "kill credited");
+        assert.equal(game.scores.get(1), 1, "kill credited");
         assert.ok(typeof dead.x === "number" && dead.x !== 1, "respawn position reserved at kill time");
     });
 
@@ -222,7 +238,7 @@ describe("skirmish mode", () => {
         const mode = getMode("skirmish");
         const p1 = new Tank(1, "#cc3333", "#882222");
         p1.team = 1;
-        const game = stubGame({ _humanTanks: [p1] });
+        const game = stubGame({ humanTanks: [p1] });
         assert.equal(mode.factionLabel(game, { id: 1, color: "#cc3333" }), "P1");
         assert.equal(mode.factionLabel(game, { id: 2, color: "#3366dd" }), "BOT");
         assert.equal(mode.winnerLabel(game, { id: 1, color: "#cc3333" }), "PLAYER 1");
@@ -231,7 +247,7 @@ describe("skirmish mode", () => {
         // A multi-human team falls back to the colour label.
         const p2 = new Tank(2, "#cc3333", "#882222");
         p2.team = 1;
-        const teamGame = stubGame({ _humanTanks: [p1, p2] });
+        const teamGame = stubGame({ humanTanks: [p1, p2] });
         assert.equal(mode.factionLabel(teamGame, { id: 1, color: "#cc3333" }), "RED");
         assert.equal(mode.winnerLabel(teamGame, { id: 1, color: "#cc3333" }), "RED TEAM");
     });
@@ -242,16 +258,16 @@ describe("real map integration", () => {
         const { map } = randomMap();
         const game = stubGame({
             map,
-            _factions: [
+            factions: [
                 { id: 1, color: "#cc3333", darkColor: "#882222", entities: [] },
                 { id: 2, color: "#3366dd", darkColor: "#223399", entities: [] },
             ],
         });
         const mode = getMode("battle");
         mode.init(game);
-        game._allTanks = game._factions.flatMap((f) => f.entities);
+        game.allTanks = game.factions.flatMap((f) => f.entities);
         mode.spawn(game);
-        assert.equal(game._allTanks.length, 0, "no entities yet — spawn is a no-op over empty factions");
-        assert.equal(game._bases.length, 2);
+        assert.equal(game.allTanks.length, 0, "no entities yet — spawn is a no-op over empty factions");
+        assert.equal(game.bases.length, 2);
     });
 });

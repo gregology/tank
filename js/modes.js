@@ -69,9 +69,9 @@ function buildBase(layout, team, color, darkColor) {
 
 /** P1/P2 label, or BOT for a bot faction, or the colour label for a team. */
 function playerLabelFor(game, faction, winner) {
-    const humans = game._humanTanks.filter((t) => t.team === faction.id);
+    const humans = game.humanTanks.filter((t) => t.team === faction.id);
     if (humans.length === 1) {
-        const n = game._humanTanks.indexOf(humans[0]) + 1;
+        const n = game.humanTanks.indexOf(humans[0]) + 1;
         return winner ? `PLAYER ${n}` : `P${n}`;
     }
     if (humans.length === 0) return "BOT";
@@ -93,15 +93,15 @@ const skirmish = {
     spawn(game) {
         let lastX = -1,
             lastY = -1;
-        for (const t of game._allTanks) {
+        for (const t of game.allTanks) {
             const sp = game.map.getSpawnPoint(lastX, lastY);
             t.respawnAt(sp.x, sp.y);
             t.alive = true;
             lastX = sp.x;
             lastY = sp.y;
         }
-        for (const t of game._allTanks) {
-            const enemy = game._nearestEnemy(t);
+        for (const t of game.allTanks) {
+            const enemy = game.nearestEnemy(t);
             if (enemy) t.angle = Math.atan2(enemy.y - t.y, enemy.x - t.x) + (Math.random() - 0.5) * 0.3;
         }
     },
@@ -127,14 +127,14 @@ const skirmish = {
 
     /** Kill credit → score; the dead tank's respawn spot is reserved now. */
     onKill(game, killerTeam, deadTank) {
-        game._scores.set(killerTeam, (game._scores.get(killerTeam) ?? 0) + 1);
+        game.creditKill(killerTeam);
         const sp = game.map.getSpawnPoint();
         deadTank.respawnAt(sp.x, sp.y);
     },
 
     /** First faction to WIN_SCORE kills. */
     checkWin(game) {
-        for (const [factionId, score] of game._scores) {
+        for (const [factionId, score] of game.scores) {
             if (score >= CONFIG.WIN_SCORE) return factionId;
         }
         return null;
@@ -160,23 +160,17 @@ const battle = {
     init(game) {
         const baseType = game.settings.baseType ?? "compound";
         const [layout1, layout2] = game.map.buildBaseCompounds(baseType);
-        game._bases = [
-            buildBase(layout1, 1, game._factions[0].color, game._factions[0].darkColor),
-            buildBase(layout2, 2, game._factions[1].color, game._factions[1].darkColor),
-        ];
-        game._allStructures = [...game._bases[0].allStructures, ...game._bases[1].allStructures];
-        for (const s of game._allStructures) {
-            for (const pos of s.tilePositions) {
-                game._structureMap.set(`${pos.gx},${pos.gy}`, s);
-            }
-        }
+        game.setBases([
+            buildBase(layout1, 1, game.factions[0].color, game.factions[0].darkColor),
+            buildBase(layout2, 2, game.factions[1].color, game.factions[1].darkColor),
+        ]);
     },
 
     /** Spawn inside each faction's compound, facing the enemy base. */
     spawn(game) {
-        for (const f of game._factions) {
-            const base = game._bases.find((b) => b.team === f.id);
-            const enemyBase = game._bases.find((b) => b.team !== f.id);
+        for (const f of game.factions) {
+            const base = game.bases.find((b) => b.team === f.id);
+            const enemyBase = game.bases.find((b) => b.team !== f.id);
             if (!base) continue;
             for (const t of f.entities) {
                 const sp = game.map.getBaseSpawnPoint(base.center.x, base.center.y);
@@ -190,17 +184,17 @@ const battle = {
     },
 
     setupBot(game, bot, faction) {
-        bot.ai.friendlyBase = game._bases.find((b) => b.team === faction.id) ?? null;
+        bot.ai.friendlyBase = game.bases.find((b) => b.team === faction.id) ?? null;
     },
 
     /** Bots navigate toward the enemy base while it is alive. */
     aiObjective(game, bot) {
-        const enemyBase = game._bases.find((b) => b.team !== bot.tank.team);
+        const enemyBase = game.bases.find((b) => b.team !== bot.tank.team);
         return enemyBase?.alive ? enemyBase : null;
     },
 
     enemyStructures(game, tank) {
-        return game._bases.find((b) => b.team !== tank.team)?.allStructures ?? [];
+        return game.bases.find((b) => b.team !== tank.team)?.allStructures ?? [];
     },
 
     /** Tanks must not end up inside the compound walls. */
@@ -214,7 +208,7 @@ const battle = {
 
     /** Respawn inside the compound, or anywhere if the base is gone. */
     respawn(game, tank) {
-        const base = game._bases.find((b) => b.team === tank.team);
+        const base = game.bases.find((b) => b.team === tank.team);
         return base?.alive ? game.map.getBaseSpawnPoint(base.center.x, base.center.y) : game.map.getSpawnPoint();
     },
 
@@ -223,9 +217,9 @@ const battle = {
 
     /** Destroying the enemy HQ wins — the surviving faction takes it. */
     checkWin(game) {
-        const dead = game._bases.find((b) => !b.alive);
+        const dead = game.bases.find((b) => !b.alive);
         if (!dead) return null;
-        return game._bases.find((b) => b !== dead)?.team ?? (dead.team === 1 ? 2 : 1);
+        return game.bases.find((b) => b !== dead)?.team ?? (dead.team === 1 ? 2 : 1);
     },
 
     factionLabel(_game, faction) {
