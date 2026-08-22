@@ -1014,14 +1014,22 @@ describe("Data-driven armour system", () => {
         }
     });
 
-    it("subsystem keys map to valid Tank properties", () => {
+    it("subsystem entries map to valid Tank properties", () => {
+        const validProps = { turretDisabled: 1, leftTrackDisabled: 1, rightTrackDisabled: 1 };
         for (const [name, v] of Object.entries(VEHICLES)) {
-            for (const [zone, key] of Object.entries(v.armour.subsystems)) {
+            for (const [zone, sub] of Object.entries(v.armour.subsystems)) {
                 assert.ok(
-                    key in { turret: 1, leftTrack: 1, rightTrack: 1 },
-                    `${name}.armour.subsystems.${zone} = "${key}" should be a known subsystem`,
+                    sub.prop in validProps,
+                    `${name}.armour.subsystems.${zone}.prop = "${sub.prop}" should be a known property`,
                 );
             }
+        }
+    });
+
+    it("every vehicle declares a known damage model", () => {
+        const known = { armour: 1, members: 1, hp: 1 };
+        for (const [name, v] of Object.entries(VEHICLES)) {
+            assert.ok(v.armour.damageModel in known, `${name}.armour.damageModel should be a known model`);
         }
     });
 });

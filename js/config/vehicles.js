@@ -19,16 +19,18 @@
  *                 requires a new entry here with its own targetPriority.
  *
  * armour:         data-driven damage model.  Every vehicle declares:
+ *   damageModel      which damage rule set applies ("armour" | "members";
+ *                    see js/damage.js)
  *   hp               total damage required to destroy the vehicle
  *   subsystemThreshold  accumulated damage at which the first subsystem
  *                       is knocked out (null = no subsystem phase, damage
  *                       goes straight to destruction)
  *   rearInstantKill  if true, a full-damage (>=1.0) rear hit kills
  *                    instantly regardless of remaining HP
- *   subsystems       map of hit-zone name -> subsystem key:
- *                       "turret"     -> turretDisabled
- *                       "leftTrack"  -> leftTrackDisabled
- *                       "rightTrack" -> rightTrackDisabled
+ *   subsystems       map of hit-zone name -> subsystem descriptor:
+ *                       { prop: "turretDisabled", resetTurret: true }
+ *                       { prop: "leftTrackDisabled" }
+ *                       { prop: "rightTrackDisabled" }
  *                    Zones not listed deal damage but disable nothing.
  *
  * The applyHit() method in tank.js reads this table generically --
@@ -72,13 +74,14 @@ export const VEHICLES = {
         roleWeights: { cavalry: 3, sniper: 2, defender: 1, scout: 1 },
         targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, squad: 8, baseWall: 5, baseTower: 10, baseHQ: 10 },
         armour: {
+            damageModel: "armour",
             hp: 6,
             subsystemThreshold: 3,
             rearInstantKill: true,
             subsystems: {
-                front: "turret",
-                side_left: "leftTrack",
-                side_right: "rightTrack",
+                front: { prop: "turretDisabled", resetTurret: true },
+                side_left: { prop: "leftTrackDisabled" },
+                side_right: { prop: "rightTrackDisabled" },
             },
         },
     },
@@ -104,12 +107,13 @@ export const VEHICLES = {
         roleWeights: { cavalry: 2, sniper: 2, defender: 1, scout: 5 },
         targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, squad: 8, baseWall: 3, baseTower: 5, baseHQ: 10 },
         armour: {
+            damageModel: "armour",
             hp: 3,
             subsystemThreshold: 2,
             rearInstantKill: false,
             subsystems: {
-                side_left: "leftTrack",
-                side_right: "rightTrack",
+                side_left: { prop: "leftTrackDisabled" },
+                side_right: { prop: "rightTrackDisabled" },
             },
         },
     },
@@ -136,6 +140,7 @@ export const VEHICLES = {
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
         targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, squad: 7, baseWall: 0, baseTower: 0, baseHQ: 10 },
         armour: {
+            damageModel: "armour",
             hp: 0.1,
             subsystemThreshold: null,
             rearInstantKill: false,
@@ -168,13 +173,14 @@ export const VEHICLES = {
         roleWeights: { cavalry: 0, sniper: 5, defender: 0, scout: 0 },
         targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, squad: 3, baseWall: 0, baseTower: 10, baseHQ: 10 },
         armour: {
+            damageModel: "armour",
             hp: 3,
             subsystemThreshold: 2,
             rearInstantKill: true,
             subsystems: {
-                front: "turret",
-                side_left: "leftTrack",
-                side_right: "rightTrack",
+                front: { prop: "turretDisabled", resetTurret: true },
+                side_left: { prop: "leftTrackDisabled" },
+                side_right: { prop: "rightTrackDisabled" },
             },
         },
     },
@@ -223,6 +229,7 @@ export const VEHICLES = {
         wallAffinity: 0.5,
         digInTime: 1.0,
         armour: {
+            damageModel: "members",
             hp: 5, // one HP per soldier — member damage handled by Squad
             subsystemThreshold: null,
             rearInstantKill: false,

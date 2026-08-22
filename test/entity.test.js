@@ -47,15 +47,15 @@ describe("BaseStructure – wall", () => {
         assert.ok(w.damageFraction > 0);
     });
 
-    it("applyDamage returns true when destroyed", () => {
+    it('applyDamage returns "destroyed" when destroyed', () => {
         const w = new BaseStructure("baseWall", 1, "#f00", "#800");
-        assert.equal(w.applyDamage(w.hp), true);
+        assert.equal(w.applyDamage(w.hp), "destroyed");
         assert.equal(w.alive, false);
     });
 
-    it("applyDamage returns false when still alive", () => {
+    it('applyDamage returns "absorbed" when still alive', () => {
         const w = new BaseStructure("baseWall", 1, "#f00", "#800");
-        assert.equal(w.applyDamage(0.5), false);
+        assert.equal(w.applyDamage(0.5), "absorbed");
         assert.equal(w.alive, true);
     });
 });

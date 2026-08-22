@@ -15,6 +15,7 @@
  */
 
 import { BASE_STRUCTURES } from "./config.js";
+import { resolveDamage } from "./damage.js";
 
 /* ═══════════════════════════════════════════════════════════ *
  *  GameEntity — root of the hierarchy                         *
@@ -107,15 +108,13 @@ export class BaseStructure extends GameEntity {
         return this.maxHp > 0 ? this.hp / this.maxHp : 0;
     }
 
+    /** Which damage model resolves hits (a plain HP pool). */
+    get damageModel() {
+        return "hp";
+    }
+
     applyDamage(amount) {
-        if (!this.alive) return false;
-        this.hp -= amount;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.alive = false;
-            return true;
-        }
-        return false;
+        return resolveDamage(this, null, amount);
     }
 }
 

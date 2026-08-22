@@ -36,7 +36,7 @@ export const direct = {
             gy = Math.floor(b.y);
         const structure = game._getStructureAt(gx, gy);
         if (structure) {
-            if (b.team !== structure.team && structure.applyDamage(b.damage)) {
+            if (b.team !== structure.team && structure.applyDamage(b.damage) === "destroyed") {
                 game.onStructureDestroyed(structure);
             }
         } else {

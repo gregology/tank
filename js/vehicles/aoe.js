@@ -41,7 +41,7 @@ export function applyBlast(game, x, y, radius, damage, team) {
         const dmg = damage * Math.max(0, 1 - edge / radius);
         if (dmg <= 0) continue;
 
-        if (s.applyDamage(dmg)) {
+        if (s.applyDamage(dmg) === "destroyed") {
             game.onStructureDestroyed(s);
         } else {
             game.particles.emit("impact", x, y);

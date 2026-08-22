@@ -35,6 +35,7 @@
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
+import { resolveDamage } from "./damage.js";
 import { GameEntity } from "./entity.js";
 import { distance } from "./utils.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
@@ -46,14 +47,6 @@ export const HIT_ZONE = {
     SIDE_LEFT: "side_left",
     SIDE_RIGHT: "side_right",
     REAR: "rear",
-};
-
-/* ── Subsystem key → Tank property mapping ────────────────── */
-
-const SUBSYSTEM_PROPS = {
-    turret: "turretDisabled",
-    leftTrack: "leftTrackDisabled",
-    rightTrack: "rightTrackDisabled",
 };
 
 export class Tank extends GameEntity {
@@ -215,6 +208,11 @@ export class Tank extends GameEntity {
         return this.squad.damageMultiplier(map);
     }
 
+    /** Which damage model resolves hits (armour vs squad members). */
+    get damageModel() {
+        return VEHICLES[this.vehicleType].armour.damageModel ?? "armour";
+    }
+
     /* ── distributed-hitbox capabilities (squads use member positions) ── */
 
     /** Distance from a world point to the vehicle's hitbox (squads use their nearest member). */
@@ -319,69 +317,7 @@ export class Tank extends GameEntity {
      *                     'absorbed'  — damage counted but no state change yet
      */
     applyHit(zone, damage = 1.0) {
-        // Squads use their explicit member damage model (see Squad).
-        if (this.squad) {
-            const result = this.squad.applyDamage(damage);
-            if (result === "destroyed") this.kill();
-            return result;
-        }
-
-        const armour = VEHICLES[this.vehicleType].armour;
-
-        // ── Rear instant kill (full-damage hit, e.g. ammo rack detonation)
-        if (armour.rearInstantKill && zone === HIT_ZONE.REAR && damage >= 1.0) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Already past subsystem phase + full-damage hit → kill
-        if (this.damaged && armour.subsystemThreshold != null && damage >= 1.0) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Accumulate damage
-        this.damageAccum += damage;
-
-        // ── Destruction: total damage exceeds HP
-        if (this.damageAccum >= armour.hp) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Subsystem trigger (first time accumulated damage crosses threshold)
-        if (armour.subsystemThreshold != null && !this.damaged && this.damageAccum >= armour.subsystemThreshold) {
-            // Rear zone at threshold → kill (accumulated small-arms to rear)
-            if (armour.rearInstantKill && zone === HIT_ZONE.REAR) {
-                this.kill();
-                return "destroyed";
-            }
-
-            this.damaged = true;
-            this._applySubsystem(armour, zone);
-            return "damaged";
-        }
-
-        return "absorbed";
-    }
-
-    /**
-     * Activate the subsystem effect for the given hit zone.
-     * Reads the armour.subsystems map to decide what to disable.
-     */
-    _applySubsystem(armour, zone) {
-        const key = armour.subsystems[zone];
-        if (!key) return; // zone has no subsystem mapping — damage only
-
-        const prop = SUBSYSTEM_PROPS[key];
-        if (prop) {
-            this[prop] = true;
-        }
-
-        // Side-effect: lock turret forward when turret is disabled
-        if (key === "turret") {
-            this.turretAngle = 0;
-        }
+        return resolveDamage(this, zone, damage);
     }
 
     /* ── death / respawn ──────────────────────────────────── */
