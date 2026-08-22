@@ -39,8 +39,10 @@ export const CONFIG = {
     SNIPER_FIRE_RANGE: 15, // preferred distance from enemy tower
     SNIPER_MIN_RANGE: 10, // won't get closer than this
     SNIPER_ENGAGE_RANGE: 6, // only fights enemies this close
+    SNIPER_FIRE_MARGIN: 5, // extra range beyond SNIPER_FIRE_RANGE to start firing
     DEFENDER_PATROL_RADIUS: 10, // patrol radius around friendly tower
     DEFENDER_ENGAGE_RANGE: 18, // intercepts enemies this close to tower
+    OBJECTIVE_ENGAGE_RANGE: 25, // fire at the objective when this close (cavalry/scout/default)
     AIM_DEADZONE: 0.08, // turret/hull aim tolerance (radians) before steering
 
     // Position scoring weights: { cover, flank, range, los }

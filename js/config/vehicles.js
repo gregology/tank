@@ -256,6 +256,8 @@ export const SQUAD_MEMBERS = {
     rifleman: {
         weapon: "rifle",
         sound: "rifle",
+        muzzleFlash: "ifvFlash",
+        tracer: true,
         range: 6,
         cooldown: 0.5,
         bulletSpeed: 11,
@@ -267,6 +269,8 @@ export const SQUAD_MEMBERS = {
     mg: {
         weapon: "mg",
         sound: "rifle",
+        muzzleFlash: "ifvFlash",
+        tracer: true,
         range: 7,
         cooldown: 0.16,
         bulletSpeed: 12,
@@ -278,6 +282,8 @@ export const SQUAD_MEMBERS = {
     rpg: {
         weapon: "rpg",
         sound: "rpg",
+        muzzleFlash: "ifvFlash",
+        tracer: true,
         range: 9,
         cooldown: 2.0,
         bulletSpeed: 8,
@@ -289,6 +295,8 @@ export const SQUAD_MEMBERS = {
     shotgun: {
         weapon: "shotgun",
         sound: "shotgun",
+        muzzleFlash: "ifvFlash",
+        tracer: true,
         range: 3.5,
         cooldown: 0.8,
         bulletSpeed: 10,

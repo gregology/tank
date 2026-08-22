@@ -19,6 +19,7 @@ export const MAP_STYLES = Object.freeze({
         darkGrass: TILES.DARK_GRASS,
         dirt: TILES.DIRT,
         paved: TILES.PAVED,
+        destroyedTile: TILES.GRASS, // what a destructible tile becomes when destroyed
         buildings: {
             small: TILES.BLDG_SMALL,
             medium: TILES.BLDG_MEDIUM,

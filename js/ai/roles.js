@@ -73,7 +73,7 @@ export const ROLE_STRATEGIES = {
             let fireTarget = null;
 
             const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (objDist < 25) {
+            if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
                 fireTarget = { x: objective.x, y: objective.y, dist: objDist };
             }
 
@@ -129,7 +129,7 @@ export const ROLE_STRATEGIES = {
                 } else {
                     navGoal = { x: ai.roleState.flankPoint.x, y: ai.roleState.flankPoint.y };
                     // Fire at tower if already in range while flanking
-                    if (objDist < fireRange + 5) {
+                    if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
                         fireTarget = { x: objective.x, y: objective.y, dist: objDist };
                     }
                 }
@@ -139,7 +139,7 @@ export const ROLE_STRATEGIES = {
             if (!navGoal) {
                 if (posReached) {
                     navGoal = { x: me.x, y: me.y };
-                    if (objDist < fireRange + 5) {
+                    if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
                         fireTarget = { x: objective.x, y: objective.y, dist: objDist };
                     }
                 } else if (objDist < minRange) {
@@ -152,7 +152,7 @@ export const ROLE_STRATEGIES = {
                     fireTarget = { x: objective.x, y: objective.y, dist: objDist };
                 } else {
                     navGoal = ai.roleState.sniperPos || { x: objective.x, y: objective.y };
-                    if (objDist < fireRange + 5) {
+                    if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
                         fireTarget = { x: objective.x, y: objective.y, dist: objDist };
                     }
                 }
@@ -260,7 +260,7 @@ export const ROLE_STRATEGIES = {
             }
 
             // Fire at tower when in range
-            if (objDist < 25) {
+            if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
                 fireTarget = { x: objective.x, y: objective.y, dist: objDist };
             }
 
@@ -286,7 +286,7 @@ const DEFAULT_ROLE = {
         if (objective) {
             navGoal = { x: objective.x, y: objective.y };
             const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (objDist < 25) {
+            if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
                 fireTarget = { x: objective.x, y: objective.y, dist: objDist };
             }
         }

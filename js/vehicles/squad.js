@@ -39,12 +39,18 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
             damage: dmg,
             speed: weapon.bulletSpeed,
             lifetime,
-            tracer: true,
+            tracer: weapon.tracer ?? true,
         });
     }
 
     // Muzzle flash + event (the weapon's sound key drives the audio)
-    flashMuzzle(game, "ifvFlash", memberPos.x + Math.cos(angle) * 0.3, memberPos.y + Math.sin(angle) * 0.3, angle);
+    flashMuzzle(
+        game,
+        weapon.muzzleFlash ?? "ifvFlash",
+        memberPos.x + Math.cos(angle) * 0.3,
+        memberPos.y + Math.sin(angle) * 0.3,
+        angle,
+    );
     game.emit(GAME_EVENTS.FIRE, { source: squad, bullet: game.bullets[game.bullets.length - 1], sound: weapon.sound });
 }
 

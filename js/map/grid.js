@@ -9,7 +9,7 @@
  * over this class.
  */
 
-import { CONFIG, TILES as T, TILE_PROPS } from "../config.js";
+import { CONFIG, MAP_STYLES, TILES as T, TILE_PROPS } from "../config.js";
 
 export class TileGrid {
     /**
@@ -106,8 +106,9 @@ export class TileGrid {
         if (this.hp[i] <= 0) return false; // not destructible
         this.hp[i] -= damage;
         if (this.hp[i] <= 0) {
-            // Destroyed → replace with grass
-            this.tiles[i] = T.GRASS;
+            // Destroyed → the biome's destroyed-tile fallback.
+            const style = MAP_STYLES[this.style] ?? MAP_STYLES.island;
+            this.tiles[i] = style.destroyedTile ?? T.GRASS;
             this.hp[i] = 0;
             this.maxHp[i] = 0;
             return true;
