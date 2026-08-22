@@ -171,14 +171,18 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
 - `Game` owns the simulation: tanks, bullets, bases, win logic, scores. It
   exposes **uniform accessors** — `allTanks`, `humanTanks`, `bots` (as
   `{ tank, role }` pairs), `factions`, `cameras`, `bases`, `baseStructures`,
-  `scores`, `winnerColor` — so the renderer and HUD stay game-type-agnostic.
-  The strategies (modes and vehicle behaviours) are written against this
-  public surface — the accessors plus `setBases`, `creditKill`, `nearestEnemy`
-  — never against `_`-prefixed internals.
+  `damageables`, `scores`, `winnerColor` — so the renderer and HUD stay
+  game-type-agnostic. The strategies (modes and vehicle behaviours) are
+  written against this public surface — the accessors plus `setBases`,
+  `creditKill`, `nearestEnemy`, `enemiesOf(team)`, `structureAt(gx, gy)`,
+  `getBot(tank)`, and the single damage-application seam
+  `applyDamage(entity, source, amount)` / `destroyEntity(entity, source)` —
+  never against `_`-prefixed internals.
 - The per-frame simulation loop is a thin ordered list in `Game._update`; each
-  pass (bullets, collision/crush/push, towers, respawn, smoke, camera, win)
-  lives in `js/systems/` as a `(game, …)` function.  A new per-frame concern
-  is one system module + one line in the loop, not a new `Game` method.
+  pass (think, movement, vehicle-update, separation, crush, firing, bullets,
+  towers, respawn, smoke, camera, win) lives in `js/systems/` as a
+  `(game, …)` function.  A new per-frame concern is one system module + one
+  line in the loop, not a new `Game` method.
 - **`Game` delegates the two real axes of variation.** Per-vehicle
   firing/attack rules live in the behaviour strategies (`js/vehicles/`,
   dispatched by `getVehicleBehaviour(tank.vehicleType)`); Skirmish-vs-Battle
@@ -350,12 +354,13 @@ The root principles, made concrete for this directory:
 
 ## Known structural debt (do not expand it)
 
-All four refactor rounds are done; these are the current boundaries to keep,
+All five refactor rounds are done; these are the current boundaries to keep,
 not expand:
 
 - `game.js` stays a thin orchestration shell — the per-frame passes live in
-  `js/systems/` (`projectiles`, `collision`, `towers`, `respawn`, `effects`,
-  `camera`, `win`).  New simulation logic is a system module, not a `Game` method.
+  `js/systems/` (`think`, `movement`, `update`, `firing`, `projectiles`,
+  `collision`, `towers`, `respawn`, `effects`, `camera`, `win`).  New
+  simulation logic is a system module, not a `Game` method.
 - `renderer.js` stays a thin shell over `js/render/`; `js/render/vehicles.js`
   and `js/render/structures.js` stay thin barrels over `js/render/vehicles/`
   and `js/render/structures/` (sprites dispatched by the `SPRITES` /
@@ -381,3 +386,20 @@ structure / HUD / minimap `switch`/`vehicleType ===` dispatch (now
 bespoke particle emitters (now the `EFFECTS` table + `emit`), the duplicated
 targeting loop in `updateWatchTowers` (now `pickTarget` + `targetPriorityOf`),
 and `Bullet.sourceType` (now `Bullet.kind` + `js/projectiles/`).
+
+Round five finished the seams the first four left half-open — do not
+reintroduce: the split damage *application* (now one
+`Game.applyDamage`/`destroyEntity` seam + a `GameEntity.onDestroyed` hook),
+the tank-vs-structure iteration splits (now one `damageables`/`enemiesOf`
+surface + a `GameEntity.hitTest` capability), the `if (this.squad)` hitbox
+proxy cluster and the hardcoded subsystem booleans (now a `body` strategy +
+`disabledSubsystems` Set + `SUBSYSTEM_EFFECTS`), the inline think/movement/
+update/firing loops in `_update` (now `js/systems/`), the hardcoded structure
+category (`entityType === "baseHQ"…` — now `category`/`isObjective` +
+`structuresOf`), the depth-sort `switch`/tile `if/else`/role-vocab/HP-bar
+duplication (now `DEPTH_DRAWERS`/`DRAW_KINDS`/`ROLE_PRESENTATION`/
+`healthColor`/`drawHealthBar`), the `if (gameType === "battle")` lobby
+branching and `["skirmish","battle"]` literal (now `teamSet` +
+`GAME_TYPE_ORDER` + `mode.hud`), the `grid._compoundTier` side-channel (now an
+explicit `half` parameter), and the rematch audio double-subscribe (now an
+idempotent `hookIntoGame` + `game.off`).

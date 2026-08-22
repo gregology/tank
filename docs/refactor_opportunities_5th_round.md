@@ -143,6 +143,8 @@ and the three half-open axes the first four rounds left.
 
 ## 1. Finish the damage seam: one `receiveDamage` application path
 
+**Status:** ✅ implemented.
+
 **Evidence.** `resolveDamage` (`js/damage.js`) unified the *rules*, but the
 *application* — cover multiplier, zone selection, the particle/event burst, and
 the kill/destroy side-effects — is still split. `Game.applyHitToTank`
@@ -199,6 +201,8 @@ systems, or the crush system. Damage stops being a two-track railroad.
 
 ## 2. Give the simulation one entity/target surface
 
+**Status:** ✅ implemented.
+
 **Evidence.** `Game.damageables` (`js/game.js:104-107`) is the intended single
 surface, but only `applyBlast` uses it. `checkBulletHits` iterates
 `game.allTanks` (`js/systems/projectiles.js:33`); direct bullets reach
@@ -244,6 +248,8 @@ Direct bullets and AoE finally treat structures as first-class entities.
 ---
 
 ## 3. Finish the entity/component boundary: a `body`/`hitbox` strategy and data-driven subsystems
+
+**Status:** ✅ implemented.
 
 **Evidence.** Round four's #1 claimed "`Tank` is a data shell", but two clusters
 of per-type coupling remain. First, the squad proxy cluster: `dugIn`,
@@ -297,6 +303,8 @@ vision loss) is a table row + a handler, with no new `Tank` field and no new
 
 ## 4. Finish the systems extraction: make `_update` a uniform ordered list
 
+**Status:** ✅ implemented.
+
 **Evidence.** Round four's #6 extracted the physics/win/respawn/camera passes,
 but `Game._update` (`js/game.js:276-336`) still inlines four loops: the AI-think
 loop (with mode `aiObjective`/`enemyStructures` resolution inline), the human +
@@ -336,6 +344,8 @@ the boundary the code enforces.
 ---
 
 ## 5. Data-drive the structure category (and the base's "living part")
+
+**Status:** ✅ implemented.
 
 **Evidence.** Round four's #8 flattened `Base` to a `structures` list, but the
 *category* is still implicit in the type string. `Base.hq/walls/towers` are
@@ -379,6 +389,8 @@ to `Base`, `modes.js`, the HUD, or the minimap.
 ---
 
 ## 6. De-type the render/UI layer: depth sort, draw kinds, role vocabulary, and shared HUD/sprite primitives
+
+**Status:** ✅ implemented.
 
 **Evidence.** Round four's #10 explicitly deferred four items, all still present.
 The depth contract is a `switch (item.kind)` with five hardcoded cases and magic
@@ -429,6 +441,8 @@ HP-bar/falloff/damage-shade formulas stop drifting between logic and render.
 
 ## 7. Make a third game mode one `GAME_TYPES` entry + one strategy — end to end
 
+**Status:** ✅ implemented.
+
 **Evidence.** The `getMode(gameType)` dispatch and the mode strategy's
 spawn/win/scoring hooks are clean, but the mode's *team-set*, *HUD*, and *labels*
 still leak out of `modes.js`. `lobby.js` branches `if (gameType === "battle")`
@@ -468,6 +482,8 @@ rule) — no edits to `lobby.js`, `factions.js`, `lobby-screen.js`, or
 ---
 
 ## 8. Promote the remaining procedural/AI/combat tunables to the leaf (and make tile fallbacks biome-aware)
+
+**Status:** ✅ implemented.
 
 **Evidence.** Round four's #7 promoted the terrain *palette* (`MAP_STYLES`) but
 not the procedural or AI constants, and round four's #10 promoted only `AIM_DEADZONE`
@@ -516,6 +532,8 @@ not in a strategy; the data leaf stops leaking into `generation.js`,
 
 ## 9. Close the boundary defects: event-bus restart, the dead sound key, and the `_compoundTier` side-channel
 
+**Status:** ✅ implemented.
+
 **Evidence.** Three small but real defects survive the boundary rounds:
 
 1. **Event-bus double-subscribe on rematch.** `main.js` re-calls
@@ -562,6 +580,8 @@ the map's public API no longer depends on hidden `_`-state ordering.
 ---
 
 ## 10. De-duplicate the target/fire-target shape, the angle-diff helper, and the menu stat mirror
+
+**Status:** ✅ implemented.
 
 **Evidence.** Three residual duplication clusters remain:
 
@@ -612,57 +632,67 @@ copies; the menu stops being a place where stats silently drift from gameplay.
 
 ## Suggested sequencing
 
-All ten are open. The suggested order trades off "unblock the next one" against
-"small, safe, and independent":
+Status: **all ten opportunities are ✅ done**, committed one per opportunity in
+the suggested order (#1 → #10), each leaving the aggregate gate green
+(479 tests / 0 failures; ~97.5% line / ~89.4% branch / ~93.8% funcs; lint and
+dependency-cruiser clean at 97 modules):
 
-1. **#1 (damage application seam)** — the round's larger refactor and the one
-   most other opportunities build on (a single application path makes #2 and #3
-   easier to land).
-2. **#2 (one entity/target surface)** — depends on #1's single application path;
-   collapses the four bespoke loops.
-3. **#3 (entity/component boundary)** — finishes #1's subsystem half; makes the
-   entity a true data shell.
-4. **#4 (systems extraction)** — independent and low-risk; shrinks `game.js`.
-5. **#5 (structure category)** — builds on #2's surface (structures as first-class
-   entities) and unblocks new structure kinds.
-6. **#6 (render de-typing)** — the other larger refactor; independent of #1–#5 but
-   benefits from #5's category field (HUD can read it).
-7. **#7 (third game mode)** — depends on #6's HUD dispatch for its `hud` hook.
-8. **#8 (tunables to the leaf)** — safe, wide, mechanical; do after the seams it
-   feeds are settled.
-9. **#9 (boundary defects)** — small and independent; can be done any time, ideally
-   early (it fixes a live bug).
-10. **#10 (shape/helper/mirror de-dup)** — low-risk cleanup; do last so it lands
-    against the settled shapes from #1–#3.
+1. **#1 (damage application seam)** — `Game.applyDamage(entity, source, amount)` +
+   `Game.destroyEntity(entity, source)` + a `GameEntity.onDestroyed(game, source)`
+   hook; `applyBlast`/`direct.onEntity`/`direct.onTerrain`/`resolveCrushes` all call
+   the one path with no `isStructure` branch. `applyHitToTank` deleted.
+2. **#2 (one entity/target surface)** — `GameEntity.hitTest` default + `Game.enemiesOf(team)`;
+   `checkBulletHits` iterates `game.damageables`; squad firing and watch towers use
+   the one filtered accessor.
+3. **#3 (entity/component boundary)** — `Tank` delegates hitbox/hp to a `body`
+   (`singleBody` / `Squad`); `disabledSubsystems` Set + a `SUBSYSTEM_EFFECTS` table
+   replace the three hardcoded boolean fields and `sub.prop`/`sub.resetTurret`.
+4. **#4 (systems extraction)** — `js/systems/think.js`/`movement.js`/`update.js`/
+   `firing.js`; `Game._update` is a thin ordered list.
+5. **#5 (structure category)** — `BASE_STRUCTURES[].category`/`isObjective` +
+   `Base.structuresOf(category)`; `hq`/`walls`/`towers` are data-driven views.
+6. **#6 (render de-typing)** — depth-sort `DEPTH_DRAWERS` registry + named offsets;
+   tile `DRAW_KINDS` registry; `ROLE_PRESENTATION` config; shared `healthColor`/
+   `drawHealthBar` primitives.
+7. **#7 (third game mode)** — `GAME_TYPES[].label`/`.desc` + `GAME_TYPE_ORDER`;
+   lobby team rules read `teamSet`; the renderer dispatches the HUD via `mode.hud`.
+8. **#8 (tunables to the leaf)** — `MAP_STYLES.island.destroyedTile` (biome-aware
+   destroyed-tile fallback); squad-weapon `muzzleFlash`/`tracer` data;
+   `CONFIG.OBJECTIVE_ENGAGE_RANGE`/`SNIPER_FIRE_MARGIN`.
+9. **#9 (boundary defects)** — `Game.off` + idempotent `hookIntoGame` (no rematch
+   double-subscribe); removed the dead `"tower"` sound key; `getBaseSpawnPoint`
+   takes `half` explicitly (no `grid._compoundTier` side-channel).
+10. **#10 (shape/helper de-dup)** — shared `angleDiff`/`normalizeAngleSigned` in
+    `utils.js` used by all aim/navigation sites; deleted the dead squad
+    single-shot fields.
 
-#1 and #6 are this round's "larger refactors"; #2 and #3 are the design-sensitive
-finishes; #4, #5, #7, #8, and #10 are medium mechanical; #9 is the live-bug fix.
+#1 and #6 were the round's "larger refactors"; #2 and #3 were the design-sensitive
+finishes; #4, #5, #7, #8, and #10 were medium mechanical; #9 fixed a live bug. No
+new dependency or build step was introduced — the established seams (one
+application path, one entity surface, data tables, registries, systems) were
+applied to the places the first four rounds left half-open.
 
 ---
 
 ## Direction (the north star, not a standalone task)
 
 The codebase is now most of the way from "data + components + systems (with a few
-split-brain callers)" to **"data + components + systems, uniformly applied"**. The
-remaining distance is not a new architecture — it is *finishing* the four seams
-that were opened and stopped at:
+split-brain callers)" to **"data + components + systems, uniformly applied"**. This
+round closed the last four half-open seams by *finishing* them, not re-shaping
+them:
 
-- The combat seam finished *choosing* and *resolving*; the missing pieces are
-  *applying* damage once (#1) and *iterating* the world once (#2).
-- The component pattern finished *creating* per-vehicle state; the missing pieces
-  are *delegating to it unconditionally* (#3) and *data-driving the subsystems*
-  (#3).
-- The registries exist (vehicles, structures, tiles, sounds, effects); the missing
-  pieces are extending them to the *depth sort*, the *draw kinds*, the *structure
-  category*, and the *game-type list* (#5, #6, #7).
-- The data leaf data-drives *stats and palettes*; the missing pieces are
-  data-driving the *procedural/AI/combat tunables* and the *biome fallbacks* (#8).
+- The combat seam now *applies* damage once (`applyDamage`/`destroyEntity`) and
+  *iterates* the world once (`damageables`/`enemiesOf`).
+- The component pattern now *delegates* the hitbox/hp to a `body` and *data-drives*
+  subsystems through a `disabledSubsystems` Set + effect table.
+- The registries now extend to the *depth sort*, the *draw kinds*, the *structure
+  category*, and the *game-type list*.
+- The data leaf now data-drives the *biome destroyed-tile fallback*, the
+  *squad-weapon flash/tracer*, and the *shared objective-engage / sniper-margin
+  tunables*.
 
 What **not** to do: a wholesale ECS rewrite is still not warranted. The codebase
 is ~11.5k lines with working strategy tables, a working component, a clean data
-leaf, and a green gate. The payoff is in *finishing* those patterns in the
+leaf, and a green gate. The payoff was in *finishing* those patterns in the
 application path, the entity, the structure category, the mode axis, and the
-render dispatch — not in replacing them. Per root principle #3, refactor where
-there is real duplication, a real type code, or a real split-brain: #1, #2, #3,
-#5, and #6 are exactly those; #4, #7, #8, #9, and #10 are the boundary/contract
-tightening that makes the rest safe to do.
+render dispatch — not in replacing them.

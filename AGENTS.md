@@ -102,8 +102,9 @@ config.js    the data "leaf": barrel over js/config/ — every constant and
              data table lives in the js/config/ package
 game.js      match simulation: tanks, bullets, bases, event bus — the shared
              loop; mode + vehicle behaviour + per-frame systems are delegated
-systems/     per-frame simulation systems (projectiles, collision, towers,
-             respawn, effects, camera, win), called from Game._update
+systems/     per-frame simulation systems (think, movement, update, firing,
+             projectiles, collision, towers, respawn, effects, camera, win),
+             called from Game._update
 modes.js     game-mode strategy: Skirmish vs Battle hooks (spawn, win, scoring)
 vehicles/    per-vehicle behaviour strategies (fire/move/update/aim/aiThink),
              one module per vehicle, dispatched from vehicleType
@@ -215,10 +216,11 @@ around them. (Details live in `js/AGENTS.md`.)
 
 ## Current hot spots
 
-All four refactor rounds are done (`docs/refactor_opportunities.md`,
+All five refactor rounds are done (`docs/refactor_opportunities.md`,
 `docs/refactor_opportunities_2nd_round.md`,
-`docs/refactor_opportunities_3rd_round.md`, and
-`docs/refactor_opportunities_4th_round.md`). The boundaries to keep, in brief:
+`docs/refactor_opportunities_3rd_round.md`,
+`docs/refactor_opportunities_4th_round.md`, and
+`docs/refactor_opportunities_5th_round.md`). The boundaries to keep, in brief:
 
 - The god objects are gone: `renderer.js`, `map.js`, `ai.js`, `menu.js`,
   `config.js`, `game.js`, and the render vehicle/structure sprites are all
@@ -228,24 +230,31 @@ All four refactor rounds are done (`docs/refactor_opportunities.md`,
   grow a shell back into a god object.
 - Variation is data + strategies, not type codes: vehicle behaviour
   (`js/vehicles/`, incl. `init` state + movement + `aiThink`), tile semantics
-  (`TILE_PROPS` + `TILE_VISUALS`) and biomes (`MAP_STYLES`), entity
-  interaction capabilities (independent `VEHICLES` flags → `flies` /
-  `softTarget` / `crushable` / `canCrush` / `chargeable`), the damage *rules*
-  (`damageModel` seam in `js/damage.js`), structure sprites
-  (`STRUCTURE_SPRITES`) and a flat `Base.structures` list, the projectile
-  lifecycle (`Bullet.kind` + `js/projectiles/`), targeting (`pickTarget` +
-  `targetPriorityOf`), sound synthesis (`SOUNDS` + `play`), particle effects
-  (`EFFECTS` + `emit`), and the event vocabulary (`GAME_EVENTS`). A new
-  vehicle, tile, biome, structure, unit kind, projectile, turret, sound, or
-  effect is a table entry / strategy / capability, not another `if (type === …)`.
+  (`TILE_PROPS` + `TILE_VISUALS`) and biomes (`MAP_STYLES`, incl. the
+  destroyed-tile fallback), entity interaction capabilities (independent
+  `VEHICLES` flags → `flies` / `softTarget` / `crushable` / `canCrush` /
+  `chargeable`), the damage *rules* (`damageModel` seam in `js/damage.js`) and
+  the damage *application* (`Game.applyDamage` / `destroyEntity` + a
+  `GameEntity.onDestroyed` hook), the `body` hitbox + `disabledSubsystems`
+  subsystem model, structure sprites (`STRUCTURE_SPRITES`) and a flat
+  `Base.structures` list with data-driven `category`/`isObjective`, the
+  projectile lifecycle (`Bullet.kind` + `js/projectiles/`), targeting
+  (`pickTarget` + `targetPriorityOf` over one `damageables`/`enemiesOf`
+  surface), sound synthesis (`SOUNDS` + `play`), particle effects (`EFFECTS` +
+  `emit`), the event vocabulary (`GAME_EVENTS` + `game.off`), the render
+  registries (`DEPTH_DRAWERS` / `DRAW_KINDS` / `ROLE_PRESENTATION` /
+  `healthColor` / `drawHealthBar`), and the game-mode axis (`GAME_TYPE_ORDER`
+  + `teamSet` + `mode.hud`). A new vehicle, tile, biome, structure, unit kind,
+  projectile, turret, sound, effect, subsystem, or mode is a table entry /
+  strategy / capability, not another `if (type === …)`.
 - The strategies are written against the public `Game` world-model API
-  (accessors + `setBases` / `creditKill` / `nearestEnemy`), never `_`-prefixed
-  internals.
+  (accessors + `setBases` / `creditKill` / `nearestEnemy` / `enemiesOf` /
+  `structureAt` / `getBot` / `applyDamage`), never `_`-prefixed internals.
 - Coverage is honest: every `js/` module (including each file under the
   packages) is imported by at least one test, and the aggregate gate sits at
-  ~97% line / ~89% branch / ~94% funcs. Keep it that way — a new module that
-  no test imports silently drops out of the report, so any new file needs a
-  test suite too.
+  ~97.5% line / ~89.4% branch / ~93.8% funcs. Keep it that way — a new module
+  that no test imports silently drops out of the report, so any new file needs
+  a test suite too.
 
 Treat these as the boundaries to maintain, and apply the principles above when
 you touch them.
