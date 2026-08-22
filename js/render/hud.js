@@ -7,9 +7,9 @@
  * and both call the minimap.
  */
 
-import { CONFIG, VEHICLES } from "../config.js";
+import { CONFIG, ROLE_PRESENTATION, VEHICLES } from "../config.js";
 import { chargeRange, distance } from "../utils.js";
-import { roundedRect } from "./canvas-utils.js";
+import { healthColor, roundedRect } from "./canvas-utils.js";
 import { drawMinimap } from "./minimap.js";
 
 /**
@@ -96,7 +96,7 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
         const barY = y + 14;
         ctx.fillStyle = "#222";
         ctx.fillRect(x, barY, barW, barH);
-        ctx.fillStyle = frac > 0.5 ? base.color : frac > 0.25 ? "#da4" : "#d44";
+        ctx.fillStyle = healthColor(frac, base.color);
         ctx.fillRect(x, barY, barW * frac, barH);
         ctx.strokeStyle = "#666";
         ctx.lineWidth = 1;
@@ -213,8 +213,6 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
     }
 
     // Allied bot role roster (bottom-left)
-    const roleNames = { cavalry: "CAV", sniper: "SNP", defender: "DEF", scout: "SCT" };
-    const roleColors = { cavalry: "#e55", sniper: "#5ae", defender: "#5c5", scout: "#da5" };
     const allyBots = (game.bots ?? []).filter((b) => b.tank.team === focusTank.team);
     ctx.textAlign = "left";
     ctx.font = 'bold 10px "Courier New", monospace';
@@ -222,10 +220,10 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
         ry = vy + ch - 14 - allyBots.length * 13;
     for (let i = 0; i < allyBots.length; i++) {
         const b = allyBots[i];
-        const role = b.role || "???";
-        const name = roleNames[role] || "???";
+        const pres = ROLE_PRESENTATION[b.role];
+        const name = pres?.glyph ?? "???";
         const alive = b.tank.alive;
-        ctx.fillStyle = alive ? roleColors[role] || "#aaa" : "#555";
+        ctx.fillStyle = alive ? (pres?.color ?? "#aaa") : "#555";
         ctx.fillText(`\u2022 ${name}`, rx, ry + i * 13);
         if (!alive) {
             ctx.fillStyle = "#777";

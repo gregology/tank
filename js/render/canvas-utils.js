@@ -93,3 +93,19 @@ export function roundedRect(ctx, x, y, w, h, r) {
     ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
 }
+
+/**
+ * Health-bar fill colour: green above 50%, amber above 25%, red below.
+ * `full` is the "healthy" colour (defaults to the shared green ramp).
+ */
+export function healthColor(frac, full = "#4a4") {
+    return frac > 0.5 ? full : frac > 0.25 ? "#da4" : "#d44";
+}
+
+/** Draw a small health bar (dark backing + coloured fill) at (x, y). */
+export function drawHealthBar(ctx, x, y, w, h, frac, full = "#4a4") {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = healthColor(frac, full);
+    ctx.fillRect(x, y, w * frac, h);
+}

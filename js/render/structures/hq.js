@@ -4,7 +4,7 @@
  */
 
 import { BASE_STRUCTURES } from "../../config.js";
-import { darken } from "../canvas-utils.js";
+import { darken, drawHealthBar } from "../canvas-utils.js";
 import { drawDamageOverlay } from "../damage.js";
 import { TH, TW } from "../projection.js";
 
@@ -125,10 +125,7 @@ export function drawBaseHQ(ctx, hq, sx, sy, time) {
         barH = 5;
     const barX = sx - barW / 2,
         barY = topY - 12;
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
-    ctx.fillStyle = frac > 0.5 ? "#4a4" : frac > 0.25 ? "#da4" : "#d44";
-    ctx.fillRect(barX, barY, barW * frac, barH);
+    drawHealthBar(ctx, barX, barY, barW, barH, frac);
     ctx.font = 'bold 9px "Courier New", monospace';
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";

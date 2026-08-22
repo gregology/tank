@@ -22,6 +22,20 @@ import { drawBaseStructure } from "./structures.js";
 import { drawTile } from "./tiles.js";
 import { drawVehicle } from "./vehicles.js";
 
+/* Depth-sort constants — the two-pass contract (see js/AGENTS.md). */
+const ELEVATED_TILE_DEPTH = 1; // elevated tiles render one bucket above their gx+gy
+const AIR_DEPTH_BONUS = 2; // drones fly above buildings
+const ENTITY_CULL_MARGIN = 40; // screen-space margin around the visible area
+
+/** Draw dispatch per depth-item kind (a registry, not a `switch`). */
+const DEPTH_DRAWERS = {
+    tile: (ctx, item, game) => drawTile(ctx, item, game.gameTime, game.map),
+    vehicle: (ctx, item) => drawVehicle(ctx, item.entity, item.sx, item.sy),
+    bullet: (ctx, item, game) => drawBullet(ctx, item.entity, item.sx, item.sy, game.gameTime),
+    particle: (ctx, item) => drawParticle(ctx, item.entity, item.sx, item.sy),
+    structure: (ctx, item, game) => drawBaseStructure(ctx, item.entity, item.sx, item.sy, game.gameTime),
+};
+
 /**
  * Render one clipped viewport: terrain, depth-sorted entities, and the
  * SPG targeting indicator for the viewport's own tank.
@@ -116,7 +130,7 @@ export function collectDepthItems(game, visLeft, visRight, visTop, visBottom) {
             const scr = worldToScreen(gx, gy);
             if (scr.x < visLeft || scr.x > visRight || scr.y < visTop || scr.y > visBottom) continue;
 
-            addToBucket(gx + gy + 1, {
+            addToBucket(gx + gy + ELEVATED_TILE_DEPTH, {
                 kind: "tile",
                 gx,
                 gy,
@@ -130,14 +144,20 @@ export function collectDepthItems(game, visLeft, visRight, visTop, visBottom) {
     // Entities (tanks, bullets, particles)
     const addEntity = (kind, entity, wx, wy, depthBonus = 0) => {
         const scr = worldToScreen(wx, wy);
-        if (scr.x < visLeft - 40 || scr.x > visRight + 40 || scr.y < visTop - 40 || scr.y > visBottom + 40) return;
+        if (
+            scr.x < visLeft - ENTITY_CULL_MARGIN ||
+            scr.x > visRight + ENTITY_CULL_MARGIN ||
+            scr.y < visTop - ENTITY_CULL_MARGIN ||
+            scr.y > visBottom + ENTITY_CULL_MARGIN
+        )
+            return;
         addToBucket(wx + wy + depthBonus, { kind, entity, sx: scr.x, sy: scr.y });
     };
 
     for (const t of game.allTanks) {
         if (t.alive || t.respawnTimer > 0) {
             // Air units fly above buildings — render them later (higher depth)
-            const depthBonus = t.flies ? 2 : 0;
+            const depthBonus = t.flies ? AIR_DEPTH_BONUS : 0;
             addEntity("vehicle", t, t.x, t.y, depthBonus);
         }
     }
@@ -165,23 +185,7 @@ export function drawDepthBuckets(ctx, buckets, game) {
         if (!bucket) continue;
         for (const item of bucket) {
             ctx.save();
-            switch (item.kind) {
-                case "tile":
-                    drawTile(ctx, item, game.gameTime, game.map);
-                    break;
-                case "vehicle":
-                    drawVehicle(ctx, item.entity, item.sx, item.sy);
-                    break;
-                case "bullet":
-                    drawBullet(ctx, item.entity, item.sx, item.sy, game.gameTime);
-                    break;
-                case "particle":
-                    drawParticle(ctx, item.entity, item.sx, item.sy);
-                    break;
-                case "structure":
-                    drawBaseStructure(ctx, item.entity, item.sx, item.sy, game.gameTime);
-                    break;
-            }
+            DEPTH_DRAWERS[item.kind]?.(ctx, item, game);
             ctx.restore();
         }
     }

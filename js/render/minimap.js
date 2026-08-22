@@ -4,9 +4,7 @@
  * a border tinted with the local player's team colour.
  */
 
-import { TILE_VISUALS, VEHICLES } from "../config.js";
-
-const ROLE_LETTERS = { cavalry: "C", sniper: "S", defender: "D", scout: "F" };
+import { ROLE_PRESENTATION, TILE_VISUALS, VEHICLES } from "../config.js";
 
 /** Marker draw functions, keyed by `VEHICLES[type].minimapShape`. */
 const MARKERS = {
@@ -74,7 +72,7 @@ export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
         // Show role letter for allied bots in team mode.
         const role = game.bots?.find((b) => b.tank === t)?.role;
         if (role) {
-            const letter = ROLE_LETTERS[role] || "?";
+            const letter = ROLE_PRESENTATION[role]?.letter ?? "?";
             ctx.font = "bold 7px monospace";
             ctx.fillStyle = "#fff";
             ctx.textAlign = "center";

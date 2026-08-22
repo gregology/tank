@@ -14,17 +14,11 @@ import { drawDamageOverlay } from "./damage.js";
 import { TH, TW } from "./projection.js";
 
 /**
- * Draw one tile at its projected screen position.
- * @param {{gx:number, gy:number, tile:number, sx:number, sy:number}} tilePos
+ * Draw functions per `TILE_VISUALS[].draw` kind — a registry, not an
+ * `if/else` chain, so a new draw kind is one entry here.
  */
-export function drawTile(ctx, { gx, gy, tile, sx, sy }, time, map) {
-    const visual = TILE_VISUALS[tile];
-    if (!visual) return;
-
-    // Colour variation per tile based on position.
-    const v = ((gx * 7 + gy * 13) % 5) - 2; // −2 … +2
-
-    if (visual.draw === "water") {
+const DRAW_KINDS = {
+    water(ctx, { sx, sy, gx, gy }, time, _map, visual, v) {
         const base = PALETTE[visual.color];
         const wave = Math.sin(time * 1.8 + gx * 1.3 + gy * 0.9) * 0.5 + 0.5;
         drawDiamond(
@@ -39,20 +33,37 @@ export function drawTile(ctx, { gx, gy, tile, sx, sy }, time, map) {
             drawDiamond(ctx, sx, sy, "rgba(180,210,240,0.15)");
             ctx.globalAlpha = 1;
         }
-    } else if (visual.draw === "flat") {
+    },
+    flat(ctx, { sx, sy }, _time, _map, visual, v) {
         const c = PALETTE[visual.color];
         const m = visual.variation;
         drawDiamond(ctx, sx, sy, rgb(c.r + v * m.r, c.g + v * m.g, c.b + v * m.b));
-    } else if (visual.draw === "elevated") {
+    },
+    elevated(ctx, { sx, sy, gx, gy, tile }, time, map, visual, v) {
         const frac = map.getDamageFraction(gx, gy);
         const h = Math.round(map.tileHeight(tile) * frac);
         drawElevatedTile(ctx, sx, sy, h, PALETTE[visual.top], PALETTE[visual.left], PALETTE[visual.right], v);
         if (frac < 1) drawDamageOverlay(ctx, sx, sy, h, frac, time);
-    } else if (visual.draw === "building") {
+    },
+    building(ctx, { sx, sy, gx, gy, tile }, time, map) {
         const frac = map.getDamageFraction(gx, gy);
         drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time);
-    }
-    // "none" (base-structure tile) draws nothing — its structure sprite draws it.
+    },
+};
+
+/**
+ * Draw one tile at its projected screen position.
+ * @param {{gx:number, gy:number, tile:number, sx:number, sy:number}} tilePos
+ */
+export function drawTile(ctx, { gx, gy, tile, sx, sy }, time, map) {
+    const visual = TILE_VISUALS[tile];
+    if (!visual) return;
+
+    // Colour variation per tile based on position.
+    const v = ((gx * 7 + gy * 13) % 5) - 2; // −2 … +2
+
+    DRAW_KINDS[visual.draw]?.(ctx, { gx, gy, tile, sx, sy }, time, map, visual, v);
+    // "none" (base-structure tile) has no entry and draws nothing.
 }
 
 /** Draw a flat isometric diamond (top face of a ground-level tile). */
