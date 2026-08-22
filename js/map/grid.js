@@ -16,12 +16,15 @@ export class TileGrid {
      * @param {number} [width]           map width (defaults to CONFIG.MAP_WIDTH)
      * @param {number} [height]          map height (defaults to CONFIG.MAP_HEIGHT)
      * @param {number} [villageDensity]  multiplier for village generation (default 1.0)
+     * @param {string} [style]           biome key in `MAP_STYLES` (default "island")
      */
-    constructor(width, height, villageDensity) {
+    constructor(width, height, villageDensity, style) {
         this.width = width ?? CONFIG.MAP_WIDTH;
         this.height = height ?? CONFIG.MAP_HEIGHT;
         /** Village density multiplier (0.5 = sparse, 1.0 = normal, 1.5 = dense). */
         this.villageDensity = villageDensity ?? 1.0;
+        /** Biome key (see `MAP_STYLES` in config). */
+        this.style = style ?? "island";
         /** Flat Uint8 array – index with `y * width + x`. */
         this.tiles = new Uint8Array(this.width * this.height);
         /** Per-tile hit-points (0 = full health / not destructible). */

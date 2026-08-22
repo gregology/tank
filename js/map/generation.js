@@ -6,10 +6,20 @@
  * feels organic.  Village clusters are connected by dirt roads, with
  * buildings scattered along them.  Hills, rocks, and buildings are solid
  * obstacles (destructible cover) — see TILE_PROPS for the semantics.
+ *
+ * The terrain *palette* and noise tuning are data-driven from `MAP_STYLES`
+ * (js/config/biomes.js), selected by `grid.style`; a new biome is a table
+ * entry, not an edit here.  The noise *algorithm* (octaves, interpolation)
+ * stays local.
  */
 
-import { TILES as T } from "../config.js";
+import { MAP_STYLES } from "../config.js";
 import { distance } from "../utils.js";
+
+/** The map style for a grid (defaults to the island biome). */
+function styleFor(grid) {
+    return MAP_STYLES[grid.style] ?? MAP_STYLES.island;
+}
 
 /** Lay down water / sand / grass, then scatter villages across the island. */
 export function generate(grid) {
@@ -19,29 +29,37 @@ export function generate(grid) {
         cy = h / 2;
     const maxR = Math.min(w, h) / 2 - 1;
 
-    // Pass 1: lay down water / sand / grass
-    for (let gy = 0; gy < h; gy++) {
-        for (let gx = 0; gx < w; gx++) {
-            grid.setTile(gx, gy, baseTile(grid, gx, gy, cx, cy, maxR));
-        }
-    }
-
-    // Pass 2: scatter village clusters across the island
+    paintTerrain(grid, cx, cy, maxR, styleFor(grid));
     placeVillages(grid, cx, cy, maxR);
 }
 
+/** Pass 1: water / sand / grass across the whole grid. */
+function paintTerrain(grid, cx, cy, maxR, style) {
+    for (let gy = 0; gy < grid.height; gy++) {
+        for (let gx = 0; gx < grid.width; gx++) {
+            grid.setTile(gx, gy, baseTile(grid, gx, gy, cx, cy, maxR, style));
+        }
+    }
+}
+
 /** Water / sand / grass only -- no structures. */
-function baseTile(grid, gx, gy, cx, cy, maxR) {
+function baseTile(grid, gx, gy, cx, cy, maxR, s) {
     const d = distance(gx, gy, cx, cy);
-    const coastNoise = fbm(grid, gx * 0.06, gy * 0.06, 3, 0) - 0.5;
-    const islandEdge = maxR + coastNoise * 8;
+    const coastNoise = fbm(grid, gx * s.coast.scale, gy * s.coast.scale, s.coast.octaves, 0) - 0.5;
+    const islandEdge = maxR + coastNoise * s.coast.amplitude;
 
-    if (d > islandEdge) return T.DEEP_WATER;
-    if (d > islandEdge - 1.8) return T.SHALLOW_WATER;
-    if (d > islandEdge - 3.5) return T.SAND;
+    if (d > islandEdge) return s.deepWater;
+    if (d > islandEdge - s.coast.shallowBand) return s.shallowWater;
+    if (d > islandEdge - s.coast.sandBand) return s.sand;
 
-    const grassN = fbm(grid, gx * 0.12, gy * 0.12, 2, 300);
-    return grassN > 0.52 ? T.DARK_GRASS : T.GRASS;
+    const grassN = fbm(
+        grid,
+        gx * s.grassNoise.scale,
+        gy * s.grassNoise.scale,
+        s.grassNoise.octaves,
+        s.grassNoise.offset,
+    );
+    return grassN > s.grassNoise.threshold ? s.darkGrass : s.grass;
 }
 
 /**
@@ -133,11 +151,12 @@ export function layDirtRoad(grid, a, b) {
         y = Math.floor(a.y);
     const gx = Math.floor(b.x),
         gy = Math.floor(b.y);
+    const s = styleFor(grid);
 
     while (x !== gx || y !== gy) {
         const tile = grid.getTile(x, y);
-        if (tile === T.GRASS || tile === T.DARK_GRASS) {
-            grid.setTile(x, y, T.DIRT);
+        if (tile === s.grass || tile === s.darkGrass) {
+            grid.setTile(x, y, s.dirt);
         }
         // Step one tile: pick the axis with the larger remaining gap.
         // When equal, use a hash for a natural wobble instead of
@@ -156,8 +175,8 @@ export function layDirtRoad(grid, a, b) {
     }
     // Final tile
     const tile = grid.getTile(x, y);
-    if (tile === T.GRASS || tile === T.DARK_GRASS) {
-        grid.setTile(x, y, T.DIRT);
+    if (tile === s.grass || tile === s.darkGrass) {
+        grid.setTile(x, y, s.dirt);
     }
 }
 
@@ -176,6 +195,7 @@ function scatterRoadsideBuildings(grid, a, b, seed) {
         uy = dy / len; // road direction
     const px = -uy,
         py = ux; // perpendicular
+    const s = styleFor(grid);
 
     const count = 2 + Math.floor(hash(grid, seed * 67, 1100) * 4);
     for (let i = 0; i < count; i++) {
@@ -195,7 +215,7 @@ function scatterRoadsideBuildings(grid, a, b, seed) {
 
         // Roadside buildings are mostly small
         const sizeRoll = hash(grid, seed * 29 + i * 41, 1500);
-        const bldgType = sizeRoll < 0.6 ? T.BLDG_SMALL : T.BLDG_MEDIUM;
+        const bldgType = sizeRoll < 0.6 ? s.buildings.small : s.buildings.medium;
         grid.setTile(bx, by, bldgType);
     }
 }
@@ -208,6 +228,7 @@ function scatterRoadsideBuildings(grid, a, b, seed) {
  */
 function stampVillage(grid, vx, vy, seed) {
     const roadCount = hash(grid, seed * 31, 400) > 0.4 ? 2 : 1;
+    const style = styleFor(grid);
 
     const roads = [];
     for (let r = 0; r < roadCount; r++) {
@@ -224,13 +245,13 @@ function stampVillage(grid, vx, vy, seed) {
         roads.push({ dx, dy, halfLen });
     }
 
-    // Step 1: lay PAVED roads
+    // Step 1: lay paved roads
     for (const road of roads) {
-        for (let s = -road.halfLen; s <= road.halfLen; s++) {
-            const rx = vx + road.dx * s;
-            const ry = vy + road.dy * s;
+        for (let i = -road.halfLen; i <= road.halfLen; i++) {
+            const rx = vx + road.dx * i;
+            const ry = vy + road.dy * i;
             if (grid.isPassable(rx + 0.5, ry + 0.5)) {
-                grid.setTile(rx, ry, T.PAVED);
+                grid.setTile(rx, ry, style.paved);
             }
         }
     }
@@ -240,15 +261,15 @@ function stampVillage(grid, vx, vy, seed) {
         const px = road.dy !== 0 ? 1 : 0; // perpendicular
         const py = road.dx !== 0 ? 1 : 0;
 
-        for (let s = -road.halfLen; s <= road.halfLen; s++) {
-            const rx = vx + road.dx * s;
-            const ry = vy + road.dy * s;
+        for (let i = -road.halfLen; i <= road.halfLen; i++) {
+            const rx = vx + road.dx * i;
+            const ry = vy + road.dy * i;
 
             for (const side of [-1, 1]) {
-                const skip = hash(grid, seed * 7 + s * 13 + side * 37, 500 + side);
+                const skip = hash(grid, seed * 7 + i * 13 + side * 37, 500 + side);
                 if (skip < 0.45) continue;
 
-                const offset = 1 + Math.floor(hash(grid, seed * 3 + s * 19 + side * 41, 550) * 1.5);
+                const offset = 1 + Math.floor(hash(grid, seed * 3 + i * 19 + side * 41, 550) * 1.5);
                 const bx = rx + px * side * offset;
                 const by = ry + py * side * offset;
 
@@ -256,19 +277,20 @@ function stampVillage(grid, vx, vy, seed) {
                 if (grid.isRoad(bx, by)) continue;
                 if (!grid.isPassable(bx + 0.5, by + 0.5)) continue;
 
-                const sizeRoll = hash(grid, seed * 23 + s * 37 + side * 53, 600);
+                const sizeRoll = hash(grid, seed * 23 + i * 37 + side * 53, 600);
                 let bldgType;
-                if (sizeRoll < 0.45) bldgType = T.BLDG_SMALL;
-                else if (sizeRoll < 0.8) bldgType = T.BLDG_MEDIUM;
-                else bldgType = T.BLDG_LARGE;
+                if (sizeRoll < 0.45) bldgType = style.buildings.small;
+                else if (sizeRoll < 0.8) bldgType = style.buildings.medium;
+                else bldgType = style.buildings.large;
 
                 grid.setTile(bx, by, bldgType);
 
                 // Large buildings extend along the road
-                if (bldgType === T.BLDG_LARGE) {
+                if (bldgType === style.buildings.large) {
                     const ex = bx + road.dx,
                         ey = by + road.dy;
-                    if (!grid.isRoad(ex, ey) && grid.isPassable(ex + 0.5, ey + 0.5)) grid.setTile(ex, ey, T.BLDG_LARGE);
+                    if (!grid.isRoad(ex, ey) && grid.isPassable(ex + 0.5, ey + 0.5))
+                        grid.setTile(ex, ey, style.buildings.large);
                 }
             }
         }

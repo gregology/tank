@@ -36,9 +36,10 @@ export class GameMap extends TileGrid {
      * @param {number} [width]           map width (defaults to CONFIG.MAP_WIDTH)
      * @param {number} [height]          map height (defaults to CONFIG.MAP_HEIGHT)
      * @param {number} [villageDensity]  multiplier for village generation (default 1.0)
+     * @param {string} [style]           biome key in `MAP_STYLES` (default "island")
      */
-    constructor(width, height, villageDensity) {
-        super(width, height, villageDensity);
+    constructor(width, height, villageDensity, style) {
+        super(width, height, villageDensity, style);
         this.generate();
     }
 
