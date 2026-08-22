@@ -42,6 +42,7 @@ export function updateWatchTowers(game, dt) {
                 team: tower.team,
                 damage: cfg.bulletDamage,
                 speed: cfg.bulletSpeed,
+                tracer: true,
                 flash: "ifv",
                 flashOffset: 0.3,
             });

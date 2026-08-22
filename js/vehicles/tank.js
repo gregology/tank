@@ -169,6 +169,7 @@ export const tank = {
             team: tank.team,
             damage: vStats.bulletDamage,
             speed: vStats.bulletSpeed,
+            tracer: vStats.tracer ?? false,
             flash: vStats.muzzleFlash ?? "muzzle",
             flashOffset: CONFIG.TANK_BARREL_LENGTH,
         });

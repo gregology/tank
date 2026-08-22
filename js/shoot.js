@@ -40,11 +40,13 @@ export function spawnBullet(
         arcing = false,
         targetDistance = 0,
         lifetime = null,
+        kind = null,
+        tracer = false,
         flash = null,
         flashOffset = 0,
     },
 ) {
-    const b = new Bullet(x, y, angle, owner, team, damage, speed, arcing, targetDistance, lifetime);
+    const b = new Bullet(x, y, angle, owner, team, damage, speed, arcing, targetDistance, lifetime, kind, tracer);
     game.bullets.push(b);
     if (flash) {
         const tipX = x + Math.cos(angle) * flashOffset;

@@ -26,6 +26,9 @@ export class Bullet {
      * @param {number}  [lifetime]      explicit lifetime in seconds (defaults
      *                                  to CONFIG.BULLET_LIFETIME; squad weapons
      *                                  use it to enforce their range)
+     * @param {string}  [kind]          projectile behaviour key; defaults to
+     *                                  "shell" for arcing shots, else "direct"
+     * @param {boolean} [tracer]        draw as a small tracer (IFV/small-arms)
      */
     constructor(
         x,
@@ -38,6 +41,8 @@ export class Bullet {
         arcing = false,
         targetDistance = 0,
         lifetime = null,
+        kind = null,
+        tracer = false,
     ) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x = x + Math.cos(angle) * offset;
@@ -54,8 +59,10 @@ export class Bullet {
         this.targetDistance = targetDistance;
         // Projectile kind dispatches the movement/impact lifecycle
         // (js/projectiles/).  "direct" bullets stop on terrain; "shell" is
-        // the arcing artillery shell that splashes on landing.
-        this.kind = arcing ? "shell" : "direct";
+        // the arcing artillery shell that splashes on landing.  A caller may
+        // pass a `kind` explicitly to add a new projectile behaviour.
+        this.kind = kind ?? (arcing ? "shell" : "direct");
+        this.tracer = tracer;
 
         // Arcing shells need enough lifetime to reach their target;
         // normal bullets use the global constant (or an explicit value).

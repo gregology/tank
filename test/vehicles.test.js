@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ACTIONS, TILES as T, VEHICLES } from "../js/config.js";
+import { BaseStructure } from "../js/entity.js";
 import { getProjectileBehaviour } from "../js/projectiles/index.js";
 import { Tank } from "../js/tank.js";
 import { getVehicleBehaviour } from "../js/vehicles/index.js";
@@ -32,6 +33,9 @@ function stubGame({ tanks = [], structures = [], map = flatMap() } = {}) {
         },
         allTanks: tanks,
         baseStructures: structures,
+        get damageables() {
+            return tanks.concat(structures);
+        },
         hits: [],
         destroyedStructures: [],
         damagedTiles: [],
@@ -125,9 +129,12 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
     });
 
     it("shell impact splashes tanks, structures, and the impact tile", () => {
+        const wall = new BaseStructure("baseWall", 2, "#3366dd", "#223399");
+        wall.x = 14.5;
+        wall.y = 12.5;
         const game = stubGame({
             tanks: [placedTank("tank", 12.5, 12.5, 2)],
-            structures: [{ alive: true, team: 2, x: 14.5, y: 12.5, size: 0.5, applyDamage: () => false }],
+            structures: [wall],
         });
         const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
         getProjectileBehaviour("shell").onLand(game, b);

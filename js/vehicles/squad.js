@@ -38,6 +38,7 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
             damage: dmg,
             speed: weapon.bulletSpeed,
             lifetime,
+            tracer: true,
         });
     }
 

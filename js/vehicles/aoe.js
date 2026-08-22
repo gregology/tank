@@ -9,8 +9,6 @@
  * it rather than copying the loop.
  */
 
-import { distance } from "../utils.js";
-
 /**
  * Apply radial blast damage to enemy tanks and structures.
  *
@@ -23,29 +21,27 @@ import { distance } from "../utils.js";
  * @param {number} team    team that caused the blast (own units safe)
  */
 export function applyBlast(game, x, y, radius, damage, team) {
-    for (const t of game.allTanks) {
-        if (!t.alive || t.team === team) continue;
-        const d = t.distanceToPoint(x, y);
-        if (d >= radius + t.hitRadius) continue;
-        const edge = Math.max(0, d - t.hitRadius);
-        const dmg = damage * Math.max(0, 1 - edge / radius);
-        if (dmg <= 0) continue;
-        game.applyHitToTank({ x, y, team }, t, dmg);
-    }
-
-    for (const s of game.baseStructures) {
-        if (!s.alive || s.team === team) continue;
-        const d = distance(x, y, s.x, s.y);
-        if (d >= radius + s.size) continue;
-        const edge = Math.max(0, d - s.size);
+    // One loop over every damageable entity.  Tanks and structures share the
+    // same `distanceToPoint` / `hitRadius` hitbox vocabulary; only the damage
+    // application differs (tanks go through the zone-aware world model,
+    // structures through their plain HP pool).
+    for (const e of game.damageables) {
+        if (!e.alive || e.team === team) continue;
+        const d = e.distanceToPoint(x, y);
+        if (d >= radius + e.hitRadius) continue;
+        const edge = Math.max(0, d - e.hitRadius);
         const dmg = damage * Math.max(0, 1 - edge / radius);
         if (dmg <= 0) continue;
 
-        if (s.applyDamage(dmg) === "destroyed") {
-            game.onStructureDestroyed(s);
+        if (e.isStructure) {
+            if (e.applyDamage(dmg) === "destroyed") {
+                game.onStructureDestroyed(e);
+            } else {
+                game.particles.emit("impact", x, y);
+                game.emit("impact", {});
+            }
         } else {
-            game.particles.emit("impact", x, y);
-            game.emit("impact", {});
+            game.applyHitToTank({ x, y, team }, e, dmg);
         }
     }
 }

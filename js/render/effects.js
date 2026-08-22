@@ -12,10 +12,9 @@ export function drawBullet(ctx, bullet, sx, sy, time) {
     }
 
     const pulse = Math.sin(time * 30) * 0.3 + 0.7;
-    const isIFV = bullet.damage < 1.0;
 
-    if (isIFV) {
-        // ── IFV tracer: small bright green dot with trail ──
+    if (bullet.tracer) {
+        // ── Tracer: small bright green dot with trail (IFV / small arms) ──
         const r = 1.8;
 
         // Trail (3 fading dots behind)

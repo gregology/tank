@@ -418,8 +418,10 @@ describe("effects smoke", () => {
         assert.ok(calls1.filter((c) => c === "arc").length >= 3, "tank shell: glow + core + centre");
 
         const { ctx: c2, calls: calls2 } = fakeCtx();
-        drawBullet(c2, new Bullet(10, 10, 0, 1, 1, 0.25, 13.5), 64, 128, 0.5);
-        assert.ok(calls2.filter((c) => c === "arc").length >= 5, "IFV tracer: trail + glow + core + centre");
+        const tracer = new Bullet(10, 10, 0, 1, 1, 0.25, 13.5);
+        tracer.tracer = true;
+        drawBullet(c2, tracer, 64, 128, 0.5);
+        assert.ok(calls2.filter((c) => c === "arc").length >= 5, "tracer: trail + glow + core + centre");
 
         const arcing = new Bullet(10, 10, 0, 1, 1, 1.0, 10, true, 100); // mid-flight arc
         arcing.distanceTraveled = 50;

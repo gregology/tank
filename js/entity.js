@@ -16,6 +16,7 @@
 
 import { BASE_STRUCTURES } from "./config.js";
 import { resolveDamage } from "./damage.js";
+import { distance } from "./utils.js";
 
 /* ═══════════════════════════════════════════════════════════ *
  *  GameEntity — root of the hierarchy                         *
@@ -56,6 +57,14 @@ export class GameEntity {
     }
     get size() {
         return 0.45;
+    }
+    /** Distance from a world point to the entity's hitbox centre. */
+    distanceToPoint(x, y) {
+        return distance(x, y, this.x, this.y);
+    }
+    /** Radius used for AoE falloff (a vehicle/structure's collision size). */
+    get hitRadius() {
+        return this.size;
     }
     get flies() {
         return false;

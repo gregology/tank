@@ -94,6 +94,7 @@ export const VEHICLES = {
         hudGlyph: "\u25C7",
         minimapShape: "diamond",
         muzzleFlash: "ifv",
+        tracer: true,
         fireSound: "ifv",
         speed: 4.5,
         rotationSpeed: 4.0,

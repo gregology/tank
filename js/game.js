@@ -94,6 +94,10 @@ export class Game {
     get baseStructures() {
         return this._allStructures;
     }
+    /** Every damageable entity (tanks + base structures) in one flat list. */
+    get damageables() {
+        return this._allTanks.concat(this._allStructures);
+    }
     /** The first human tank (for single-viewport matches / HUD). */
     get humanTank() {
         return this._humanTanks[0];
