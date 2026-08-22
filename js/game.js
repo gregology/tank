@@ -38,9 +38,13 @@ import { ParticleSystem } from "./particles.js";
 import { updateCamera } from "./systems/camera.js";
 import { pushFromStructures as pushFromStructuresSystem, resolveCrushes, separatePairs } from "./systems/collision.js";
 import { emitDamageSmoke } from "./systems/effects.js";
+import { runFiring } from "./systems/firing.js";
+import { runMovement } from "./systems/movement.js";
 import { checkBulletHits, tickBullets } from "./systems/projectiles.js";
 import { handleRespawns } from "./systems/respawn.js";
+import { runThink } from "./systems/think.js";
 import { updateWatchTowers as updateWatchTowersSystem } from "./systems/towers.js";
+import { updateVehicles } from "./systems/update.js";
 import { checkWin } from "./systems/win.js";
 import { Tank } from "./tank.js";
 import { worldToScreen } from "./utils.js";
@@ -279,30 +283,13 @@ export class Game {
      * ═══════════════════════════════════════════════════════ */
 
     _update(dt) {
-        // ── AI think ──
-        for (const { ai, tank, enemies } of this._bots) {
-            if (!tank.alive) continue;
-            // Mode decides the objective (battle: the enemy base).
-            const objective =
-                this.mode.aiObjective(this, { ai, tank, enemies }) ?? (enemies.find((e) => e.alive) || null);
-            ai.think(dt, tank, enemies, this.map, objective, this.mode.enemyStructures(this, tank));
-        }
+        const bots = this._bots;
+        const humanDevices = this._humanDevices;
 
-        // ── Movement — humans (only when alive) ──
-        for (let i = 0; i < this._humanTanks.length; i++) {
-            if (this._humanTanks[i].alive) {
-                this._humanTanks[i].update(dt, this._humanDevices[i], this.map);
-            }
-        }
-        // ── Movement — bots ──
-        for (const { ai, tank } of this._bots) {
-            if (tank.alive) tank.update(dt, ai, this.map);
-        }
-
-        // ── Vehicle behaviour per-frame updates (squad member steering) ──
-        for (const t of this._allTanks) {
-            if (t.alive) getVehicleBehaviour(t.vehicleType).update(this, t, dt);
-        }
+        // A thin, ordered list of per-frame system calls.
+        runThink(this, bots, dt);
+        runMovement(this, bots, humanDevices, dt);
+        updateVehicles(this, dt);
 
         this._separatePairs(this._allTanks);
         this.mode.afterSeparation(this);
@@ -310,16 +297,7 @@ export class Game {
         // ── Run-over: enemy ground vehicles crush exposed soldiers ──
         this._resolveCrushes();
 
-        // ── Firing — humans ──
-        for (let i = 0; i < this._humanTanks.length; i++) {
-            if (this._humanTanks[i].alive) {
-                this._handleFiring(this._humanTanks[i], this._humanDevices[i], dt);
-            }
-        }
-        // ── Firing — bots ──
-        for (const { ai, tank } of this._bots) {
-            if (tank.alive) this._handleFiring(tank, ai, dt);
-        }
+        runFiring(this, bots, humanDevices, dt);
 
         this._tickBullets(dt);
         this._checkBulletHits();
