@@ -21,6 +21,7 @@
  * than re-deriving rotation/turret/tread logic.
  */
 
+import { bestTarget } from "../ai/targeting.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { spawnBullet } from "../shoot.js";
 import { normalizeAngle } from "../utils.js";
@@ -118,6 +119,39 @@ export function groundMove(tank, device, dt, map, canDrive) {
     animateTread(tank, dt, oldX, oldY, rotating);
 }
 
+/**
+ * Immobilised pivot: the tracks are destroyed, so the vehicle can't move —
+ * rotate the hull toward the nearest threat (or the objective) and keep
+ * firing.  Shared by the ground vehicles via the base `tank` behaviour.
+ */
+export function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
+    const bestEnemy = bestTarget(ai, me, enemies);
+    let target = null;
+
+    if (bestEnemy && bestEnemy.dist < 15) {
+        target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+    } else if (objective) {
+        const d = Math.hypot(objective.x - me.x, objective.y - me.y);
+        target = { x: objective.x, y: objective.y, dist: d };
+    } else if (bestEnemy) {
+        target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+    }
+
+    if (!target) return;
+
+    // Rotate the hull toward the target (since we can't drive).
+    const desired = Math.atan2(target.y - me.y, target.x - me.x);
+    let diff = desired - me.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+
+    if (diff > 0.08) ai.keys[ACTIONS.right] = true;
+    if (diff < -0.08) ai.keys[ACTIONS.left] = true;
+
+    // Also aim the turret if it is functional.
+    ai.aimAndFire(me, target, map);
+}
+
 export const tank = {
     fire(game, tank, device, _dt) {
         if (!device.isDown(ACTIONS.fire) || !tank.canFire()) return;
@@ -184,7 +218,9 @@ export const tank = {
         ai.tryShootWall(me, map);
     },
 
-    aiThink(_ai, _dt, _me, _enemies, _map, _objective) {
-        return false;
+    aiThink(ai, dt, me, enemies, map, objective) {
+        if (!me.trackDamaged) return false;
+        thinkImmobilised(ai, dt, me, enemies, map, objective);
+        return true;
     },
 };

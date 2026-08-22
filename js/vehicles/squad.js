@@ -11,7 +11,7 @@
  * the turret (no-op `aim`) and never fire arcing shells.
  */
 
-import { ACTIONS, SQUAD_MEMBERS } from "../config.js";
+import { ACTIONS, SQUAD_MEMBERS, VEHICLES } from "../config.js";
 import { flashMuzzle, spawnBullet } from "../shoot.js";
 import { pickSquadTarget } from "../squad.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
@@ -110,8 +110,21 @@ export const squad = {
     aim(_ai, _me, _target, _map) {},
 
     aiThink(ai, _dt, me, enemies, map, _objective) {
-        ai.updateSquadDigIn(me, enemies, map);
-        if (me.squad.digIn.state !== "roaming") {
+        // Dig in when enemies are close AND building cover exists; otherwise
+        // stay mobile.
+        const component = me.squad;
+        if (component) {
+            const v = VEHICLES.squad;
+            const nearEnemy = enemies.some((e) => e.alive && Math.hypot(e.x - me.x, e.y - me.y) < v.coverRadius + 5);
+            const inCover = map.hasIntactBuildingNear(me.x, me.y, v.coverRadius);
+            if (nearEnemy && inCover) {
+                if (component.digIn.state === "roaming") component.startDigIn();
+            } else if (component.digIn.state !== "roaming") {
+                component.standUp();
+            }
+        }
+
+        if (component.digIn.state !== "roaming") {
             // Digging in / dug in: hold position (auto-fire is handled by
             // the game) and clear stuck state so standing still doesn't
             // trigger the "blow through a wall" escape behaviour.

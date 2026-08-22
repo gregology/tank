@@ -44,7 +44,7 @@ export function applyBlast(game, x, y, radius, damage, team) {
         if (s.applyDamage(dmg)) {
             game.onStructureDestroyed(s);
         } else {
-            game.particles.emitImpact(x, y);
+            game.particles.emit("impact", x, y);
             game.emit("impact", {});
         }
     }

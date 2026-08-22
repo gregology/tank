@@ -28,13 +28,7 @@ function stubGame({ tanks = [], structures = [], map = flatMap() } = {}) {
         map,
         bullets: [],
         particles: {
-            emitMuzzleFlash: () => {},
-            emitIFVFlash: () => {},
-            emitSPGFlash: () => {},
-            emitDroneExplosion: () => {},
-            emitArtilleryImpact: () => {},
-            emitExplosion: () => {},
-            emitImpact: () => {},
+            emit: () => {},
         },
         allTanks: tanks,
         baseStructures: structures,
@@ -90,17 +84,14 @@ describe("tank behaviour (direct fire)", () => {
 
     it("IFV fires the same direct bullet but uses the IFV muzzle flash", () => {
         const game = stubGame();
-        let flashKind = null;
-        game.particles.emitIFVFlash = () => {
-            flashKind = "ifv";
-        };
-        game.particles.emitMuzzleFlash = () => {
-            flashKind = "muzzle";
+        let flashEffect = null;
+        game.particles.emit = (effect) => {
+            flashEffect = effect;
         };
         const ifv = placedTank("ifv");
         getVehicleBehaviour("ifv").fire(game, ifv, fakeDevice({ held: [ACTIONS.fire] }), 0.016);
         assert.equal(game.bullets.length, 1);
-        assert.equal(flashKind, "ifv");
+        assert.equal(flashEffect, "ifvFlash");
     });
 
     it("unknown types fall back to the tank behaviour", () => {

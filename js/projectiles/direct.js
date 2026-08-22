@@ -30,7 +30,7 @@ export const direct = {
 
     /** Apply the terrain/structure impact of a direct bullet that hit solid ground. */
     onTerrain(game, b) {
-        game.particles.emitImpact(b.x, b.y);
+        game.particles.emit("impact", b.x, b.y);
         game.emit("impact", { bullet: b });
         const gx = Math.floor(b.x),
             gy = Math.floor(b.y);

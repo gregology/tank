@@ -66,23 +66,29 @@ describe("ParticleSystem", () => {
 
 describe("ParticleSystem emitters", () => {
     const expected = [
-        ["emitExplosion", 38], // 28 fire + 10 smoke
-        ["emitMuzzleFlash", 6],
-        ["emitIFVFlash", 3],
-        ["emitImpact", 8],
-        ["emitTinyImpact", 3],
-        ["emitDroneExplosion", 24], // 18 fire + 6 smoke
-        ["emitSPGFlash", 18], // 12 fire + 6 smoke
-        ["emitArtilleryImpact", 38], // 22 fire + 8 debris + 8 smoke
-        ["emitSmoke", 1],
+        ["explosion", 38], // 28 fire + 10 smoke
+        ["muzzleFlash", 6],
+        ["ifvFlash", 3],
+        ["impact", 8],
+        ["tinyImpact", 3],
+        ["droneExplosion", 24], // 18 fire + 6 smoke
+        ["spgFlash", 18], // 12 fire + 6 smoke
+        ["artilleryImpact", 38], // 22 fire + 8 debris + 8 smoke
+        ["smoke", 1],
     ];
 
-    for (const [method, count] of expected) {
-        it(`${method} spawns ${count} particles`, () => {
+    for (const [effect, count] of expected) {
+        it(`${effect} spawns ${count} particles`, () => {
             const sys = new ParticleSystem();
-            sys[method](0, 0, 0);
+            sys.emit(effect, 0, 0, 0);
             assert.equal(sys.particles.length, count);
             assert.ok(sys.particles.every((p) => p.alive));
         });
     }
+
+    it("unknown effects are a no-op", () => {
+        const sys = new ParticleSystem();
+        sys.emit("nonsense", 0, 0, 0);
+        assert.equal(sys.particles.length, 0);
+    });
 });

@@ -375,14 +375,14 @@ export class Game {
         const result = tank.applyHit(zone, dmg);
 
         if (result === "destroyed") {
-            this.particles.emitExplosion(tank.x, tank.y);
+            this.particles.emit("explosion", tank.x, tank.y);
             this.emit("destroy", { tank });
             this.mode.onKill(this, source.team, tank);
         } else if (result === "damaged") {
-            this.particles.emitImpact(source.x, source.y);
+            this.particles.emit("impact", source.x, source.y);
             this.emit("hit", { tank, zone });
         } else {
-            this.particles.emitTinyImpact(source.x, source.y);
+            this.particles.emit("tinyImpact", source.x, source.y);
         }
     }
 
@@ -443,7 +443,7 @@ export class Game {
             this.map.setTile(pos.gx, pos.gy, T.SAND);
             this._structureMap.delete(`${pos.gx},${pos.gy}`);
         }
-        this.particles.emitExplosion(structure.x, structure.y);
+        this.particles.emit("explosion", structure.x, structure.y);
         this.emit("destroy", { structure });
         this._invalidatePathfinders();
     }
@@ -451,7 +451,7 @@ export class Game {
     /** Apply damage to a destructible tile; emits the destroy_tile event on break. */
     damageTileAt(gx, gy, damage) {
         if (!this.map.damageTile(gx, gy, damage)) return;
-        this.particles.emitExplosion(gx + 0.5, gy + 0.5);
+        this.particles.emit("explosion", gx + 0.5, gy + 0.5);
         this.emit("destroy_tile", { gx, gy });
         this._invalidatePathfinders();
     }

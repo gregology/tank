@@ -12,7 +12,7 @@ export function emitDamageSmoke(game, dt) {
         t.smokeTimer -= dt;
         if (t.smokeTimer <= 0) {
             t.smokeTimer = 0.15 + Math.random() * 0.1;
-            game.particles.emitSmoke(t.x, t.y);
+            game.particles.emit("smoke", t.x, t.y);
         }
     }
 }

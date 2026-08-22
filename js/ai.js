@@ -44,8 +44,6 @@ import { steerTurretTo, updateWobble } from "./ai/aiming.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "./ai/navigation.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "./ai/recovery.js";
 import { chooseGoalAndTarget } from "./ai/roles.js";
-import { bestTarget, targetPriorityOf } from "./ai/targeting.js";
-import { ACTIONS, BASE_STRUCTURES, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
 
@@ -153,14 +151,9 @@ export class AIController {
         updateStuck(this, dt, me);
 
         // Vehicle behaviours that drive the whole think (drones fly their
-        // own loop; squads hold while digging in) consume the frame.
+        // own loop; squads hold while digging in; immobilised vehicles pivot)
+        // consume the frame.
         if (getVehicleBehaviour(me.vehicleType).aiThink(this, dt, me, enemies, map, objective)) return;
-
-        // ── Tracks disabled: can only pivot and shoot ──
-        if (me.trackDamaged) {
-            this._thinkImmobilised(dt, me, enemies, map, objective);
-            return;
-        }
 
         // ── Stuck escalation ──
         if (this.stuckTime > 1.0 && !this.evading) {
@@ -187,115 +180,9 @@ export class AIController {
 
         // ── AIM + FIRE at combat target ──
         if (fireTarget) {
-            this._aimAndFire(me, fireTarget, map);
+            this.aimAndFire(me, fireTarget, map);
         }
     }
-
-    /* ════════════════════════════════════════════════════════ *
-     *  Drone behaviour (FPV kamikaze)                          *
-     * ════════════════════════════════════════════════════════ */
-
-    /**
-     * Drone AI: use role-based goal selection for navigation target,
-     * then fly directly (no pathfinding — drones fly over terrain).
-     *
-     * Detonation is manual — the bot presses fire when close enough
-     * for significant damage.  Damage falls off with distance, so
-     * the bot tries to get nearly on top of the target before firing.
-     *
-     * Detonation respects targetPriority: the drone won't waste its
-     * one-shot explosion on a target with priority 0 (e.g. other drones).
-     */
-    thinkDrone(dt, me, enemies, _map, objective) {
-        const { navGoal, fireTarget } = chooseGoalAndTarget(this, dt, me, enemies, _map, objective);
-
-        // If we have a fire target nearby, prioritise diving at it
-        let target = navGoal;
-        if (fireTarget && fireTarget.dist < 20) {
-            target = { x: fireTarget.x, y: fireTarget.y };
-        }
-
-        if (!target) {
-            patrol(this);
-            return;
-        }
-
-        // ── Navigate directly (drones fly over everything) ──
-        const desired = Math.atan2(target.y - me.y, target.x - me.x);
-        let diff = desired - me.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-
-        if (diff > 0.08) this.keys[ACTIONS.right] = true;
-        if (diff < -0.08) this.keys[ACTIONS.left] = true;
-
-        const dist = Math.hypot(target.x - me.x, target.y - me.y);
-        if (Math.abs(diff) < Math.PI * 0.7 && dist > 0.5) {
-            this.keys[ACTIONS.forward] = true;
-        }
-
-        // ── Detonate when nearly on top of a valid target ──
-        // AI wants point-blank for max damage (≥ 0.7× at this range).
-        // Skip targets with priority 0 — don't waste the explosion.
-        const detonateRange = VEHICLES.drone.blastRadius * 0.3 + VEHICLES.tank.size;
-        const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
-        for (const e of enemies) {
-            if (!e.alive) continue;
-            if (targetPriorityOf(priorities, e.targetType) <= 0) continue;
-            const d = Math.hypot(e.x - me.x, e.y - me.y);
-            if (d < detonateRange) {
-                this.keys[ACTIONS.fire] = true;
-                return;
-            }
-        }
-        // Check objective (tower)
-        if (objective?.alive) {
-            const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (d < detonateRange + BASE_STRUCTURES.baseHQ.size) {
-                this.keys[ACTIONS.fire] = true;
-            }
-        }
-    }
-
-    /* ════════════════════════════════════════════════════════ *
-     *  Immobilised behaviour                                   *
-     * ════════════════════════════════════════════════════════ */
-
-    /**
-     * Behaviour when tracks are disabled: can't move, only pivot.
-     * Rotate hull toward nearest threat and fire.
-     */
-    _thinkImmobilised(_dt, me, enemies, map, objective) {
-        const bestEnemy = bestTarget(this, me, enemies);
-        let target = null;
-
-        if (bestEnemy && bestEnemy.dist < 15) {
-            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
-        } else if (objective) {
-            const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-            target = { x: objective.x, y: objective.y, dist: d };
-        } else if (bestEnemy) {
-            target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
-        }
-
-        if (!target) return;
-
-        // Rotate hull toward target (since we can't drive)
-        const desired = Math.atan2(target.y - me.y, target.x - me.x);
-        let diff = desired - me.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-
-        if (diff > 0.08) this.keys[ACTIONS.right] = true;
-        if (diff < -0.08) this.keys[ACTIONS.left] = true;
-
-        // Also aim turret if it's functional
-        this._aimAndFire(me, target, map);
-    }
-
-    /* ════════════════════════════════════════════════════════ *
-     *  Combat — independent turret aiming                      *
-     * ════════════════════════════════════════════════════════ */
 
     /**
      * Rotate turret toward the target and fire when aimed — dispatched to
@@ -303,7 +190,7 @@ export class AIController {
      * SPG hold-to-charge).  If turret is disabled, aims by rotating the
      * hull instead.
      */
-    _aimAndFire(me, target, map) {
+    aimAndFire(me, target, map) {
         getVehicleBehaviour(me.vehicleType).aim(this, me, target, map);
     }
 
@@ -313,24 +200,6 @@ export class AIController {
      */
     steerTurretTo(me, desiredWorld) {
         steerTurretTo(this, me, desiredWorld);
-    }
-
-    /**
-     * Bot squads dig in when enemies are close AND building cover is
-     * available; otherwise they stay mobile.  (Human squads toggle
-     * dig-in with FIRE, handled in game.js.)
-     */
-    updateSquadDigIn(me, enemies, map) {
-        const component = me.squad;
-        if (!component) return;
-        const v = VEHICLES.squad;
-        const nearEnemy = enemies.some((e) => e.alive && Math.hypot(e.x - me.x, e.y - me.y) < v.coverRadius + 5);
-        const inCover = map.hasIntactBuildingNear(me.x, me.y, v.coverRadius);
-        if (nearEnemy && inCover) {
-            if (component.digIn.state === "roaming") component.startDigIn();
-        } else if (component.digIn.state !== "roaming") {
-            component.standUp();
-        }
     }
 
     /**

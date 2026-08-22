@@ -14,9 +14,9 @@ import { Bullet } from "./bullet.js";
 
 /** Emit the muzzle flash for a shot, dispatched by its data key. */
 export function flashMuzzle(game, flash, x, y, angle) {
-    if (flash === "ifv") game.particles.emitIFVFlash(x, y, angle);
-    else if (flash === "spg") game.particles.emitSPGFlash(x, y, angle);
-    else if (flash === "muzzle") game.particles.emitMuzzleFlash(x, y, angle);
+    if (flash === "ifv") game.particles.emit("ifvFlash", x, y, angle);
+    else if (flash === "spg") game.particles.emit("spgFlash", x, y, angle);
+    else if (flash === "muzzle") game.particles.emit("muzzleFlash", x, y, angle);
 }
 
 /**

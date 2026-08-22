@@ -36,7 +36,7 @@ export const shell = {
     onLand(game, b) {
         applyBlast(game, b.x, b.y, VEHICLES.spg.splashRadius, b.damage, b.team);
         game.damageTileAt(Math.floor(b.x), Math.floor(b.y), b.damage);
-        game.particles.emitArtilleryImpact(b.x, b.y);
+        game.particles.emit("artilleryImpact", b.x, b.y);
         game.emit("artillery_impact", { bullet: b });
     },
 };

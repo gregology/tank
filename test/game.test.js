@@ -1157,7 +1157,7 @@ describe("Game – update / restart", () => {
     it("restart clears bullets, particles, and win state", () => {
         const game = new Game(skirmishConfig([human(1)]));
         game.bullets.push(new Bullet(1, 1, 0, 1, 1));
-        game.particles.emitExplosion(5, 5);
+        game.particles.emit("explosion", 5, 5);
         game.gameOver = true;
         game.winner = 1;
         game.restart();

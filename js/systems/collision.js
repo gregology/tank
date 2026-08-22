@@ -87,7 +87,7 @@ export function resolveCrushes(game) {
 
             if (target.crushMember(idx)) {
                 target.kill();
-                game.particles.emitExplosion(target.x, target.y);
+                game.particles.emit("explosion", target.x, target.y);
                 game.emit("destroy", { tank: target });
                 game.mode.onKill(game, v.team, target);
             }
