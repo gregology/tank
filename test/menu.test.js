@@ -251,7 +251,7 @@ describe("Menu – reset", () => {
         const kb = makeDevice();
         kb.press(ACTIONS.confirm);
         menu.update(0.016, input(kb), spyAudio());
-        menu._startMatch();
+        menu.startMatch();
         assert.equal(menu.confirmed, true);
         menu.reset();
         assert.equal(menu.confirmed, false);

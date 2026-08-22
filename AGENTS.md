@@ -97,7 +97,8 @@ enough. Rename, extract a function, or simplify — don't annotate.
 
 ```
 main.js      composition root: state machine (menu ↔ playing) + RAF loop
-config.js    the data "leaf": every constant and data table lives here
+config.js    the data "leaf": barrel over js/config/ — every constant and
+             data table lives in the js/config/ package
 game.js      match simulation: tanks, bullets, bases, event bus — the shared
              loop; mode + vehicle behaviour are delegated to strategies
 modes.js     game-mode strategy: Skirmish vs Battle hooks (spawn, win, scoring)
@@ -105,7 +106,10 @@ vehicles/    per-vehicle behaviour strategies (fire/update/aim/aiThink), one
              module per vehicle, dispatched from vehicleType
 entity.js    entity hierarchy (GameEntity → Tank / BaseStructure)
 tank.js      vehicle entity + data-driven damage model + hitbox capabilities
-ai.js        bot brain; implements the same InputDevice interface as humans
+ai.js        bot brain: thin controller over the js/ai/ package
+ai/          AI package: roles (ROLE_STRATEGIES), targeting (bestTarget),
+             navigation (path/A*/steering), recovery (stuck/evade/blast),
+             aiming (turret steering)
 pathfinder.js  A* + wall-cost overlay
 map.js       map generation, tile queries + the shared geometry API
              (canStand / hasLineOfSight / hasWalkableLine)
@@ -113,8 +117,11 @@ renderer.js  thin shell: canvas, viewport layout, per-frame draw order
 render/      render package: viewport (two-pass depth sort), tiles,
              buildings, vehicles, structures, effects, HUD, minimap,
              overlays — plus shared projection/colour helpers
+menu.js      pre-game screens: thin shell over the js/menu/ screen strategies
+menu/        menu package: per-screen strategies (main/lobby/about),
+             background drawing + vehicle preview, vehicle info + stat bars,
+             shared input helpers; builds the MatchConfig via lobby.js
 input.js     InputDevice / Keyboard / Gamepad / InputManager
-menu.js      pre-game screens; builds the MatchConfig
 lobby.js     player/team joining state
 audio.js     procedural Web Audio, subscribes to the game event bus
 particles.js particle system
@@ -128,9 +135,10 @@ utils.js     math/geometry helpers
 draw-helpers.js canvas primitives
 ```
 
-The dependency rule (enforced by `.dependency-cruiser.cjs`): `config.js` is a
-**leaf** — it imports nothing from the rest of the game. Everything may import
-*it*, and `utils.js` only imports config. Keep it that way.
+The dependency rule (enforced by `.dependency-cruiser.cjs`): `config.js` and
+everything under `js/config/` are a **leaf** — they import nothing from the
+rest of the game. Everything may import *the barrel*, and `utils.js` only
+imports config. Keep it that way.
 
 ## The abstractions you must know
 
@@ -172,6 +180,12 @@ around them. (Details live in `js/AGENTS.md`.)
 - **Component pattern** (`squad.js`) — a squad is *one* `Tank` entity that
   *owns* a `Squad` component (`tank.squad`) of individual soldiers. Prefer
   composition like this over subclass explosion.
+- **AI role strategies** (`js/ai/roles.js`) — each bot role (cavalry /
+  sniper / defender / scout) is a plain strategy object with a
+  `goal(ai, ctx)` hook, dispatched from `ai.role`; the AI helper modules
+  (`js/ai/targeting.js`, `navigation.js`, `recovery.js`, `aiming.js`) are
+  the seams for target selection, path steering, stuck recovery, and
+  turret aiming. `AIController` is the orchestration glue only.
 - **Pure planner** (`factions.js`) — "who fights whom" is computed by a pure
   function (`planFactions`) with no entities/input/rendering, so it unit-tests
   in isolation.
@@ -189,9 +203,13 @@ the known structural debt is:
   `vehicleType === "x"` dispatch is per-sprite drawing inside `js/render/` —
   keep logic out of that dispatch and add new vehicle behaviour to
   `js/vehicles/` instead.
-- `ai.js` (~1,000 lines) and `map.js` (~1,160 lines) are the two biggest
-  logic modules; their splits are opportunities #8 and #9.
-- Coverage is now honest: every `js/` module is imported by at least one test
+- The module decompositions are done: `ai.js` (→ `js/ai/`, #8), `menu.js`
+  and `config.js` (→ `js/menu/` and `js/config/`, #9). `map.js` (~1,160
+  lines) is now the largest single logic module and the natural next split
+  candidate; opportunity #10 (dead code + stale docs) is the remaining
+  scheduled cleanup.
+- Coverage is now honest: every `js/` module (including each file under
+  `js/ai/`, `js/menu/`, `js/config/`) is imported by at least one test
   (opportunity #2 done), and the aggregate gate sits at ~97% line / ~90%
   branch / ~94% funcs. Keep it that way — a new module that no test imports
   silently drops out of the report, so any new file needs a test suite too.

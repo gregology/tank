@@ -46,11 +46,14 @@ they are also each other's prerequisites, so they are intentionally listed toget
 |---|---|---|---|
 | `render/` package (was `renderer.js`) | ~3,020 | ✓ `render.test.js` | ~100 (line) |
 | `renderer.js` (shell) | 65 | ✓ (via render) | 100 |
-| `ai.js` | 1,005 | ✓ `ai.test.js`, `roles.test.js` | 85.3 |
+| `ai.js` (controller) | 343 | ✓ `ai.test.js`, `roles.test.js`, `ai-modules.test.js` | ~97 |
+| `ai/` package (roles/targeting/navigation/recovery/aiming) | ~765 | ✓ `ai-modules.test.js` | 89–100 (line) |
 | `map.js` | 1,161 | ✓ `map.test.js` | 92.0 |
 | `game.js` | 629 | ✓ `game.test.js` (Game suite) | ~100 |
-| `menu.js` | 743 | ✓ `menu.test.js` | 98.8 |
-| `config.js` | 615 | ✓ (indirect) | 100 |
+| `menu.js` (shell) | 71 | ✓ `menu.test.js` | 100 |
+| `menu/` package (screens/background/vehicle-info/input) | ~640 | ✓ `menu.test.js`, `render.test.js` | 94–100 (line) |
+| `config.js` (barrel) | 19 | ✓ (indirect) | 100 |
+| `config/` package (thematic data modules) | ~500 | ✓ (indirect) | 100 |
 | `tank.js` | 442 | ✓ (indirect) | 96.1 |
 | `audio.js` | 412 | ✓ `audio.test.js` | 100 |
 | `input.js` | 311 | ✓ `input.test.js` | 92.6 |
@@ -65,9 +68,10 @@ they are also each other's prerequisites, so they are intentionally listed toget
 | `camera.js` | 23 | ✓ `camera.test.js` | 100 |
 | rest (entity, utils, layout, factions, collision, draw-helpers) | < 200 each | ✓ | 98–100 |
 
-- **455 tests, 0 failures**, all in Node's built-in runner.
+- **484 tests, 0 failures**, all in Node's built-in runner.
 - Coverage gate passes honestly at ~97% line / ~90% branch / ~94% funcs: every
-  `js/` module is imported by at least one test (no silent exclusions).
+  `js/` module (including every file under `js/ai/`, `js/menu/`, and
+  `js/config/`) is imported by at least one test (no silent exclusions).
 
 ---
 
@@ -379,6 +383,40 @@ to game modes.
 
 ## 8. Split `ai.js` (1,109 lines): roles, targeting, navigation, stuck recovery
 
+**Status: ✅ implemented.** `AIController` is now a thin orchestration
+controller (1,005 → 343 lines) over a `js/ai/` package of five focused
+modules, all unit-tested in isolation (`test/ai-modules.test.js`):
+
+- `roles.js` — `AI_ROLES`, `pickRoleForVehicle`, and `ROLE_STRATEGIES`:
+  each role (cavalry / sniper / defender / scout) plus the no-role
+  default is a plain strategy object with a `goal(ai, ctx)` hook,
+  dispatched by `chooseGoalAndTarget` from the bot's `ai.role` (the
+  switch that used to live in `_chooseGoalAndTarget`). Shared position
+  scoring (`findBestPosition`, `computeFlankPoint`) lives here too.
+- `targeting.js` — `bestTarget(ai, me, enemies)`: the priority-weighted
+  `weight / distance` target scoring (was `_bestTarget`).
+- `navigation.js` — `updatePath` (A* refresh), `pickWaypoint` (walkable
+  skip-ahead), `steerToPoint` (turn-and-drive), `patrol`, `nudge`.
+- `recovery.js` — `updateStuck` (position-history sampling), `handleStuck`
+  / `evade` (escalation), `tryShootWall` / `blastNearestWall` (terrain
+  blasting).
+- `aiming.js` — `steerTurretTo` (the shared turret-steering primitive),
+  `aimTurretForward`, `updateWobble`.
+
+The per-life state (`_path`, `_flankPoint`, `_sniperPos`, `stuckTime`,
+patrol angle, …) stays on `AIController`; the helper modules receive the
+controller as their first argument. The public seams the vehicle
+behaviours call (`ai.steerTurretTo`, `ai.tryShootWall`, `ai.thinkDrone`,
+`ai.updateSquadDigIn`, `ai.holdPosition`, `ai.rng`) remain methods on the
+controller (thin delegates). `_bestTarget` was removed from the class —
+`test/ai.test.js` now exercises `targeting.bestTarget` directly. The
+design keeps the planned future AI work (better bots) in mind: a
+group/swarm behaviour is a new entry in `ROLE_STRATEGIES` (a
+"column"/"pheromone" strategy reads shared state from the context
+instead of computing its own goal), and lead-aiming ("put the round
+where the vehicle is heading") slots into `targeting.js`/`aiming.js`
+without touching the controller.
+
 **Impact: medium–high.** `AIController` mixes five concerns: role strategies
 (`_cavalryGoal`, `_sniperGoal`, `_defenderGoal`, `_scoutGoal`), position scoring
 (`_findBestPosition`, `_computeFlankPoint`), drone behaviour, immobilised behaviour,
@@ -408,6 +446,32 @@ AI's `_los` with the shared LOS from #5.
 ---
 
 ## 9. Split `menu.js` (759 lines) and `config.js` (563 lines)
+
+**Status: ✅ implemented.** Both splits are done, with the same shape:
+a thin shell (keeping every existing import and public surface) over a
+package of focused modules, measured by the coverage gate.
+
+- `menu.js` (743 → 71 lines) is now the shell: screen state machine,
+  `update`/`render` dispatch to the active screen strategy, `startMatch`,
+  `reset`. The `js/menu/` package holds `main-screen.js` / `lobby-screen.js`
+  / `about-screen.js` (each a plain `{ update(menu, …), render(menu, …) }`
+  strategy object, reading/writing the menu as context — the same
+  strategy-context pattern as the modes), plus `background.js` (grid,
+  cursor bar, vehicle preview via the shared sprite module),
+  `vehicle-info.js` (the info pages + a declarative `STAT_METRICS` table
+  the stat bars derive from, replacing the ad-hoc squad/drone
+  special-casing in `_drawStatCompare`), and `input.js` (join-candidate /
+  any-pressed helpers). `test/render.test.js`'s menu-preview test now
+  drives `js/menu/background.js#drawMenuVehicle` directly.
+- `config.js` (590 → 19 lines) is now the barrel over the `js/config/`
+  package: `tiles.js`, `constants.js` (CONFIG), `players.js`
+  (MAX_PLAYERS, PLAYER_COLORS), `actions.js`, `options.js` (GAME_TYPES,
+  GAME_OPTIONS, defaults/resolveSettings), `vehicles.js` (VEHICLES,
+  SQUAD_MEMBERS, SQUAD_ATTENTION_ORDER), `structures.js`
+  (BASE_STRUCTURES). Every existing `import … from "./config.js"` keeps
+  working. The dependency-cruiser leaf rule was widened to the package
+  boundary: `js/config.js` and everything under `js/config/` may only
+  import within the package.
 
 **Impact: medium.** Two well-organised but oversized files:
 
@@ -476,13 +540,21 @@ vehicle types; SPG/squad mechanics). Add a lightweight "docs drift" check if des
 
 Status: **#1 + #4 + #6 ✅ done** (renderer decomposition, sprite module,
 canvas helpers), **#2 ✅ done** (test coverage for every previously-unmeasured
-module), and **#3 + #5 + #7 ✅ done** (vehicle behaviour strategy,
+module), **#3 + #5 + #7 ✅ done** (vehicle behaviour strategy,
 consolidated geometry queries, game-mode strategy — the logic-layer
-counterpart, now safely testable). The remaining plan:
+counterpart, now safely testable), and **#8 + #9 ✅ done** (AI split into
+`js/ai/` roles/targeting/navigation/recovery/aiming; menu and config split
+into `js/menu/` screens and the `js/config/` data package — the remaining
+module decomposition). The remaining plan:
 
 1. **#10** (dead code + stale docs) — cheap, and removes misleading guidance
-   before any further work.
-2. **#8 + #9** (AI and menu/config splits) — the remaining module decomposition.
+   (map.js `_createBase()`, the `randomMap().towers` backward-compat field,
+   the stale `AGENTS.yaml`, the README vehicle table).
+
+`map.js` (~1,160 lines) is now the largest single logic module; it is not
+currently scheduled for a split — any future decomposition should start
+there (the opportunity list above already subsumed its geometry queries
+into the shared `GameMap` API in #5).
 
 Each opportunity is independently valuable, but this order maximises safety
 and keeps every large refactor under a growing test net.

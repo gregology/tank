@@ -27,7 +27,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CONFIG, TILES as T } from "../js/config.js";
-import { Menu } from "../js/menu.js";
+import { drawMenuVehicle } from "../js/menu/background.js";
 import { drawBuilding } from "../js/render/buildings.js";
 import { drawArcingBullet, drawBullet, drawParticle } from "../js/render/effects.js";
 import { drawBattleHUD, drawScoreHUD } from "../js/render/hud.js";
@@ -690,10 +690,9 @@ describe("Renderer shell", () => {
 
 describe("menu vehicle preview", () => {
     it("draws every vehicle preview through the shared sprite module", () => {
-        const menu = new Menu();
         for (const type of ["tank", "ifv", "spg", "drone", "squad"]) {
             const { ctx, calls } = fakeCtx();
-            assert.doesNotThrow(() => menu._drawMenuVehicle(ctx, 0, 0, 0.7, type, "#cc3333", "#882222", 1), type);
+            assert.doesNotThrow(() => drawMenuVehicle(ctx, 0, 0, 0.7, type, "#cc3333", "#882222", 1, 0.4), type);
             assert.ok(calls.length > 0, `${type} preview should draw`);
         }
     });

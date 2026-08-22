@@ -1,0 +1,145 @@
+/**
+ * Vehicle information for the menu screens: the info pages (name,
+ * tagline, colours, description) and the stat-bar comparison.
+ *
+ * The stat bars derive from VEHICLES (config.js) through the
+ * `STAT_METRICS` table — one declarative row per bar.  Values are
+ * player-facing simplifications, not raw gameplay numbers.
+ */
+
+import { VEHICLES } from "../config.js";
+
+export const VEHICLE_INFO = [
+    {
+        type: "tank",
+        name: "TANK",
+        tagline: "Main Battle Tank",
+        color: "#cc3333",
+        dark: "#882222",
+        stats: { SPD: 3.0, ARM: 2, DMG: 1.0, ROF: "Med", TUR: "Yes" },
+        desc: [
+            "The backbone of any fighting force.",
+            "Independent rotating turret lets you",
+            "aim while driving in any direction.",
+            "",
+            "2-hit directional armour system:",
+            " \u2022 Front hit \u2192 turret disabled",
+            " \u2022 Side hit  \u2192 track disabled",
+            " \u2022 Rear hit  \u2192 instant kill",
+            " \u2022 2nd hit   \u2192 destroyed",
+        ],
+    },
+    {
+        type: "ifv",
+        name: "IFV",
+        tagline: "Infantry Fighting Vehicle",
+        color: "#3366dd",
+        dark: "#223399",
+        stats: { SPD: 4.5, ARM: 1, DMG: 0.25, ROF: "Fast", TUR: "No" },
+        desc: [
+            "Fast wheeled recon vehicle with a",
+            "rapid-fire autocannon. Fixed forward",
+            "gun \u2014 aim by steering the hull.",
+            "",
+            "High speed makes it perfect for",
+            "flanking and scouting. Very fragile:",
+            "any single hit is an instant kill.",
+            "",
+            "4 shots = 1 tank shell of damage.",
+        ],
+    },
+    {
+        type: "drone",
+        name: "DRONE",
+        tagline: "FPV Kamikaze Quadcopter",
+        color: "#44bb44",
+        dark: "#228822",
+        stats: { SPD: 6.0, ARM: 1, DMG: "1.0 AoE", ROF: "N/A", TUR: "No" },
+        desc: [
+            "Extremely fast FPV drone that flies",
+            "over ALL terrain including water,",
+            "hills, rocks, and buildings.",
+            "",
+            "No gun \u2014 press FIRE to detonate!",
+            "Deals area-of-effect blast damage",
+            "that falls off with distance.",
+            "",
+            "One-use: always self-destructs.",
+        ],
+    },
+    {
+        type: "spg",
+        name: "SPG",
+        tagline: "Self-Propelled Gun",
+        color: "#dd8833",
+        dark: "#885522",
+        stats: { SPD: 2.0, ARM: 1, DMG: 1.5, ROF: "Slow", TUR: "Yes" },
+        desc: [
+            "Heavy artillery that lobs shells in",
+            "a high arc OVER terrain obstacles.",
+            "",
+            "HOLD fire to charge range, then",
+            "RELEASE to launch. Longer hold =",
+            "longer range (up to 25 units).",
+            "",
+            "Devastating splash damage on impact.",
+            "Slow and fragile \u2014 stay at range!",
+        ],
+    },
+    {
+        type: "squad",
+        name: "SQUAD",
+        tagline: "Infantry Fireteam",
+        color: "#55aa44",
+        dark: "#337722",
+        stats: { SPD: 2.6, ARM: 1, DMG: 1.0, ROF: "Auto", TUR: "No" },
+        desc: [
+            "Five-man squad that fights on its own.",
+            "Each member auto-fires at its target:",
+            " \u2022 RPG        \u2192 vehicles",
+            " \u2022 Shotgun    \u2192 drones",
+            " \u2022 Rifles/MG  \u2192 enemy squads",
+            "",
+            "Members drop as the squad takes hits.",
+            "FIRE to dig in; buildings give cover.",
+        ],
+    },
+];
+
+/**
+ * One row per stat bar.  `value(vehicle, type)` returns the raw value;
+ * the bars cap it at `max` and render one decimal.
+ */
+export const STAT_METRICS = [
+    { label: "SPEED", key: "speed", max: 7, value: (v) => v.speed },
+    // Squad members fight individually (SQUAD_MEMBERS) — the leader's
+    // placeholder bullet stats would read as zero, so the squad's damage
+    // bar is a hand-tuned display value.
+    {
+        label: "DAMAGE",
+        key: "dmg",
+        max: 2,
+        value: (v, type) => (type === "squad" ? 1.0 : (v.blastDamage ?? v.bulletDamage ?? 0)),
+    },
+    // "Armour" is the player-facing hit count: the 2-hit directional
+    // tank is 2, everything else is one-shot (squads drop members).
+    {
+        label: "ARMOUR",
+        key: "armour",
+        max: 3,
+        value: (_v, type) => (type === "tank" ? 2 : 1),
+    },
+    // Drones have no gun (0 shots/sec); squads auto-fire as a group.
+    {
+        label: "FIRE RATE",
+        key: "rof",
+        max: 6,
+        value: (v, type) => (type === "squad" ? 6 : v.bulletCooldown > 0 ? 1 / v.bulletCooldown : 0),
+    },
+];
+
+/** Raw stat-bar value for a vehicle type and metric key. */
+export function getStatValue(type, key) {
+    const metric = STAT_METRICS.find((m) => m.key === key);
+    return metric ? metric.value(VEHICLES[type], type) : 0;
+}

@@ -11,9 +11,9 @@ module.exports = {
         {
             name: "config-is-leaf",
             severity: "error",
-            comment: "config.js must not import any other project module",
-            from: { path: "^js/config\\.js$" },
-            to: { path: "^js/" },
+            comment: "config.js and the config/ package must stay data-only: they import nothing outside the package",
+            from: { path: "^js/config(\\.js|/)" },
+            to: { path: "^js/(?!config/)" },
         },
         {
             name: "utils-only-imports-config",
@@ -26,7 +26,7 @@ module.exports = {
             name: "no-renderer-from-logic",
             severity: "warn",
             comment: "Game logic modules should not import the renderer or render package",
-            from: { path: "^js/(ai|tank|bullet|map|pathfinder|config|utils)\\.js$" },
+            from: { path: "^js/((ai|config)(\\.js|/.*\\.js)|tank\\.js|bullet\\.js|map\\.js|pathfinder\\.js|utils\\.js)$" },
             to: { path: "^js/render(er\\.js|/)" },
         },
         {
@@ -40,14 +40,14 @@ module.exports = {
             name: "no-input-from-logic",
             severity: "warn",
             comment: "Pure logic modules should not import the input manager",
-            from: { path: "^js/(ai|tank|bullet|map|pathfinder|config|utils)\\.js$" },
+            from: { path: "^js/((ai|config)(\\.js|/.*\\.js)|tank\\.js|bullet\\.js|map\\.js|pathfinder\\.js|utils\\.js)$" },
             to: { path: "^js/input\\.js$" },
         },
         {
             name: "no-audio-from-logic",
             severity: "warn",
             comment: "Pure logic modules should not import audio",
-            from: { path: "^js/(ai|tank|bullet|map|pathfinder|config|utils)\\.js$" },
+            from: { path: "^js/((ai|config)(\\.js|/.*\\.js)|tank\\.js|bullet\\.js|map\\.js|pathfinder\\.js|utils\\.js)$" },
             to: { path: "^js/audio\\.js$" },
         },
     ],

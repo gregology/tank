@@ -13,12 +13,18 @@ leaf):
 main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
 game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js,
             modes.js, vehicles/
-ai.js  ──▶ pathfinder.js, vehicles/
+ai.js  ──▶ pathfinder.js, vehicles/, ai/          (thin controller)
+ai/    ──▶ config.js                              (roles, targeting,
+            navigation, recovery, aiming — pure helpers over AI state)
+menu.js ──▶ lobby.js, menu/                       (thin shell)
+menu/  ──▶ config.js, render/vehicles.js, render/canvas-utils.js
+config.js ──▶ config/                             (barrel; nothing else)
+config/  imports nothing                          (the data leaf)
 modes.js ──▶ config.js, entity.js
 vehicles/ ──▶ config.js, utils.js, bullet.js, squad.js
 renderer.js ──▶ js/render/*, layout.js      (thin shell)
 js/render/ ──▶ config.js, utils.js, draw-helpers.js, formation.js
-everything ──▶ config.js, utils.js   (config.js imports nothing)
+everything ──▶ config.js, utils.js   (config imports nothing)
 ```
 
 The render layer is a **package**, not one file. `renderer.js` is a thin
@@ -33,7 +39,7 @@ module under `js/render/`:
 - `tiles.js` / `buildings.js` / `structures.js` — terrain, destructible
   buildings, and base compounds.
 - `vehicles.js` — the five vehicle sprites + `drawVehicle` dispatch. This is
-  the module `menu.js` imports for previews (no prototype hack).
+  the module `js/menu/background.js` imports for previews (no prototype hack).
 - `effects.js` — bullets (incl. arcing shells) + particles.
 - `hud.js` / `minimap.js` / `overlay.js` — score/battle HUDs, minimap,
   game-over + SPG target indicator.
@@ -56,6 +62,12 @@ Rules that follow:
 ## The abstractions, in detail
 
 ### 1. Data-driven configuration (`config.js`)
+
+`config.js` is a **barrel** over the `js/config/` package — every thematic
+data table lives in its own module (`tiles.js`, `constants.js`, `players.js`,
+`actions.js`, `options.js`, `vehicles.js`, `structures.js`) and is re-exported
+from the single entry point, so `import … from "./config.js"` is always
+correct and the dependency leaf rule is enforced at the package boundary.
 
 The single source of truth for everything that varies:
 
@@ -204,15 +216,49 @@ isn't shared by all vehicles, a **component on the entity** (like `Squad`) is
 the established precedent — not a new subclass and not a new `vehicleType`
 switch.
 
-### 9. AI roles and navigation (`ai.js`, `pathfinder.js`)
+### 9. AI roles, targeting, navigation, and recovery (`js/ai/`)
 
-- The AI navigates with A* (`pathfinder.js`), then follows waypoints. Reactive
-  obstacle avoidance is a light fallback for dynamic obstacles, not the primary
-  navigation. When stuck, the AI shoots destructible terrain.
-- Navigation and combat are **separated**: bots navigate toward their
-  objective and fire at enemies they pass, rather than chasing.
-- Roles (`cavalry`, `sniper`, `defender`, `scout`) select goals, targets, and
-  candidate positions; per-role tuning lives in `CONFIG` and `VEHICLES[].roleWeights`.
+`AIController` (`ai.js`, ~340 lines) is the orchestration glue — the
+`InputDevice` implementation, the per-life state, and the `think` loop —
+over a package of focused helper modules that all take the controller as
+their first argument:
+
+- `roles.js` — `AI_ROLES`, `pickRoleForVehicle`, and `ROLE_STRATEGIES`:
+  each role (`cavalry`, `sniper`, `defender`, `scout`) plus the no-role
+  default is a plain strategy object with a `goal(ai, ctx)` hook,
+  dispatched by `chooseGoalAndTarget` from `ai.role`. Shared position
+  scoring (`findBestPosition`, `computeFlankPoint`) lives here too.
+- `targeting.js` — `bestTarget(ai, me, enemies)`: the priority-weighted
+  `weight / distance` scoring over enemies + structures.
+- `navigation.js` — `updatePath` (A* refresh), `pickWaypoint` (walkable
+  skip-ahead), `steerToPoint` (turn-and-drive), `patrol`, `nudge`.
+- `recovery.js` — `updateStuck` (position-history sampling), `handleStuck`
+  / `evade` (escalation), `tryShootWall` / `blastNearestWall`.
+- `aiming.js` — `steerTurretTo` (the shared turret-steering primitive),
+  `aimTurretForward`, `updateWobble`.
+
+Behavioural invariants: the AI navigates with A* (`pathfinder.js`) and
+follows waypoints; navigation and combat are **separated** (bots navigate
+toward their objective and fire at enemies they pass, rather than chasing);
+per-role tuning lives in `CONFIG` and `VEHICLES[].roleWeights`. The public
+seams the vehicle behaviours call (`ai.steerTurretTo`, `ai.tryShootWall`,
+`ai.thinkDrone`, `ai.updateSquadDigIn`, `ai.holdPosition`, `ai.rng`) stay
+methods on the controller. **A new role = one `ROLE_STRATEGIES` entry + a
+`roleWeights` entry; a new AI capability (e.g. group/pheromone behaviour or
+lead-aiming) lands in the matching helper module, not in the controller.**
+
+### 10. Menu screens (`js/menu/`)
+
+`Menu` (`menu.js`, ~70 lines) is the shell: the screen state machine and
+`update`/`render` dispatch to the active screen strategy. Each screen in
+`js/menu/` (`main-screen.js`, `lobby-screen.js`, `about-screen.js`) is a
+plain `{ update(menu, input, audio), render(menu, ctx, canvas) }` object
+that reads/writes the menu as context — the same strategy-context pattern
+the modes use with `Game`. Shared drawing (`background.js`: grid, cursor
+bar, vehicle preview) and vehicle info pages + declarative stat bars
+(`vehicle-info.js`) stay independent of any screen. The pure lobby state
+(`lobby.js`) is untouched by rendering. **A new screen = one strategy
+object + a `_screens` entry.**
 
 ## Code-quality rules (applied to js/)
 
@@ -231,8 +277,8 @@ The root principles, made concrete for this directory:
   at once — not by adding a fourth copy.
 - **Readability.** Keep functions small and single-responsibility, name them
   for what they do, and let the data table say what varies. If a class needs a
-  diagram, split it (`ai.js` and `map.js` are the current biggest modules —
-  see `docs/refactor_opportunities.md`).
+  diagram, split it (`map.js` is the current biggest module — see
+  `docs/refactor_opportunities.md`).
 - **Comments.** Explain *why*, never *what*. The codebase's own header blocks
   are good examples of *why*-style documentation; a line comment restating
   `this.hp -= amount` is not.
@@ -247,11 +293,14 @@ make them worse:
   `docs/refactor_opportunities.md`) — do not grow `renderer.js` back into a
   god object; put new drawing code in the right `js/render/` module and keep
   the package's dependency rules intact.
-- `ai.js` (~1,000 lines) and `map.js` (~1,160 lines) — each mixes several
-  responsibilities; the splits are opportunities #8 and #9.
+- `map.js` (~1,160 lines) is the largest single logic module; it is not
+  currently scheduled for a split (its geometry queries already live on the
+  shared `GameMap` API, #5).
 - Dead code: `map.js#_createBase()` is never called (opportunity #10).
 
 Done — do not reintroduce: vehicle `vehicleType` dispatch (now a strategy in
-`js/vehicles/`, #3) and duplicated line-of-sight / passability queries (now
-one geometry API on `GameMap`, #5). The only remaining `vehicleType === "x"`
+`js/vehicles/`, #3), duplicated line-of-sight / passability queries (now one
+geometry API on `GameMap`, #5), the old god-object shapes of `ai.js`,
+`menu.js`, and `config.js` (now thin shells over the `js/ai/`, `js/menu/`,
+and `js/config/` packages, #8/#9). The only remaining `vehicleType === "x"`
 dispatch is per-sprite drawing inside `js/render/` — keep logic out of it.

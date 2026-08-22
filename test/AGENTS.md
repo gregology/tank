@@ -53,11 +53,12 @@ number lie.
 imported by at least one test. The render layer (`renderer.js` + the whole
 `js/render/` package) is measured via `test/render.test.js`'s
 recording-context smoke tests; the match simulation, menus, audio, particles,
-camera, the game-mode strategies, and the vehicle behaviours are measured by
-`game.test.js` (Game suite), `menu.test.js`, `audio.test.js`,
-`particles.test.js`, `camera.test.js`, `modes.test.js`, and
-`vehicles.test.js`. The aggregate gate (~97% line / ~90% branch / ~94% funcs
-at last check) is a floor, not a target — keep the untested-modules gap
+camera, the game-mode strategies, the vehicle behaviours, and the AI package
+are measured by `game.test.js` (Game suite), `menu.test.js`, `audio.test.js`,
+`particles.test.js`, `camera.test.js`, `modes.test.js`, `vehicles.test.js`,
+`ai.test.js`, `roles.test.js`, and `ai-modules.test.js` (the latter pins the
+`js/ai/` seams directly). The aggregate gate (~97% line / ~90% branch / ~94%
+funcs at last check) is a floor, not a target — keep the untested-modules gap
 closed: any new module must be imported by a test or it silently drops out of
 the report.
 
@@ -114,6 +115,16 @@ Reusable, deterministic utilities:
 
 - **AI navigation** is slightly nondeterministic (aim wobble). Allow ~5%
   flake on tight courses; prefer progress assertions and generous time limits.
+- **AI module tests** (`ai-modules.test.js`) pin the `js/ai/` package seams
+  directly (`steerToPoint`, `updatePath`/`pickWaypoint`, `updateStuck` /
+  `handleStuck` / `evade` / `tryShootWall`, `steerTurretTo` / `updateWobble`,
+  `chooseGoalAndTarget` role dispatch, `findBestPosition` /
+  `computeFlankPoint`) using `createBot` + flat `customMap` maps. The
+  controller-level suites (`ai.test.js`, `roles.test.js`) still exercise the
+  same code end-to-end through `AIController.think` — the direct tests guard
+  the extracted seams so a future AI rework starts from a green baseline.
+  Target-priority scoring is tested through `targeting.bestTarget` directly
+  (in `ai.test.js`), not through a private controller method.
 - **Map tests** should place tiles explicitly (`map.setTile`) rather than rely
   on random generation, which may not contain the tile you're asserting on.
 - **Game tests** build matches through the public `Game`/`planFactions` seam,
@@ -143,7 +154,10 @@ Reusable, deterministic utilities:
   `game.test.js`.
 - **Menu tests** (`menu.test.js`) drive `Menu.update` with one-shot fake
   devices — reuse the same device object across frames so the host keeps its
-  identity, and re-`press` the action for each frame it should fire.
+  identity, and re-`press` the action for each frame it should fire. The
+  screens now live in `js/menu/` as strategy objects; the tests keep using the
+  public `Menu` seam, and the vehicle-preview smoke test in `render.test.js`
+  drives `js/menu/background.js#drawMenuVehicle` directly.
 - **Audio tests** (`audio.test.js`) install a fake `window.AudioContext`
   (recording nodes) via `withAudioContext` and assert wiring through
   `hookIntoGame` with spy play methods plus node creation for each sound.
