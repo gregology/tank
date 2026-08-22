@@ -77,7 +77,7 @@ root principle: *how would I add an N+1th of this?*
 
 ## 1. Complete the vehicle strategy — move movement and per-vehicle state out of `Tank`
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** Opportunity #3 moved firing/aim/think into `js/vehicles/`, but
 `Tank.update()` (js/tank.js:188–292) still encodes the movement model for
@@ -132,7 +132,7 @@ vehicles. The entity stops accumulating a field for every future vehicle.
 
 ## 2. Make the tile system data-driven and split `GameMap`
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** `TILES` (js/config/tiles.js) is a bare integer enum with no
 semantics. The semantics are instead re-declared in `GameMap` as
@@ -187,7 +187,7 @@ tiles — the other big "type code" left in the codebase.
 
 ## 3. Give the strategies a real boundary — a `Game` world-model API
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** The mode strategies (`js/modes.js`) and vehicle behaviours
 (`js/vehicles/*`) are passed the whole `Game` and reach into its private
@@ -237,7 +237,7 @@ reads the interface, not the whole class.
 
 ## 4. Generalise the entity/capability model so `squad` and `air` stop being special cases
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** The `Squad` component (js/squad.js) is the right precedent, but
 its special-ness is scattered as `if` checks instead of being expressed through
@@ -293,7 +293,7 @@ component and becomes the reference implementation of the general pattern.
 
 ## 5. Unify targeting/aiming/firing behind one "shooter" seam; retire `Bullet.sourceType`
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** "Choose the best target by priority-weight / distance with LOS"
 exists three times:
@@ -345,7 +345,7 @@ The watch tower stops being the one place the game re-implements AI by hand.
 
 ## 6. Decompose `render/vehicles.js` and register sprites like behaviours
 
-**Status: proposed.**
+**Status: ✅ implemented.**
 
 **Evidence.** `js/render/vehicles.js` is now the **largest file in the repo
 (1,168 lines)** — bigger than the `map.js` and `game.js` it was meant to
@@ -410,21 +410,31 @@ those, and nothing on this list needs a new dependency or a build step.
 
 ---
 
-## Suggested sequencing
+## Status: all six implemented
 
-1. **#1** (complete the vehicle strategy) — highest leverage, unlocks the
-   "one module per vehicle" claim end to end.
-2. **#3** (Game world-model API) — do it alongside or immediately after #1 so
-   the strategies land on a real boundary instead of the mutable `Game`.
-3. **#2** (data-driven tiles + `js/map/` split) — independent, high leverage,
-   and removes the other big type code.
-4. **#4** (generalise squad/air capabilities) — depends on the entity model
-   settling; pairs naturally with #1.
-5. **#5** (unify targeting/shooters) — depends on the shooter vocabulary from
-   #1/#3; then watch towers and projectiles stop being special.
-6. **#6** (sprite registry) — independent, lowest risk; do it whenever, or
-   fold it into a broader render cleanup.
+Status: **all six opportunities are ✅ done**, committed one per opportunity in
+the suggested order (#1 → #3 → #2 → #4 → #5 → #6):
 
-Each opportunity is independently valuable and independently testable under the
-existing 484-test net (which, at ~97% line coverage, is the safety net that
-makes larger changes safe to attempt).
+1. **#1** — movement + per-vehicle state moved out of `Tank.update()` into the
+   behaviour strategies' `move` hook (tank/ifv ground, drone fly, SPG
+   charge-lock, squad dig-in).
+2. **#3** — mode strategies now use the public `Game` world-model API
+   (`setBases`, `creditKill`, `nearestEnemy`, and the accessors) instead of
+   `_`-prefixed fields.
+3. **#2** — tile semantics data-driven via `TILE_PROPS`; `GameMap` split into
+   the `js/map/` package (`grid` / `queries` / `generation` / `compounds`)
+   behind a thin facade.
+4. **#4** — squad/air handling generalised into entity capability getters
+   (`flies` / `softTarget` / `crushable` / `canCrush` + `incomingDamageMultiplier`);
+   `game.js`, `collision.js`, and the depth-sort read capabilities, not
+   `unitClass`/`if (squad)`.
+5. **#5** — the shared `pickTarget` weighted-targeting core replaces the
+   duplicated `bestTarget`/`updateWatchTowers` loops; `Bullet.sourceType` is
+   retired in favour of `Bullet.kind` + `js/projectiles.js`.
+6. **#6** — `render/vehicles.js` (1,168 lines) split into `js/render/vehicles/`
+   (one sprite module each) dispatched by the `SPRITES` registry; the render
+   layer's `vehicleType === "spg"` checks became the `chargeable` capability.
+
+The aggregate gate stayed green throughout: 487 tests / 0 failures, ~97% line /
+~89% branch / ~94% funcs coverage, lint and dependency-cruiser clean. The
+AGENTS guides were reconciled to the new architecture in the final commit.

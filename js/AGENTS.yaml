@@ -3,13 +3,15 @@ context:
       The module dependency graph is:
         main.js → game.js, renderer.js, audio.js, menu.js, input.js
         game.js → map.js, tank.js, bullet.js, particles.js, camera.js,
-                  ai.js, modes.js, vehicles/
+                  ai.js, modes.js, projectiles.js, ai/targeting.js, vehicles/
         ai.js → pathfinder.js, vehicles/, ai/   (thin controller)
         ai/ → config.js
         menu.js → lobby.js, menu/               (thin shell)
-        menu/ → config.js, render/vehicles.js, render/canvas-utils.js
+        menu/ → config.js, render/vehicles/, render/canvas-utils.js
         config.js → config/                     (barrel; config/ imports nothing)
-        modes.js → config.js, entity.js
+        modes.js → config.js, entity.js         (uses the public Game API)
+        map.js → map/                           (facade over the js/map/ package)
+        map/ → config.js, utils.js
         renderer.js → js/render/*, layout.js    (thin shell)
         js/render/* → config.js, utils.js, draw-helpers.js, formation.js
       All modules import config.js and utils.js.  Avoid circular dependencies.
@@ -18,11 +20,13 @@ context:
     when: before
 
   - content: |
-      config.js exports both TILES (tile type enum) and CONFIG (all constants).
-      When adding new tile types, update: TILES enum, CONFIG HP values,
-      map.js (isPassable, blocksProjectile, isSolid, tileHeight, setTile HP init),
-      js/render/tiles.js (drawTile switch), js/render/minimap.js (TILE_COLORS),
-      js/render/canvas-utils.js (PALETTE), and test/helpers.js if needed.
+      config.js exports TILES (tile type enum), TILE_PROPS (per-tile
+      semantics: passable/solid/road/water/building/height/hp), and CONFIG
+      (all constants).  Adding a tile type = a new TILES id + a new TILE_PROPS
+      row; the tile-property queries in js/map/grid.js read that table, so no
+      switch statements need editing.  Visuals still need js/render/tiles.js
+      (drawTile switch), js/render/minimap.js (TILE_COLORS), and
+      js/render/canvas-utils.js (PALETTE).
     match: ["config.js"]
     on: edit
     when: after
@@ -40,12 +44,15 @@ context:
     when: before
 
   - content: |
-      map.js generation order matters:
-        1. _baseTile() — water/sand/grass for every cell
-        2. _placeVillages() — stamps paved roads, buildings, then dirt roads
-        3. buildBaseCompounds() called by battle mode init (js/modes.js) —
-           clears terrain around the two bases, stamps compound walls/towers/HQ,
-           carves a path between them
+      Map generation order matters (js/map/generation.js generate()):
+        1. baseTile() — water/sand/grass for every cell
+        2. placeVillages() — stamps paved roads, buildings, then dirt roads
+        3. buildBaseCompounds() (js/map/compounds.js) called by battle mode
+           init (js/modes.js) — clears terrain around the two bases, stamps
+           compound walls/towers/HQ, carves a path between them
+      GameMap (js/map.js) is a facade over the js/map/ package: grid.js
+      (tile data + queries), queries.js (spatial geometry), generation.js
+      (procedural terrain), compounds.js (base layout + spawn helpers).
       Village placement enforces 14-tile minimum separation between centres.
       Dirt roads use cardinal-step algorithm (no diagonal-only connections).
     match: ["map.js"]
@@ -53,11 +60,13 @@ context:
     when: before
 
   - content: |
-      js/render/vehicles.js drawTank() projects every polygon from local
+      js/render/vehicles/tank.js drawTank() projects every polygon from local
       tank space (+x = forward, +y = right) through rotation + isometric
       transform (shared makeProjection in js/render/projection.js).
       Layers stack with pixel offsets: tracks → hull → barrel → turret.
       Each layer has a dark "extrusion" slab drawn below its top face for 3D effect.
+      The five sprites live in js/render/vehicles/ (one module each), dispatched
+      by drawVehicle via the SPRITES registry in js/render/vehicles/index.js.
     match: ["renderer.js", "js/render/*"]
     on: read
     when: before
