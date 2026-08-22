@@ -2,15 +2,14 @@
  * SPG behaviour — hold-to-charge artillery.
  *
  * FIRE is held to charge range, then released to lob an arcing shell
- * that flies over terrain and lands at the charged distance.  On
- * landing, onShellImpact applies the splash damage model (tank disks
- * use their hitbox radius, structures use edge-distance falloff, and
- * the impact tile takes full damage).
+ * that flies over terrain and lands at the charged distance.  The
+ * shell's splash damage lives in the projectile system
+ * (js/projectiles.js), not here — the landing effect is a property of
+ * the projectile, not of the shooter.
  */
 
 import { Bullet } from "../bullet.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
-import { splashStructures } from "./aoe.js";
 import { groundMove } from "./tank.js";
 
 export const spg = {
@@ -43,7 +42,6 @@ export const spg = {
                 true,
                 range,
             );
-            b.sourceType = "spg";
             game.bullets.push(b);
 
             const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
@@ -62,30 +60,6 @@ export const spg = {
     },
 
     update(_game, _tank, _dt) {},
-
-    /** Artillery splash: radial damage to tanks and structures, then the impact tile. */
-    onShellImpact(game, b) {
-        const splashR = VEHICLES.spg.splashRadius;
-
-        for (const t of game.allTanks) {
-            if (!t.alive || b.team === t.team) continue;
-            const r = t.hitRadius;
-            const d = t.distanceToPoint(b.x, b.y);
-            if (d >= splashR + r) continue;
-
-            const effectiveDist = Math.max(0, d - r);
-            const dmg = b.damage * Math.max(0, 1 - effectiveDist / splashR);
-            if (dmg <= 0) continue;
-
-            game.applyHitToTank(b, t, dmg);
-        }
-
-        splashStructures(game, b.x, b.y, splashR, b.damage, b.team);
-
-        game.damageTileAt(Math.floor(b.x), Math.floor(b.y), b.damage);
-        game.particles.emitArtilleryImpact(b.x, b.y);
-        game.emit("artillery_impact", { bullet: b });
-    },
 
     /** Hold fire to charge until the shell would reach the target, then release. */
     aim(ai, me, target, _map) {

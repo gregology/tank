@@ -49,8 +49,6 @@ export const drone = {
 
     update(_game, _tank, _dt) {},
 
-    onShellImpact(_game, _bullet) {},
-
     aim(_ai, _me, _target, _map) {},
 
     aiThink(ai, dt, me, enemies, map, objective) {

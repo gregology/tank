@@ -1,9 +1,12 @@
 /**
- * Combat target selection for the AI.
+ * Combat target selection for the AI and turrets.
  *
- * Every vehicle type declares a `targetPriority` table in VEHICLES
- * (config.js) mapping target types → desirability weight.  Candidates are
- * scored as  weight / distance; a weight of 0 means "never engage".
+ * `pickTarget` is the shared weighted-targeting core: it scores alive
+ * candidates as `priority weight / distance` and picks the highest, with
+ * optional range and line-of-sight filters.  The AI (`bestTarget`) and the
+ * watch towers (game.js) both use it.  The one deliberate variant is squad
+ * members, who pick the *closest* primary-over-fallback target (see
+ * `squad.js#pickSquadTarget`) — their scoring is distance, not weight.
  *
  * This is the natural home for future lead computation — a bot aiming at
  * where a target *is heading* would call a `predictPosition(target, t)`
@@ -12,6 +15,37 @@
  */
 
 import { VEHICLES } from "../config.js";
+
+/**
+ * Pick the best candidate from `candidates` using priority-weighted
+ * scoring:  weight / distance.
+ *
+ * @param {object[]} candidates  targets with x/y + targetType (+ alive)
+ * @param {object}   priorities  targetType → desirability weight (0 = never)
+ * @param {{x:number,y:number}} origin  position the target is scored from
+ * @param {object}   [opts]
+ * @param {number}   [opts.range=Infinity]       maximum distance to consider
+ * @param {(x1:number,y1:number,x2:number,y2:number)=>boolean} [opts.hasLineOfSight]
+ * @returns {{ target: object, dist: number } | null}
+ */
+export function pickTarget(candidates, priorities, origin, { range = Infinity, hasLineOfSight = null } = {}) {
+    let best = null;
+    let bestScore = -1;
+    for (const e of candidates) {
+        if (!e.alive) continue;
+        const w = priorities[e.targetType] ?? 1;
+        if (w <= 0) continue;
+        const d = Math.hypot(e.x - origin.x, e.y - origin.y);
+        if (d > range) continue;
+        if (hasLineOfSight && !hasLineOfSight(origin.x, origin.y, e.x, e.y)) continue;
+        const score = w / Math.max(d, 0.5);
+        if (score > bestScore) {
+            best = e;
+            bestScore = score;
+        }
+    }
+    return best ? { target: best, dist: Math.hypot(best.x - origin.x, best.y - origin.y) } : null;
+}
 
 /**
  * Pick the best target from enemies + enemy structures using
@@ -24,19 +58,5 @@ import { VEHICLES } from "../config.js";
  */
 export function bestTarget(ai, me, enemies) {
     const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
-    const allTargets = [...enemies, ...ai._enemyStructures];
-    let best = null;
-    let bestScore = -1;
-    for (const e of allTargets) {
-        if (!e.alive) continue;
-        const w = priorities[e.targetType] ?? 1;
-        if (w <= 0) continue;
-        const d = Math.hypot(e.x - me.x, e.y - me.y);
-        const score = w / Math.max(d, 0.5);
-        if (score > bestScore) {
-            best = e;
-            bestScore = score;
-        }
-    }
-    return best ? { target: best, dist: Math.hypot(best.x - me.x, best.y - me.y) } : null;
+    return pickTarget([...enemies, ...ai._enemyStructures], priorities, me);
 }

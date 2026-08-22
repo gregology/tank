@@ -1367,7 +1367,6 @@ describe("Game – bullets & damage", () => {
         const impacts = [];
         game.on("artillery_impact", () => impacts.push("artillery"));
         const b = new Bullet(12.5, 12.5, 0, 1, 1, 3.0, 7.0, true, 0.1); // lands immediately
-        b.sourceType = "spg";
         game.bullets.push(b);
         game._tickBullets(0.016);
         assert.equal(impacts.length, 1);
@@ -1669,7 +1668,6 @@ describe("Game – deeper coverage", () => {
         const game = new Game(battleConfig([human(1), human(2)]));
         const tower = game.bases[1].towers[0];
         const b = new Bullet(tower.x, tower.y, 0, 1, 1, 10, 7.0, true, 0.05);
-        b.sourceType = "spg";
         game.bullets.push(b);
         game._tickBullets(0.016); // lands immediately
         assert.ok(!b.alive);
@@ -1683,7 +1681,6 @@ describe("Game – deeper coverage", () => {
         const events = [];
         game.on("destroy_tile", (d) => events.push(d));
         const b = new Bullet(9, 10.5, 0, 1, 1, 3.0, 7.0, true, 1.5); // lands at ~(11.1, 10.5)
-        b.sourceType = "spg";
         game.bullets.push(b);
         for (let i = 0; i < 40 && b.alive; i++) game._tickBullets(0.016);
         assert.ok(!b.alive);

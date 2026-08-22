@@ -3,14 +3,13 @@
  * base for every other behaviour).  Tanks and IFVs share the `fire` and
  * `move` hooks; the IFV overrides only the AI aim strategy (see ifv.js).
  *
- * A behaviour is a plain strategy object with six hooks, dispatched by
+ * A behaviour is a plain strategy object with five hooks, dispatched by
  * js/vehicles/index.js from the `vehicleType`:
  *
  *   fire(game, tank, device, dt)      per-frame firing/attack
  *   move(tank, device, dt, map)       per-frame movement (rotation, turret,
  *                                     drive) — the entity delegates here
  *   update(game, tank, dt)            per-frame component update
- *   onShellImpact(game, bullet)       arcing shell landing
  *   aim(ai, me, target, map)          AI turret-aim strategy
  *   aiThink(ai, dt, me, enemies, map, objective)
  *                                     AI think-level dispatch; returns true
@@ -148,8 +147,6 @@ export const tank = {
     },
 
     update(_game, _tank, _dt) {},
-
-    onShellImpact(_game, _bullet) {},
 
     /**
      * Standard turret aiming: steer the independent turret (or the hull

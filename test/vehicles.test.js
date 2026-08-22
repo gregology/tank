@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ACTIONS, TILES as T, VEHICLES } from "../js/config.js";
+import { applyProjectileImpact } from "../js/projectiles.js";
 import { Tank } from "../js/tank.js";
 import { getVehicleBehaviour } from "../js/vehicles/index.js";
 import { customMap, fakeDevice } from "./helpers.js";
@@ -120,7 +121,7 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
         assert.ok(!spg.isCharging);
         assert.equal(game.bullets.length, 1);
         assert.ok(game.bullets[0].arcing, "shell arcs over terrain");
-        assert.equal(game.bullets[0].sourceType, "spg");
+        assert.equal(game.bullets[0].kind, "shell");
         assert.equal(game.events[0].event, "fire");
     });
 
@@ -137,8 +138,8 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
             tanks: [placedTank("tank", 12.5, 12.5, 2)],
             structures: [{ alive: true, team: 2, x: 14.5, y: 12.5, size: 0.5, applyDamage: () => false }],
         });
-        const b = { x: 12.5, y: 12.5, team: 1, damage: 3.0 };
-        getVehicleBehaviour("spg").onShellImpact(game, b);
+        const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
+        applyProjectileImpact(game, b);
         assert.equal(game.hits.length, 1, "tank hit by splash");
         assert.equal(game.hits[0].tank.team, 2);
         assert.equal(game.damagedTiles.length, 1, "impact tile damaged");
@@ -151,8 +152,8 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
         const game = stubGame({
             tanks: [placedTank("tank", 12.5, 12.5, 1)],
         });
-        const b = { x: 12.5, y: 12.5, team: 1, damage: 3.0 };
-        getVehicleBehaviour("spg").onShellImpact(game, b);
+        const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
+        applyProjectileImpact(game, b);
         assert.equal(game.hits.length, 0, "own team not damaged");
     });
 });

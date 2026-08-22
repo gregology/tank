@@ -51,10 +51,10 @@ export class Bullet {
         // Arcing shell support (SPG)
         this.arcing = arcing;
         this.targetDistance = targetDistance;
-
-        // Vehicle type that fired this bullet — routes arcing shells to the
-        // right behaviour's onShellImpact on landing.
-        this.sourceType = "tank";
+        // Projectile kind routes a landing to the right impact behaviour
+        // (js/projectiles.js).  "direct" bullets have no landing effect;
+        // "shell" is the arcing artillery shell.
+        this.kind = arcing ? "shell" : "direct";
 
         // Arcing shells need enough lifetime to reach their target;
         // normal bullets use the global constant (or an explicit value).

@@ -26,6 +26,7 @@
  *         artillery_impact, drone_strike
  */
 
+import { pickTarget } from "./ai/targeting.js";
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
@@ -35,6 +36,7 @@ import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
 import { getMode } from "./modes.js";
 import { ParticleSystem } from "./particles.js";
+import { applyProjectileImpact } from "./projectiles.js";
 import { Tank } from "./tank.js";
 import { distance, worldToScreen } from "./utils.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
@@ -421,8 +423,8 @@ export class Game {
             b.update(dt, this.map);
             if (wasAlive && !b.alive) {
                 if (b.arcing && b.landed) {
-                    // Arcing shells apply their impact through the shooter's behaviour.
-                    getVehicleBehaviour(b.sourceType).onShellImpact(this, b);
+                    // Arcing shells apply their impact through the projectile system.
+                    applyProjectileImpact(this, b);
                 } else if (!b.arcing && this.map.blocksProjectile(b.x, b.y)) {
                     this.particles.emitImpact(b.x, b.y);
                     this.emit("impact", { bullet: b });
@@ -605,25 +607,14 @@ export class Game {
                 tower.fireCooldown -= dt;
                 if (tower.fireCooldown > 0) continue;
 
-                // Find best target in range
+                // Find best target in range (shared weighted-targeting core).
                 const cfg = BASE_STRUCTURES.baseTower;
-                const priorities = cfg.targetPriority;
-                let best = null,
-                    bestScore = -1;
-                for (const e of enemyTeam) {
-                    if (!e.alive) continue;
-                    const w = priorities[e.targetType] ?? 0;
-                    if (w <= 0) continue;
-                    const d = distance(tower.x, tower.y, e.x, e.y);
-                    if (d > cfg.fireRange) continue;
-                    if (!this.map.hasLineOfSight(tower.x, tower.y, e.x, e.y, { skipOrigin: true })) continue;
-                    const score = w / Math.max(d, 0.5);
-                    if (score > bestScore) {
-                        best = e;
-                        bestScore = score;
-                    }
-                }
-                if (!best) continue;
+                const pick = pickTarget(enemyTeam, cfg.targetPriority, tower, {
+                    range: cfg.fireRange,
+                    hasLineOfSight: (x1, y1, x2, y2) => this.map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin: true }),
+                });
+                if (!pick) continue;
+                const best = pick.target;
 
                 // Fire
                 const angle = Math.atan2(best.y - tower.y, best.x - tower.x);

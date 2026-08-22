@@ -112,8 +112,6 @@ export const squad = {
         if (tank.squad) tank.squad.update(dt, game.map);
     },
 
-    onShellImpact(_game, _bullet) {},
-
     aim(_ai, _me, _target, _map) {},
 
     aiThink(ai, _dt, me, enemies, map, _objective) {
