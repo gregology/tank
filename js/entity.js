@@ -119,6 +119,14 @@ export class BaseStructure extends GameEntity {
     get size() {
         return BASE_STRUCTURES[this.entityType].size;
     }
+    /** Structure category ("wall" / "tower" / "hq"), from the data table. */
+    get category() {
+        return BASE_STRUCTURES[this.entityType].category;
+    }
+    /** Whether this structure is the base's objective (its "living part"). */
+    get isObjective() {
+        return BASE_STRUCTURES[this.entityType].isObjective ?? false;
+    }
     get damageFraction() {
         return this.maxHp > 0 ? this.hp / this.maxHp : 0;
     }
@@ -155,15 +163,20 @@ export class Base {
         this.compoundSize = 10;
     }
 
-    /** The HQ structure (null if the compound has none). */
+    /** Structures of a given category (see BASE_STRUCTURES[].category). */
+    structuresOf(category) {
+        return this.structures.filter((s) => s.category === category);
+    }
+
+    /** The objective structure (the base's "living part"); null if none. */
     get hq() {
-        return this.structures.find((s) => s.entityType === "baseHQ") ?? null;
+        return this.structures.find((s) => s.isObjective) ?? null;
     }
     get walls() {
-        return this.structures.filter((s) => s.entityType === "baseWall");
+        return this.structuresOf("wall");
     }
     get towers() {
-        return this.structures.filter((s) => s.entityType === "baseTower");
+        return this.structuresOf("tower");
     }
     get allStructures() {
         return this.structures;

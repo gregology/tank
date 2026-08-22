@@ -10,6 +10,7 @@ export const BASE_STRUCTURES = {
         hp: 3,
         size: 0.5,
         visHeight: 10,
+        category: "wall",
     },
     baseTower: {
         hp: 5,
@@ -22,10 +23,13 @@ export const BASE_STRUCTURES = {
         bulletCooldown: 0.15,
         fireSound: "ifv",
         targetPriority: { spg: 3, tank: 3, drone: 10, ifv: 3, squad: 5 },
+        category: "tower",
     },
     baseHQ: {
         hp: 20,
         size: 0.5,
         visHeight: 14,
+        category: "hq",
+        isObjective: true,
     },
 };
