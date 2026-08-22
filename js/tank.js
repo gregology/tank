@@ -49,6 +49,25 @@ export const HIT_ZONE = {
     REAR: "rear",
 };
 
+/** Single-point body: the default hitbox/hp surface for a non-squad vehicle. */
+function singleBody(tank) {
+    return {
+        distanceToPoint(x, y) {
+            return distance(x, y, tank.x, tank.y);
+        },
+        get hitRadius() {
+            return tank.size;
+        },
+        hitTest(x, y) {
+            return distance(x, y, tank.x, tank.y) < tank.size;
+        },
+        get hpFraction() {
+            const armour = VEHICLES[tank.vehicleType].armour;
+            return Math.max(0, 1 - tank.damageAccum / armour.hp);
+        },
+    };
+}
+
 export class Tank extends GameEntity {
     constructor(playerNumber, color, darkColor) {
         super("tank", 0, color, darkColor); // team set by Game later
@@ -70,9 +89,8 @@ export class Tank extends GameEntity {
         // Subsystem damage (set by the data-driven applyHit)
         this.damaged = false; // true after subsystem threshold crossed
         this.damageAccum = 0; // accumulated damage (unified HP pool)
-        this.turretDisabled = false; // front hit: can't rotate turret
-        this.leftTrackDisabled = false; // left-side hit: can't drive straight
-        this.rightTrackDisabled = false; // right-side hit: can't drive straight
+        /** Knocked-out subsystems ("turret" / "leftTrack" / "rightTrack"). */
+        this.disabledSubsystems = new Set();
 
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
@@ -108,12 +126,31 @@ export class Tank extends GameEntity {
     _initVehicleComponents() {
         this._charge = null;
         this._squad = null;
+        this._body = singleBody(this);
         getVehicleBehaviour(this._vehicleType).init?.(this);
     }
 
     /** World-space angle the turret is pointing. */
     get turretWorld() {
         return this.angle + this.turretAngle;
+    }
+
+    /** True if a subsystem has been knocked out (see VEHICLES[].armour.subsystems). */
+    subsystemDisabled(name) {
+        return this.disabledSubsystems.has(name);
+    }
+
+    /** Front hit disabled the turret (can't rotate it). */
+    get turretDisabled() {
+        return this.subsystemDisabled("turret");
+    }
+    /** Left-side hit disabled the left track (can't drive straight). */
+    get leftTrackDisabled() {
+        return this.subsystemDisabled("leftTrack");
+    }
+    /** Right-side hit disabled the right track (can't drive straight). */
+    get rightTrackDisabled() {
+        return this.subsystemDisabled("rightTrack");
     }
 
     /** True if any track is disabled (can only pivot). */
@@ -140,16 +177,9 @@ export class Tank extends GameEntity {
         return this._squad;
     }
 
-    /** Whether the squad is fully dug in (proxy into the component). */
-    get dugIn() {
-        return this.squad?.dugIn ?? false;
-    }
-
-    /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed). */
+    /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed) — delegated to the body. */
     get hpFraction() {
-        if (this.squad) return this.squad.hpFraction;
-        const armour = VEHICLES[this.vehicleType].armour;
-        return Math.max(0, 1 - this.damageAccum / armour.hp);
+        return this._body.hpFraction;
     }
 
     /** Number of squad members still alive (0 for non-squad vehicles). */
@@ -213,26 +243,21 @@ export class Tank extends GameEntity {
         return VEHICLES[this.vehicleType].armour.damageModel ?? "armour";
     }
 
-    /* ── distributed-hitbox capabilities (squads use member positions) ── */
+    /* ── body delegation (single-point by default, multi-member for squads) ── */
 
-    /** Distance from a world point to the vehicle's hitbox (squads use their nearest member). */
+    /** Distance from a world point to the vehicle's hitbox (delegated to the body). */
     distanceToPoint(x, y) {
-        if (this.squad) {
-            const d = this.squad.nearestMemberDistance(x, y);
-            if (Number.isFinite(d)) return d;
-        }
-        return distance(x, y, this.x, this.y);
+        return this._body.distanceToPoint(x, y);
     }
 
-    /** Radius used for AoE falloff: squads use their soldier radius. */
+    /** Radius used for AoE falloff (delegated to the body). */
     get hitRadius() {
-        return this.squad ? VEHICLES.squad.soldierRadius : this.size;
+        return this._body.hitRadius;
     }
 
-    /** True if a point is inside the vehicle's hitbox (squads check each member). */
+    /** True if a point is inside the vehicle's hitbox (delegated to the body). */
     hitTest(x, y) {
-        if (this.squad) return this.squad.bulletHit(x, y);
-        return distance(x, y, this.x, this.y) < this.size;
+        return this._body.hitTest(x, y);
     }
 
     /** Index of the first crushable soldier under `vehicle`, or -1. */
@@ -341,9 +366,7 @@ export class Tank extends GameEntity {
         // Clear all damage
         this.damaged = false;
         this.damageAccum = 0;
-        this.turretDisabled = false;
-        this.leftTrackDisabled = false;
-        this.rightTrackDisabled = false;
+        this.disabledSubsystems.clear();
 
         // Recreate per-vehicle components (squad members, SPG charge) at
         // the new spawn position — the behaviour owns their state.

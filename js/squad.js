@@ -191,6 +191,24 @@ export class Squad {
         return -1;
     }
 
+    /* ── body surface (multi-member hitbox + hp) ───────────── */
+
+    /** Distance to the nearest alive member (falls back to the leader). */
+    distanceToPoint(x, y) {
+        const d = this.nearestMemberDistance(x, y);
+        return Number.isFinite(d) ? d : distance(x, y, this.tank.x, this.tank.y);
+    }
+
+    /** Radius used for AoE falloff (one soldier). */
+    get hitRadius() {
+        return VEHICLES.squad.soldierRadius;
+    }
+
+    /** True if a point is inside any alive member. */
+    hitTest(x, y) {
+        return this.bulletHit(x, y);
+    }
+
     /* ── distributed hitbox helpers ────────────────────────── */
 
     /** True if (bx, by) is within `soldierRadius` of any alive member. */

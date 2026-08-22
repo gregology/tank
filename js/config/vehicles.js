@@ -27,10 +27,9 @@
  *                       goes straight to destruction)
  *   rearInstantKill  if true, a full-damage (>=1.0) rear hit kills
  *                    instantly regardless of remaining HP
- *   subsystems       map of hit-zone name -> subsystem descriptor:
- *                       { prop: "turretDisabled", resetTurret: true }
- *                       { prop: "leftTrackDisabled" }
- *                       { prop: "rightTrackDisabled" }
+ *   subsystems       map of hit-zone name -> subsystem name:
+ *                       "turret"     (front: locks the turret forward)
+ *                       "leftTrack"  / "rightTrack"  (side hits)
  *                    Zones not listed deal damage but disable nothing.
  *
  * The applyHit() method in tank.js reads this table generically --
@@ -80,9 +79,9 @@ export const VEHICLES = {
             subsystemThreshold: 3,
             rearInstantKill: true,
             subsystems: {
-                front: { prop: "turretDisabled", resetTurret: true },
-                side_left: { prop: "leftTrackDisabled" },
-                side_right: { prop: "rightTrackDisabled" },
+                front: { subsystem: "turret" },
+                side_left: { subsystem: "leftTrack" },
+                side_right: { subsystem: "rightTrack" },
             },
         },
     },
@@ -114,8 +113,8 @@ export const VEHICLES = {
             subsystemThreshold: 2,
             rearInstantKill: false,
             subsystems: {
-                side_left: { prop: "leftTrackDisabled" },
-                side_right: { prop: "rightTrackDisabled" },
+                side_left: { subsystem: "leftTrack" },
+                side_right: { subsystem: "rightTrack" },
             },
         },
     },
@@ -180,9 +179,9 @@ export const VEHICLES = {
             subsystemThreshold: 2,
             rearInstantKill: true,
             subsystems: {
-                front: { prop: "turretDisabled", resetTurret: true },
-                side_left: { prop: "leftTrackDisabled" },
-                side_right: { prop: "rightTrackDisabled" },
+                front: { subsystem: "turret" },
+                side_left: { subsystem: "leftTrack" },
+                side_right: { subsystem: "rightTrack" },
             },
         },
     },

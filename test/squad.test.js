@@ -201,7 +201,7 @@ describe("Infantry squad – dig-in state machine", () => {
         t.squad.applyDamage(4.0);
         t.respawnAt(20, 20);
         assert.equal(t.membersAlive, 5); // fresh component
-        assert.equal(t.dugIn, false);
+        assert.equal(t.squad.dugIn, false);
     });
 });
 

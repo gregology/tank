@@ -34,8 +34,8 @@ describe("Tank", () => {
     it("respawnAt clears all damage state", () => {
         const t = new Tank(1, "#c33", "#822");
         t.damaged = true;
-        t.turretDisabled = true;
-        t.leftTrackDisabled = true;
+        t.disabledSubsystems.add("turret");
+        t.disabledSubsystems.add("leftTrack");
         t.turretAngle = 1.5;
         t.damageAccum = 0.75;
         t.respawnAt(10.5, 20.5);
@@ -196,7 +196,7 @@ describe("Directional armour – subsystem damage", () => {
         t.y = sy;
         t.angle = 0;
         t.turretAngle = 0;
-        t.turretDisabled = true;
+        t.disabledSubsystems.add("turret");
         t.damaged = true;
 
         const fakeInput = { isDown: (k) => k === ACTIONS.turretRight };
@@ -218,7 +218,7 @@ describe("Directional armour – subsystem damage", () => {
         t.x = sx;
         t.y = sy;
         t.angle = 0;
-        t.leftTrackDisabled = true;
+        t.disabledSubsystems.add("leftTrack");
         t.damaged = true;
 
         const startX = t.x;
@@ -241,7 +241,7 @@ describe("Directional armour – subsystem damage", () => {
         t.x = sx;
         t.y = sy;
         t.angle = 1.0;
-        t.leftTrackDisabled = true;
+        t.disabledSubsystems.add("leftTrack");
         t.damaged = true;
 
         const fakeInput = { isDown: (k) => k === ACTIONS.left };
@@ -263,7 +263,7 @@ describe("Directional armour – subsystem damage", () => {
         t.x = sx;
         t.y = sy;
         t.angle = 1.0;
-        t.leftTrackDisabled = true;
+        t.disabledSubsystems.add("leftTrack");
         t.damaged = true;
 
         const startAngle = t.angle;
@@ -715,8 +715,8 @@ describe("Drone vehicle type", () => {
         drone.x = 32.5;
         drone.y = 32.5;
         drone.angle = 0;
-        drone.leftTrackDisabled = true;
-        drone.rightTrackDisabled = true;
+        drone.disabledSubsystems.add("leftTrack");
+        drone.disabledSubsystems.add("rightTrack");
 
         const startX = drone.x;
         const fakeInput = { isDown: (k) => k === ACTIONS.forward };
@@ -1014,13 +1014,13 @@ describe("Data-driven armour system", () => {
         }
     });
 
-    it("subsystem entries map to valid Tank properties", () => {
-        const validProps = { turretDisabled: 1, leftTrackDisabled: 1, rightTrackDisabled: 1 };
+    it("subsystem entries name a known subsystem", () => {
+        const known = new Set(["turret", "leftTrack", "rightTrack"]);
         for (const [name, v] of Object.entries(VEHICLES)) {
             for (const [zone, sub] of Object.entries(v.armour.subsystems)) {
                 assert.ok(
-                    sub.prop in validProps,
-                    `${name}.armour.subsystems.${zone}.prop = "${sub.prop}" should be a known property`,
+                    known.has(sub.subsystem),
+                    `${name}.armour.subsystems.${zone}.subsystem = "${sub.subsystem}" should be a known subsystem`,
                 );
             }
         }

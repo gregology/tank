@@ -50,7 +50,9 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
 
 export const squad = {
     init(tank) {
-        tank._squad = new Squad(tank);
+        const component = new Squad(tank);
+        tank._squad = component;
+        tank._body = component; // a squad's hitbox is its member positions
     },
 
     fire(game, squad, device, dt) {

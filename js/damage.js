@@ -16,12 +16,24 @@
 
 import { VEHICLES } from "./config.js";
 
+/**
+ * Extra side-effects beyond marking a subsystem disabled, keyed by the
+ * subsystem name the armour table declares.  A new subsystem with a
+ * knock-out effect (e.g. engine → speed cut, radio → vision loss) is one
+ * entry here — no new `if` in the rule chain.
+ */
+const SUBSYSTEM_EFFECTS = {
+    turret: (entity) => {
+        entity.turretAngle = 0; // locked forward
+    },
+};
+
 /** Disable the subsystem for a hit zone (data-driven from the armour table). */
 function applySubsystem(entity, armour, zone) {
     const sub = armour.subsystems?.[zone];
-    if (!sub) return;
-    if (sub.prop) entity[sub.prop] = true;
-    if (sub.resetTurret) entity.turretAngle = 0;
+    if (!sub?.subsystem) return;
+    entity.disabledSubsystems.add(sub.subsystem);
+    SUBSYSTEM_EFFECTS[sub.subsystem]?.(entity);
 }
 
 /* ── model objects ────────────────────────────────────────── */
