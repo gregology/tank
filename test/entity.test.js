@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BASE_STRUCTURES, Base, BaseHQ, BaseWall, BaseWatchTower, GameEntity } from "./helpers.js";
+import { BASE_STRUCTURES, Base, BaseStructure, GameEntity } from "./helpers.js";
 
 describe("GameEntity – base class defaults", () => {
     it("has correct default properties", () => {
@@ -27,9 +27,9 @@ describe("GameEntity – base class defaults", () => {
     });
 });
 
-describe("BaseWall", () => {
+describe("BaseStructure – wall", () => {
     it("has correct type and HP", () => {
-        const w = new BaseWall(1, "#f00", "#800");
+        const w = new BaseStructure("baseWall", 1, "#f00", "#800");
         assert.equal(w.entityType, "baseWall");
         assert.equal(w.targetType, "baseWall");
         assert.equal(w.isStructure, true);
@@ -40,7 +40,7 @@ describe("BaseWall", () => {
     });
 
     it("damageFraction decreases with damage", () => {
-        const w = new BaseWall(1, "#f00", "#800");
+        const w = new BaseStructure("baseWall", 1, "#f00", "#800");
         assert.equal(w.damageFraction, 1);
         w.applyDamage(1);
         assert.ok(w.damageFraction < 1);
@@ -48,42 +48,47 @@ describe("BaseWall", () => {
     });
 
     it("applyDamage returns true when destroyed", () => {
-        const w = new BaseWall(1, "#f00", "#800");
+        const w = new BaseStructure("baseWall", 1, "#f00", "#800");
         assert.equal(w.applyDamage(w.hp), true);
         assert.equal(w.alive, false);
     });
 
     it("applyDamage returns false when still alive", () => {
-        const w = new BaseWall(1, "#f00", "#800");
+        const w = new BaseStructure("baseWall", 1, "#f00", "#800");
         assert.equal(w.applyDamage(0.5), false);
         assert.equal(w.alive, true);
     });
 });
 
-describe("BaseHQ", () => {
+describe("BaseStructure – HQ", () => {
     it("has correct type and HP", () => {
-        const hq = new BaseHQ(1, "#f00", "#800");
+        const hq = new BaseStructure("baseHQ", 1, "#f00", "#800");
         assert.equal(hq.entityType, "baseHQ");
         assert.equal(hq.isStructure, true);
         assert.equal(hq.hp, BASE_STRUCTURES.baseHQ.hp);
     });
 });
 
-describe("BaseWatchTower", () => {
+describe("BaseStructure – watch tower", () => {
     it("has correct type and shooting capability", () => {
-        const t = new BaseWatchTower(1, "#f00", "#800");
+        const t = new BaseStructure("baseTower", 1, "#f00", "#800");
         assert.equal(t.entityType, "baseTower");
         assert.equal(t.isShooter, true);
         assert.equal(t.isStructure, true);
         assert.equal(t.fireCooldown, 0);
         assert.equal(t.turretAngle, 0);
     });
+
+    it("walls and HQ are not shooters", () => {
+        assert.equal(new BaseStructure("baseWall", 1, "#f00", "#800").isShooter, false);
+        assert.equal(new BaseStructure("baseHQ", 1, "#f00", "#800").isShooter, false);
+    });
 });
 
 describe("Base – compound container", () => {
     it("alive delegates to HQ", () => {
         const b = new Base(1, "#f00", "#800");
-        const hq = new BaseHQ(1, "#f00", "#800");
+        const hq = new BaseStructure("baseHQ", 1, "#f00", "#800");
         hq.x = 5;
         hq.y = 5;
         b.hq = hq;
@@ -96,9 +101,9 @@ describe("Base – compound container", () => {
 
     it("allStructures includes all parts", () => {
         const b = new Base(1, "#f00", "#800");
-        b.hq = new BaseHQ(1, "#f00", "#800");
-        b.walls.push(new BaseWall(1, "#f00", "#800"));
-        b.towers.push(new BaseWatchTower(1, "#f00", "#800"));
+        b.hq = new BaseStructure("baseHQ", 1, "#f00", "#800");
+        b.walls.push(new BaseStructure("baseWall", 1, "#f00", "#800"));
+        b.towers.push(new BaseStructure("baseTower", 1, "#f00", "#800"));
         assert.equal(b.allStructures.length, 3);
     });
 

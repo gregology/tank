@@ -15,6 +15,7 @@ export const BASE_STRUCTURES = {
         hp: 5,
         size: 0.5,
         visHeight: 20,
+        isShooter: true,
         fireRange: 15,
         bulletSpeed: 13.0,
         bulletDamage: 0.1,

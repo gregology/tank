@@ -5,7 +5,7 @@
 import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
-import { Base, BaseHQ, BaseWall, BaseWatchTower, GameEntity } from "../js/entity.js";
+import { Base, BaseStructure, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
@@ -16,9 +16,7 @@ export {
     AI_ROLES,
     BASE_STRUCTURES,
     Base,
-    BaseHQ,
-    BaseWall,
-    BaseWatchTower,
+    BaseStructure,
     Bullet,
     CONFIG,
     GameEntity,

@@ -17,7 +17,7 @@
  *    guard must stay in front of every vehicle sprite).
  *
  * The game objects passed to the renderers are hand-built fixtures using
- * real entities (Tank, Bullet, BaseWall…), so the render package is
+ * real entities (Tank, Bullet, BaseStructure…), so the render package is
  * exercised through its documented seam — the shape of `Game`'s accessors
  * — without dragging the whole match simulation into the coverage report.
  * The fake 2D context is deliberately not pixel-accurate: these are
@@ -38,7 +38,7 @@ import { drawTile } from "../js/render/tiles.js";
 import { drawVehicle } from "../js/render/vehicles.js";
 import { collectDepthItems, drawDepthBuckets, drawViewportBorders, renderViewport } from "../js/render/viewport.js";
 import { Renderer } from "../js/renderer.js";
-import { BaseHQ, BaseWall, BaseWatchTower, Bullet, customMap, fakeCtx } from "./helpers.js";
+import { BaseStructure, Bullet, customMap, fakeCtx } from "./helpers.js";
 
 /* ── helpers ──────────────────────────────────────────────── */
 
@@ -354,25 +354,25 @@ describe("vehicle smoke", () => {
 
 describe("structures smoke", () => {
     it("draws wall, tower, and HQ, damaged and intact", () => {
-        const wall = new BaseWall(1, "#cc3333", "#882222");
+        const wall = new BaseStructure("baseWall", 1, "#cc3333", "#882222");
         wall.tilePositions = [{ gx: 10, gy: 10 }];
-        const wallDmg = new BaseWall(1, "#cc3333", "#882222");
+        const wallDmg = new BaseStructure("baseWall", 1, "#cc3333", "#882222");
         wallDmg.tilePositions = [{ gx: 10, gy: 10 }];
         wallDmg.applyDamage(wallDmg.maxHp / 2);
 
-        const tower = new BaseWatchTower(1, "#cc3333", "#882222");
+        const tower = new BaseStructure("baseTower", 1, "#cc3333", "#882222");
         tower.tilePositions = [{ gx: 10, gy: 10 }];
-        const towerDmg = new BaseWatchTower(1, "#cc3333", "#882222");
+        const towerDmg = new BaseStructure("baseTower", 1, "#cc3333", "#882222");
         towerDmg.tilePositions = [{ gx: 10, gy: 10 }];
         towerDmg.applyDamage(towerDmg.maxHp / 2);
 
         // HQ through the dispatch (covers the baseHQ case arm) + damaged overlay.
-        const hq = new BaseHQ(1, "#cc3333", "#882222");
+        const hq = new BaseStructure("baseHQ", 1, "#cc3333", "#882222");
         hq.tilePositions = [
             { gx: 10, gy: 10 },
             { gx: 11, gy: 10 },
         ];
-        const hqDmg = new BaseHQ(1, "#cc3333", "#882222");
+        const hqDmg = new BaseStructure("baseHQ", 1, "#cc3333", "#882222");
         hqDmg.tilePositions = [
             { gx: 10, gy: 10 },
             { gx: 11, gy: 10 },
@@ -395,7 +395,7 @@ describe("structures smoke", () => {
 
     it("draws the HQ in both orientations with its HP text", () => {
         for (const isHoriz of [true, false]) {
-            const hq = new BaseHQ(1, "#cc3333", "#882222");
+            const hq = new BaseStructure("baseHQ", 1, "#cc3333", "#882222");
             hq.tilePositions = isHoriz
                 ? [
                       { gx: 0, gy: 0 },
@@ -481,7 +481,7 @@ describe("minimap + HUD smoke", () => {
         const enemy = fakeTank("tank", { x: 10, y: 10, team: 2, color: "#3366dd", darkColor: "#223399" });
         const game = gameFixture({
             allTanks: [enemy],
-            baseStructures: [new BaseWall(2, "#3366dd", "#223399")],
+            baseStructures: [new BaseStructure("baseWall", 2, "#3366dd", "#223399")],
             bases: [baseFixture(1), baseFixture(2)],
             _bots: [
                 { tank: fakeTank("tank", { team: 1 }), ai: { role: "cavalry" } },
@@ -560,7 +560,7 @@ describe("renderViewport smoke", () => {
                 fakeTank("drone", { x: 7, y: 7, angle: 0.2 }),
                 fakeTank("spg", { x: 9, y: 9 }),
             ],
-            baseStructures: [new BaseWall(1, "#cc3333", "#882222")],
+            baseStructures: [new BaseStructure("baseWall", 1, "#cc3333", "#882222")],
             bullets: [new Bullet(3, 3, 0, 1, 1)],
             particles: { particles: [{ x: 4, y: 4, alpha: 0.5, color: "#fff", size: 4 }] },
         });
@@ -583,7 +583,7 @@ describe("renderViewport smoke", () => {
 
     it("drawDepthBuckets draws every kind back-to-front with save/restore per item", () => {
         const map = customMap([{ x: 5, y: 5, tile: T.HILL }]);
-        const structure = new BaseWall(1, "#cc3333", "#882222");
+        const structure = new BaseStructure("baseWall", 1, "#cc3333", "#882222");
         structure.x = 6.5;
         structure.y = 6.5;
         structure.tilePositions = [{ gx: 6, gy: 6 }];

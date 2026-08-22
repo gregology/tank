@@ -28,7 +28,7 @@
  */
 
 import { CONFIG, PLAYER_COLORS } from "./config.js";
-import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
+import { Base, BaseStructure } from "./entity.js";
 
 /* ── entity construction (battle only) ───────────────────── */
 
@@ -40,14 +40,14 @@ function buildBase(layout, team, color, darkColor) {
     base.entranceDir = layout.dir;
     base.compoundSize = layout.size;
 
-    const hq = new BaseHQ(team, color, darkColor);
+    const hq = new BaseStructure("baseHQ", team, color, darkColor);
     hq.x = layout.hqCenter.x;
     hq.y = layout.hqCenter.y;
     hq.tilePositions = layout.hqTiles.map((t) => ({ gx: t.gx, gy: t.gy }));
     base.hq = hq;
 
     for (const pos of layout.walls) {
-        const w = new BaseWall(team, color, darkColor);
+        const w = new BaseStructure("baseWall", team, color, darkColor);
         w.x = pos.gx + 0.5;
         w.y = pos.gy + 0.5;
         w.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
@@ -55,7 +55,7 @@ function buildBase(layout, team, color, darkColor) {
     }
 
     for (const pos of layout.towers) {
-        const t = new BaseWatchTower(team, color, darkColor);
+        const t = new BaseStructure("baseTower", team, color, darkColor);
         t.x = pos.gx + 0.5;
         t.y = pos.gy + 0.5;
         t.tilePositions = [{ gx: pos.gx, gy: pos.gy }];

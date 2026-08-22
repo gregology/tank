@@ -7,10 +7,8 @@
  * Hierarchy:
  *   GameEntity
  *     ├── Tank  (vehicle — tank, IFV, drone, SPG)      ← tank.js
- *     └── BaseStructure
- *         ├── BaseWall        1×1 fortification wall
- *         ├── BaseHQ          1×2 command tent
- *         └── BaseWatchTower  1×1 armed guard tower
+ *     └── BaseStructure (baseWall / baseTower / baseHQ, data-driven
+ *                        from BASE_STRUCTURES)          ← this file
  *
  * Base is a compound container (not an entity itself) that holds
  * one team's HQ, walls, and watch towers.
@@ -87,6 +85,10 @@ export class BaseStructure extends GameEntity {
         this.hp = cfg.hp;
         this.maxHp = cfg.hp;
         this.tilePositions = [];
+        if (cfg.isShooter) {
+            this.fireCooldown = 0;
+            this.turretAngle = 0;
+        }
     }
 
     get isStructure() {
@@ -94,6 +96,9 @@ export class BaseStructure extends GameEntity {
     }
     get collidable() {
         return true;
+    }
+    get isShooter() {
+        return BASE_STRUCTURES[this.entityType].isShooter ?? false;
     }
     get size() {
         return BASE_STRUCTURES[this.entityType].size;
@@ -111,32 +116,6 @@ export class BaseStructure extends GameEntity {
             return true;
         }
         return false;
-    }
-}
-
-/* ── Concrete types ───────────────────────────────────────── */
-
-export class BaseWall extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseWall", team, color, darkColor);
-    }
-}
-
-export class BaseHQ extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseHQ", team, color, darkColor);
-    }
-}
-
-export class BaseWatchTower extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseTower", team, color, darkColor);
-        this.fireCooldown = 0;
-        this.turretAngle = 0;
-    }
-
-    get isShooter() {
-        return true;
     }
 }
 
