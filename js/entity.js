@@ -82,6 +82,8 @@ export class GameEntity {
     incomingDamageMultiplier(_map) {
         return 1;
     }
+    /** Post-destruction side-effect hook (kill credit, tile clearing, …). */
+    onDestroyed(_game, _source) {}
 }
 
 /* ═══════════════════════════════════════════════════════════ *
@@ -124,6 +126,11 @@ export class BaseStructure extends GameEntity {
 
     applyDamage(amount) {
         return resolveDamage(this, null, amount);
+    }
+
+    /** A destroyed structure clears its tiles and re-emits terrain_changed. */
+    onDestroyed(game) {
+        game.onStructureDestroyed(this);
     }
 }
 

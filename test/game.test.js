@@ -1389,7 +1389,7 @@ describe("Game – bullets & damage", () => {
         assert.ok(enemy.damaged || !enemy.alive);
     });
 
-    it("applyHitToTank emits destroy, explosion, and kill credit", () => {
+    it("applyDamage emits destroy, explosion, and kill credit", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const enemy = game.allTanks.find((t) => t.team === 2);
         enemy.x = 30.5;
@@ -1397,14 +1397,14 @@ describe("Game – bullets & damage", () => {
         const destroys = [];
         game.on("destroy", (d) => destroys.push(d));
         const before = game.particles.particles.length;
-        game.applyHitToTank({ x: 30.5, y: 30.5, team: 1 }, enemy, 999);
+        game.applyDamage(enemy, { x: 30.5, y: 30.5, team: 1 }, 999);
         assert.equal(destroys.length, 1);
         assert.ok(!enemy.alive);
         assert.ok(game.particles.particles.length > before, "explosion particles");
         assert.equal(game.scores.get(1), 1, "kill credited in skirmish");
     });
 
-    it("applyHitToTank emits hit for subsystem damage only", () => {
+    it("applyDamage emits hit for subsystem damage only", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const enemy = game.allTanks.find((t) => t.team === 2);
         enemy.x = 30.5;
@@ -1414,7 +1414,7 @@ describe("Game – bullets & damage", () => {
         game.on("hit", (d) => hits.push(d));
         const destroys = [];
         game.on("destroy", () => destroys.push("destroy"));
-        game.applyHitToTank({ x: 31.5, y: 30.5, team: 1 }, enemy, 3.0);
+        game.applyDamage(enemy, { x: 31.5, y: 30.5, team: 1 }, 3.0);
         assert.equal(hits.length, 1);
         assert.equal(destroys.length, 0);
         assert.ok(enemy.alive);
@@ -1429,7 +1429,7 @@ describe("Game – bullets & damage", () => {
         comp.startDigIn();
         comp.update(1.1, game.map); // now dugIn
         const membersBefore = comp.membersAlive;
-        game.applyHitToTank({ x: squad.x, y: squad.y, team: 2 }, squad, 1.0);
+        game.applyDamage(squad, { x: squad.x, y: squad.y, team: 2 }, 1.0);
         assert.ok(membersBefore > comp.membersAlive || squad.alive, "damage applied through reduction");
     });
 
@@ -1708,7 +1708,7 @@ describe("Game – deeper coverage", () => {
         game.map.setTile(30, 30, T.BLDG_SMALL); // intact building
         squad.x = 30.5;
         squad.y = 31.5; // 1 unit below the building centre (inside coverRadius)
-        game.applyHitToTank({ x: 30.5, y: 30.5, team: 2 }, squad, 1.0);
+        game.applyDamage(squad, { x: 30.5, y: 30.5, team: 2 }, 1.0);
         assert.ok(comp.partialDamage > 0 && comp.partialDamage < 1.0, "damage reduced by cover");
         assert.equal(comp.membersAlive, 5);
     });

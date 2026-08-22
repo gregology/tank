@@ -11,7 +11,6 @@
 
 import { vehiclesSeparate } from "../collision.js";
 import { VEHICLES } from "../config.js";
-import { GAME_EVENTS } from "../events.js";
 import { distance } from "../utils.js";
 
 /** Push overlapping solid vehicles apart so they don't overlap. */
@@ -88,9 +87,7 @@ export function resolveCrushes(game) {
 
             if (target.crushMember(idx)) {
                 target.kill();
-                game.particles.emit("explosion", target.x, target.y);
-                game.emit(GAME_EVENTS.DESTROY, { entity: target });
-                game.mode.onKill(game, v.team, target);
+                game.destroyEntity(target, { team: v.team, x: v.x, y: v.y });
             }
         }
     }

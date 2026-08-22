@@ -327,6 +327,11 @@ export class Tank extends GameEntity {
         this.respawnTimer = CONFIG.TANK_RESPAWN_TIME;
     }
 
+    /** A destroyed tank credits the kill to the source's faction. */
+    onDestroyed(game, source) {
+        game.mode.onKill(game, source.team, this);
+    }
+
     respawnAt(x, y) {
         this.x = x;
         this.y = y;

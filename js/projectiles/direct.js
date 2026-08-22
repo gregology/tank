@@ -38,9 +38,7 @@ export const direct = {
             gy = Math.floor(b.y);
         const structure = game.structureAt(gx, gy);
         if (structure) {
-            if (b.team !== structure.team && structure.applyDamage(b.damage) === "destroyed") {
-                game.onStructureDestroyed(structure);
-            }
+            if (b.team !== structure.team) game.applyDamage(structure, b, b.damage);
         } else {
             game.damageTileAt(gx, gy, b.damage);
         }
@@ -48,6 +46,6 @@ export const direct = {
 
     /** Apply a direct hit to an enemy tank. */
     onEntity(game, b, target) {
-        game.applyHitToTank(b, target, b.damage);
+        game.applyDamage(target, b, b.damage);
     },
 };

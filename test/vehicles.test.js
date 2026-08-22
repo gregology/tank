@@ -5,7 +5,7 @@
  *
  * The stub game is deliberately small: behaviours may only use the
  * documented seams (bullets, particles, emit, allTanks, baseStructures,
- * map, applyHitToTank, onStructureDestroyed, damageTileAt).
+ * map, applyDamage, damageTileAt).
  */
 
 import assert from "node:assert/strict";
@@ -37,15 +37,11 @@ function stubGame({ tanks = [], structures = [], map = flatMap() } = {}) {
             return tanks.concat(structures);
         },
         hits: [],
-        destroyedStructures: [],
         damagedTiles: [],
         events: [],
         emit: (event, d) => game.events.push({ event, d }),
-        applyHitToTank: (source, tank, damage) => {
-            game.hits.push({ source, tank, damage });
-        },
-        onStructureDestroyed: (s) => {
-            game.destroyedStructures.push(s);
+        applyDamage: (entity, source, amount) => {
+            game.hits.push({ source, entity, amount });
         },
         damageTileAt: (gx, gy, damage) => {
             game.damagedTiles.push({ gx, gy, damage });
@@ -139,7 +135,7 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
         const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
         getProjectileBehaviour("shell").onLand(game, b);
         assert.equal(game.hits.length, 1, "tank hit by splash");
-        assert.equal(game.hits[0].tank.team, 2);
+        assert.equal(game.hits[0].entity.team, 2);
         assert.equal(game.damagedTiles.length, 1, "impact tile damaged");
         assert.equal(game.damagedTiles[0].gx, 12);
         assert.equal(game.damagedTiles[0].gy, 12);

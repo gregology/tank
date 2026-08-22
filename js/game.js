@@ -29,6 +29,7 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Camera } from "./camera.js";
 import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
+import { resolveDamage } from "./damage.js";
 import { GAME_EVENTS } from "./events.js";
 import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
@@ -370,31 +371,40 @@ export class Game {
     }
 
     /**
-     * Apply a hit to a tank and emit the appropriate particles/events.
-     * @param {{x:number, y:number, team:number}} source - bullet or explosion origin
-     * @param {Tank} tank - target tank
-     * @param {number} damage - damage amount
+     * The one damage-application seam: resolve a hit through the entity's own
+     * damage model, then apply the shared post-hit side-effects (particles,
+     * events, kill credit / structure clearing).  Tanks and structures go
+     * through the same path — the differences live in the entity's damage
+     * model and its `onDestroyed` hook, not in callers.
+     *
+     * @param {object} entity  the target (Tank or BaseStructure)
+     * @param {{x:number, y:number, team:number}} source  bullet/blast/crush origin
+     * @param {number} amount  raw incoming damage
+     * @returns {"destroyed"|"damaged"|"absorbed"}
      */
-    applyHitToTank(source, tank, damage) {
-        let dmg = damage;
-
-        // Cover / dig-in damage reduction is a per-entity capability (1 for
-        // everything except infantry squads).
-        dmg *= tank.incomingDamageMultiplier(this.map);
-
-        const zone = tank.getHitZone(source.x, source.y);
-        const result = tank.applyHit(zone, dmg);
+    applyDamage(entity, source, amount) {
+        // Zone is armour-model-specific (computed only where it exists); cover
+        // / dig-in reduction is a per-entity capability (1 for most entities).
+        const zone = entity.getHitZone ? entity.getHitZone(source.x, source.y) : null;
+        const dmg = amount * entity.incomingDamageMultiplier(this.map);
+        const result = resolveDamage(entity, zone, dmg);
 
         if (result === "destroyed") {
-            this.particles.emit("explosion", tank.x, tank.y);
-            this.emit(GAME_EVENTS.DESTROY, { entity: tank });
-            this.mode.onKill(this, source.team, tank);
+            this.destroyEntity(entity, source);
         } else if (result === "damaged") {
             this.particles.emit("impact", source.x, source.y);
-            this.emit(GAME_EVENTS.HIT, { tank, zone });
+            this.emit(GAME_EVENTS.HIT, { tank: entity, zone });
         } else {
             this.particles.emit("tinyImpact", source.x, source.y);
         }
+        return result;
+    }
+
+    /** Emit the standard destruction side-effects for a killed entity. */
+    destroyEntity(entity, source) {
+        this.particles.emit("explosion", entity.x, entity.y);
+        this.emit(GAME_EVENTS.DESTROY, { entity });
+        entity.onDestroyed(this, source);
     }
 
     _tickBullets(dt) {

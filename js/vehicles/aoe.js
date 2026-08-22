@@ -9,13 +9,10 @@
  * it rather than copying the loop.
  */
 
-import { GAME_EVENTS } from "../events.js";
-
 /**
  * Apply radial blast damage to enemy tanks and structures.
  *
- * @param {object} game    Game (allTanks/baseStructures/applyHitToTank/
- *                         onStructureDestroyed/particles/emit)
+ * @param {object} game    Game (damageables/applyDamage)
  * @param {number} x       blast centre world X
  * @param {number} y       blast centre world Y
  * @param {number} radius  blast radius in world units
@@ -24,9 +21,8 @@ import { GAME_EVENTS } from "../events.js";
  */
 export function applyBlast(game, x, y, radius, damage, team) {
     // One loop over every damageable entity.  Tanks and structures share the
-    // same `distanceToPoint` / `hitRadius` hitbox vocabulary; only the damage
-    // application differs (tanks go through the zone-aware world model,
-    // structures through their plain HP pool).
+    // same `distanceToPoint` / `hitRadius` hitbox vocabulary, and both route
+    // through the single `game.applyDamage` application seam.
     for (const e of game.damageables) {
         if (!e.alive || e.team === team) continue;
         const d = e.distanceToPoint(x, y);
@@ -35,15 +31,6 @@ export function applyBlast(game, x, y, radius, damage, team) {
         const dmg = damage * Math.max(0, 1 - edge / radius);
         if (dmg <= 0) continue;
 
-        if (e.isStructure) {
-            if (e.applyDamage(dmg) === "destroyed") {
-                game.onStructureDestroyed(e);
-            } else {
-                game.particles.emit("impact", x, y);
-                game.emit(GAME_EVENTS.IMPACT, { point: { x, y } });
-            }
-        } else {
-            game.applyHitToTank({ x, y, team }, e, dmg);
-        }
+        game.applyDamage(e, { x, y, team }, dmg);
     }
 }
