@@ -14,6 +14,7 @@
 import { Bullet } from "../bullet.js";
 import { ACTIONS, SQUAD_MEMBERS } from "../config.js";
 import { pickSquadTarget } from "../squad.js";
+import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
 /** Fire one member's weapon at a target.  Shotguns fire a pellet spread. */
 function fireMemberAt(game, squad, memberPos, weapon, target) {
@@ -89,6 +90,22 @@ export const squad = {
 
             fireMemberAt(game, squad, m, weapon, target);
         }
+    },
+
+    /** Infantry movement: movement keys cancel dig-in; immobile while digging in / dug in. */
+    move(tank, device, dt, map) {
+        const component = tank.squad;
+        if (component?.digIn.state === "diggingIn") {
+            if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
+                component.cancelDigIn();
+            }
+        }
+        const oldX = tank.x,
+            oldY = tank.y;
+        const rotating = rotateHull(tank, device, dt);
+        rotateTurret(tank, device, dt);
+        drive(tank, device, dt, map, !component || component.canMove);
+        animateTread(tank, dt, oldX, oldY, rotating);
     },
 
     update(game, tank, dt) {

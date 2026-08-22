@@ -9,6 +9,7 @@
 
 import { ACTIONS, VEHICLES } from "../config.js";
 import { splashStructures } from "./aoe.js";
+import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
 export const drone = {
     fire(game, drone, device, _dt) {
@@ -34,6 +35,16 @@ export const drone = {
         game.particles.emitDroneExplosion(drone.x, drone.y);
         game.emit("drone_strike", { drone });
         drone.kill();
+    },
+
+    /** Fly over everything: free rotation, fixed turret, map-bounds only. */
+    move(tank, device, dt, map) {
+        const oldX = tank.x,
+            oldY = tank.y;
+        const rotating = rotateHull(tank, device, dt, true);
+        rotateTurret(tank, device, dt);
+        drive(tank, device, dt, map, true);
+        animateTread(tank, dt, oldX, oldY, rotating);
     },
 
     update(_game, _tank, _dt) {},

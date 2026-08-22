@@ -11,6 +11,7 @@
 import { Bullet } from "../bullet.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { splashStructures } from "./aoe.js";
+import { groundMove } from "./tank.js";
 
 export const spg = {
     fire(game, tank, device, dt) {
@@ -53,6 +54,11 @@ export const spg = {
             tank.isCharging = false;
             tank.chargeTime = 0;
         }
+    },
+
+    /** Ground movement, but deployed (charging) artillery cannot drive. */
+    move(tank, device, dt, map) {
+        groundMove(tank, device, dt, map, !tank.isCharging && !tank.trackDamaged);
     },
 
     update(_game, _tank, _dt) {},

@@ -219,6 +219,36 @@ describe("squad behaviour (auto-fire + dig-in)", () => {
     });
 });
 
+describe("movement (move hook)", () => {
+    it("tank drives forward through the behaviour seam", () => {
+        const map = flatMap();
+        const tank = placedTank("tank", 10.5, 10.5);
+        tank.angle = 0;
+        const device = fakeDevice({ held: [ACTIONS.forward] });
+        for (let i = 0; i < 10; i++) getVehicleBehaviour("tank").move(tank, device, 0.016, map);
+        assert.ok(tank.x > 10.5, "ground vehicle moved east");
+    });
+
+    it("drone flies over blocking terrain instead of sliding around it", () => {
+        const map = flatMap();
+        const drone = placedTank("drone", 10.5, 10.5);
+        drone.angle = 0;
+        for (let gx = 11; gx <= 14; gx++) map.setTile(gx, 10, T.HILL); // wall east
+        const device = fakeDevice({ held: [ACTIONS.forward] });
+        for (let i = 0; i < 30; i++) getVehicleBehaviour("drone").move(drone, device, 0.016, map);
+        assert.ok(drone.x > 11.5, "drone flew over the hill line");
+    });
+
+    it("squad movement cancels an in-progress dig-in", () => {
+        const map = flatMap();
+        const squad = placedTank("squad", 10.5, 10.5);
+        squad.squad.startDigIn();
+        assert.equal(squad.squad.digIn.state, "diggingIn");
+        getVehicleBehaviour("squad").move(squad, fakeDevice({ held: [ACTIONS.forward] }), 0.016, map);
+        assert.equal(squad.squad.digIn.state, "roaming", "movement key cancelled the dig-in");
+    });
+});
+
 describe("AI aim strategies", () => {
     /** A stub AIController-shaped executor with the seams aim strategies use. */
     function stubAi(_me) {

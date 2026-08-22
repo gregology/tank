@@ -1,9 +1,12 @@
 /**
- * Tank entity – handles movement, rotation, firing cooldown, and respawn.
+ * Tank entity – a generic vehicle shell: identity, armour, timers, and
+ * the shared movement/aiming *data* (angle, turret offset, position).
  *
- * Movement model:  W/↑ = drive forward in the direction the tank faces,
- * S/↓ = reverse (slower), A/← and D/→ = rotate hull in place.
- * Q/E and ,/. = rotate turret relative to the hull (slower than hull).
+ * Movement and firing are delegated to the vehicle behaviour strategy
+ * (js/vehicles/) via `getVehicleBehaviour(this.vehicleType)` — `update()`
+ * ticks the generic timers then calls the behaviour's `move` hook, and
+ * `game.js` dispatches firing to the behaviour's `fire` hook.  The entity
+ * itself never branches on vehicle type.
  *
  * turretAngle is an OFFSET from the hull angle.  0 = turret faces
  * the same direction as the hull.  The world-space turret direction
@@ -31,10 +34,11 @@
  *               damage and it can dig in / use building cover
  */
 
-import { ACTIONS, CONFIG, VEHICLES } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
 import { GameEntity } from "./entity.js";
 import { Squad } from "./squad.js";
-import { distance, normalizeAngle } from "./utils.js";
+import { distance } from "./utils.js";
+import { getVehicleBehaviour } from "./vehicles/index.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
 
@@ -185,6 +189,12 @@ export class Tank extends GameEntity {
 
     /* ── per-frame update ─────────────────────────────────── */
 
+    /**
+     * Tick the generic entity timers, then delegate movement to the
+     * vehicle behaviour (js/vehicles/).  Each behaviour's `move` hook owns
+     * how the vehicle rotates, aims the turret, and drives — the entity
+     * no longer branches on vehicle type here.
+     */
     update(dt, device, map) {
         // Tick timers even when dead (respawn countdown)
         if (!this.alive) {
@@ -200,95 +210,7 @@ export class Tank extends GameEntity {
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
         if (this.recoilTimer > 0) this.recoilTimer -= dt;
 
-        const oldX = this.x,
-            oldY = this.y;
-        const v = VEHICLES[this.vehicleType];
-        const flying = v.unitClass === "air";
-
-        // ── Hull rotation
-        // If a track is disabled, can only pivot in the direction
-        // of the working track (left track out → can only turn right,
-        // right track out → can only turn left).
-        // Flying units have no tracks — always free to rotate.
-        const canRotateLeft = flying || !this.rightTrackDisabled;
-        const canRotateRight = flying || !this.leftTrackDisabled;
-
-        const rotSpeed = v.rotationSpeed;
-
-        // Turn/turret amounts are analog (0–1) when the device provides
-        // them (gamepad stick/triggers) and binary otherwise (keyboard,
-        // AI).  Falls back to isDown() for devices without analog().
-        const amt = (action) =>
-            typeof device.analog === "function" ? device.analog(action) : device.isDown(action) ? 1 : 0;
-        const turnL = amt(ACTIONS.left);
-        const turnR = amt(ACTIONS.right);
-
-        const rotating = (turnL > 0 && canRotateLeft) || (turnR > 0 && canRotateRight);
-        if (turnL > 0 && canRotateLeft) this.angle -= rotSpeed * turnL * dt;
-        if (turnR > 0 && canRotateRight) this.angle += rotSpeed * turnR * dt;
-        this.angle = normalizeAngle(this.angle);
-
-        // ── Turret rotation (relative to hull, slower)
-        // Fixed-turret vehicles have no turret — always aligned forward.
-        // Disabled by front hit on tanks.
-        if (v.turret === "fixed") {
-            this.turretAngle = 0;
-        } else if (!this.turretDisabled) {
-            const turretSpd = v.turretSpeed;
-            const turrL = amt(ACTIONS.turretLeft);
-            const turrR = amt(ACTIONS.turretRight);
-            if (turrL > 0) this.turretAngle -= turretSpd * turrL * dt;
-            if (turrR > 0) this.turretAngle += turretSpd * turrR * dt;
-            this.turretAngle = normalizeAngle(this.turretAngle);
-        }
-
-        // ── Forward / reverse
-        // Disabled if any track is damaged (can only pivot).
-        // Flying units always move freely.
-        // SPGs cannot drive while charging (deployed).
-        // Squads are immobile while digging in / dug in; pressing a movement
-        // key during the dig-in transition cancels it (back to roaming).
-        let move = 0;
-        const squadComponent = this.squad;
-        if (squadComponent?.digIn.state === "diggingIn") {
-            if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
-                squadComponent.cancelDigIn();
-            }
-        }
-        if (flying || !this.trackDamaged) {
-            const squadLocked = squadComponent && !squadComponent.canMove;
-            if (this.isCharging || squadLocked) {
-                // SPG deployed / squad digging in or dug in — no movement
-            } else {
-                if (device.isDown(ACTIONS.forward)) move = 1;
-                if (device.isDown(ACTIONS.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
-            }
-        }
-
-        if (move !== 0) {
-            const baseSpeed = v.speed;
-            const speed = baseSpeed * move;
-            const nx = this.x + Math.cos(this.angle) * speed * dt;
-            const ny = this.y + Math.sin(this.angle) * speed * dt;
-
-            if (flying) {
-                // Flying units fly over all terrain — only check map bounds
-                if (this._canFly(nx, this.y, map)) this.x = nx;
-                if (this._canFly(this.x, ny, map)) this.y = ny;
-            } else {
-                // Slide along obstacles – try each axis independently
-                if (map.canStand(nx, this.y, this.size)) this.x = nx;
-                if (map.canStand(this.x, ny, this.size)) this.y = ny;
-            }
-        }
-
-        // ── Tread animation (scrolls when moving or rotating in place)
-        const dx = this.x - oldX,
-            dy = this.y - oldY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 0.0001 || rotating) {
-            this.treadPhase = (this.treadPhase + Math.max(dist * 6, rotating ? dt * 2.5 : 0)) % 1;
-        }
+        getVehicleBehaviour(this.vehicleType).move(this, device, dt, map);
     }
 
     /* ── firing ───────────────────────────────────────────── */
@@ -431,12 +353,5 @@ export class Tank extends GameEntity {
         this.turretDisabled = false;
         this.leftTrackDisabled = false;
         this.rightTrackDisabled = false;
-    }
-
-    /* ── collision helper ─────────────────────────────────── */
-
-    /** Flying units fly over everything — only check map bounds. */
-    _canFly(wx, wy, map) {
-        return wx > 0.5 && wx < map.width - 0.5 && wy > 0.5 && wy < map.height - 0.5;
     }
 }
