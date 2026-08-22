@@ -72,7 +72,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 3, sniper: 2, defender: 1, scout: 1 },
-        targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, squad: 8, baseWall: 5, baseTower: 10, baseHQ: 10 },
+        targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, squad: 8, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
             hp: 6,
@@ -106,7 +106,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 2, sniper: 2, defender: 1, scout: 5 },
-        targetPriority: { spg: 5, tank: 2, drone: 10, ifv: 3, squad: 8, baseWall: 3, baseTower: 5, baseHQ: 10 },
+        targetPriority: { tank: 2, drone: 10, ifv: 3, squad: 8, baseWall: 3, baseHQ: 10 },
         armour: {
             damageModel: "armour",
             hp: 3,
@@ -139,7 +139,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 3.5,
         roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
-        targetPriority: { spg: 10, tank: 5, drone: 0, ifv: 2, squad: 7, baseWall: 0, baseTower: 0, baseHQ: 10 },
+        targetPriority: { spg: 10, drone: 0, ifv: 2, squad: 7, baseWall: 0, baseTower: 0, baseHQ: 10 },
         armour: {
             damageModel: "armour",
             hp: 0.1,
@@ -172,7 +172,7 @@ export const VEHICLES = {
         spawnWeight: 3,
         cameraLookAhead: 10.0,
         roleWeights: { cavalry: 0, sniper: 5, defender: 0, scout: 0 },
-        targetPriority: { spg: 5, tank: 0, drone: 0, ifv: 0, squad: 3, baseWall: 0, baseTower: 10, baseHQ: 10 },
+        targetPriority: { tank: 0, drone: 0, ifv: 0, squad: 3, baseWall: 0, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
             hp: 3,
@@ -208,7 +208,7 @@ export const VEHICLES = {
         cameraLookAhead: 2.0,
         // Squads are never defenders — they advance/flank under cover.
         roleWeights: { cavalry: 3, sniper: 0, defender: 0, scout: 3 },
-        targetPriority: { spg: 8, tank: 6, ifv: 5, drone: 3, squad: 6, baseWall: 8, baseTower: 8, baseHQ: 8 },
+        targetPriority: { spg: 8, tank: 6, squad: 6, baseWall: 8, baseTower: 8, baseHQ: 8 },
         // Cover/dig-in damage model (see Squad.damageMultiplier):
         //  coverReduction  — incoming damage multiplier while adjacent to
         //                    an intact building (mechanical cover)

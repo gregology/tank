@@ -10,6 +10,7 @@
  * game.js so it can be unit-tested without constructing a full Game.
  */
 
+import { pickTarget } from "./ai/targeting.js";
 import { SQUAD_ATTENTION_ORDER, VEHICLES } from "./config.js";
 import { Formation } from "./formation.js";
 import { distance } from "./utils.js";
@@ -33,31 +34,19 @@ export function pickSquadTarget(origin, member, candidates, hasLineOfSight) {
     const primary = new Set(member.primaryTargets);
     const fallback = new Set(member.fallbackTargets);
 
-    let best = null;
-    let bestScore = Infinity;
-    let isFallback = false;
-
+    // Express primary/fallback as priorities through the shared weighted
+    // core (`pickTarget`): primary targets get a huge weight so they beat
+    // any fallback regardless of distance; fallbacks get a token weight.
+    const priorities = {};
     for (const e of candidates) {
         const type = e.targetType ?? e.entityType;
-        const isPrimary = primary.has(type);
-        if (!isPrimary && !fallback.has(type)) continue;
-
-        const d = distance(origin.x, origin.y, e.x, e.y);
-        if (d > member.range) continue;
-        if (!hasLineOfSight(origin.x, origin.y, e.x, e.y)) continue;
-
-        // Any primary target (score = distance) beats any fallback one
-        // (score = distance + 1e6), so fallback is only used when no
-        // primary target is visible.
-        const score = isPrimary ? d : d + 1e6;
-        if (score < bestScore) {
-            best = e;
-            bestScore = score;
-            isFallback = !isPrimary;
-        }
+        priorities[type] = primary.has(type) ? 1e6 : fallback.has(type) ? 1 : 0;
     }
 
-    return best ? { entity: best, isFallback } : null;
+    const pick = pickTarget(candidates, priorities, origin, { range: member.range, hasLineOfSight });
+    if (!pick) return null;
+    const type = pick.target.targetType ?? pick.target.entityType;
+    return { entity: pick.target, isFallback: !primary.has(type) };
 }
 
 /**

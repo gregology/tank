@@ -305,8 +305,8 @@ describe("Infantry squad – target selection", () => {
 
     it("picks a primary target by type", () => {
         const origin = { x: 10, y: 10 };
-        const enemyTank = { x: 13, y: 10, targetType: "tank" };
-        const enemySquad = { x: 10, y: 13, targetType: "squad" };
+        const enemyTank = { x: 13, y: 10, targetType: "tank", alive: true };
+        const enemySquad = { x: 10, y: 13, targetType: "squad", alive: true };
 
         const rpg = pickSquadTarget(origin, SQUAD_MEMBERS.rpg, [enemyTank, enemySquad], always);
         assert.equal(rpg.entity, enemyTank);
@@ -319,7 +319,7 @@ describe("Infantry squad – target selection", () => {
 
     it("falls back to plinking when no primary target exists", () => {
         const origin = { x: 10, y: 10 };
-        const enemyTank = { x: 13, y: 10, targetType: "tank" };
+        const enemyTank = { x: 13, y: 10, targetType: "tank", alive: true };
         const r = pickSquadTarget(origin, SQUAD_MEMBERS.rifleman, [enemyTank], always);
         assert.equal(r.entity, enemyTank);
         assert.equal(r.isFallback, true);
@@ -327,10 +327,10 @@ describe("Infantry squad – target selection", () => {
 
     it("ignores targets out of range or without line-of-sight", () => {
         const origin = { x: 10, y: 10 };
-        const far = { x: 30, y: 10, targetType: "tank" };
+        const far = { x: 30, y: 10, targetType: "tank", alive: true };
         assert.equal(pickSquadTarget(origin, SQUAD_MEMBERS.rpg, [far], always), null);
 
-        const blocked = { x: 12, y: 10, targetType: "tank" };
+        const blocked = { x: 12, y: 10, targetType: "tank", alive: true };
         assert.equal(
             pickSquadTarget(origin, SQUAD_MEMBERS.rpg, [blocked], () => false),
             null,
@@ -339,8 +339,8 @@ describe("Infantry squad – target selection", () => {
 
     it("prefers any primary target over a closer fallback", () => {
         const origin = { x: 10, y: 10 };
-        const closeTank = { x: 10.5, y: 10, targetType: "tank" };
-        const farSquad = { x: 15, y: 10, targetType: "squad" };
+        const closeTank = { x: 10.5, y: 10, targetType: "tank", alive: true };
+        const farSquad = { x: 15, y: 10, targetType: "squad", alive: true };
         const r = pickSquadTarget(origin, SQUAD_MEMBERS.rifleman, [closeTank, farSquad], always);
         assert.equal(r.entity, farSquad);
         assert.equal(r.isFallback, false);

@@ -225,7 +225,7 @@ describe("AI Roles – Sniper", () => {
             const bot = createRoleBot(14.5, 32.5, 0, map, AI_ROLES.SNIPER);
             // Just compute the position, don't simulate
             bot.ai.think(0.016, bot.tank, [], map, objective);
-            const pos = bot.ai._sniperPos;
+            const pos = bot.ai.roleState.sniperPos;
             if (!pos) continue;
             // Check if position is closer to buildings than the opposite side
             const distToBuildings = Math.hypot(pos.x - 36.5, pos.y - 26.5);
@@ -413,11 +413,11 @@ describe("AI Roles – team simulation with roles", () => {
             bot.ai.think(0.016, bot.tank, [], map, objective);
             bot.tank.update(0.016, bot.ai, map);
         }
-        assert.ok(bot.ai._flankPoint !== null, "flank point should be set");
+        assert.ok(bot.ai.roleState.flankPoint !== null, "flank point should be set");
 
         bot.ai.resetLife();
-        assert.equal(bot.ai._flankPoint, null, "flank point should be cleared");
-        assert.equal(bot.ai._sniperPos, null, "sniper pos should be cleared");
+        assert.equal(bot.ai.roleState.flankPoint, undefined, "flank point should be cleared");
+        assert.equal(bot.ai.roleState.sniperPos, undefined, "sniper pos should be cleared");
         assert.equal(bot.ai.stuckTime, 0, "stuck time should be reset");
     });
 });

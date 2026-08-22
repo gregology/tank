@@ -61,16 +61,8 @@ export class AIController {
         this.friendlyBase = null;
         this._enemyStructures = [];
 
-        // Scout flank point (computed once per life)
-        this._flankPoint = null;
-        this._flankReached = false;
-
-        // Sniper firing position (computed once per life)
-        this._sniperPos = null;
-
-        // Defender patrol target (rotates around friendly tower)
-        this._patrolAngle = this._rng() * Math.PI * 2;
-        this._patrolTimer = 0;
+        // Per-role per-life state (owned by the role strategies in js/ai/roles.js).
+        this.roleState = {};
 
         // Pathfinding
         this._pf = map ? new Pathfinder(map) : null;
@@ -112,11 +104,7 @@ export class AIController {
      * Reset per-life cached state (called on respawn).
      */
     resetLife() {
-        this._flankPoint = null;
-        this._flankReached = false;
-        this._sniperPos = null;
-        this._patrolAngle = this._rng() * Math.PI * 2;
-        this._patrolTimer = 0;
+        this.roleState = {};
         this._path = [];
         this._pathTimer = 0;
         this._posHistory = [];
