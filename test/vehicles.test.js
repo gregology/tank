@@ -36,6 +36,7 @@ function stubGame({ tanks = [], structures = [], map = flatMap() } = {}) {
         get damageables() {
             return tanks.concat(structures);
         },
+        enemiesOf: (team) => game.damageables.filter((e) => e.alive && e.team !== team),
         hits: [],
         damagedTiles: [],
         events: [],

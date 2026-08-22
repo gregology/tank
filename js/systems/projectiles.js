@@ -24,17 +24,17 @@ export function tickBullets(game, dt) {
     }
 }
 
-/** Resolve direct-bullet hits against enemy tanks (squads use member hitboxes). */
+/** Resolve direct-bullet hits against enemy entities (squads use member hitboxes). */
 export function checkBulletHits(game) {
     for (const b of game.bullets) {
         if (!b.alive) continue;
         const behaviour = getProjectileBehaviour(b.kind);
         if (!behaviour.onEntity) continue; // shells damage via onLand, not per-entity hits
-        for (const t of game.allTanks) {
-            if (!t.alive || b.team === t.team) continue;
-            if (t.hitTest(b.x, b.y)) {
+        for (const e of game.damageables) {
+            if (!e.alive || b.team === e.team) continue;
+            if (e.hitTest(b.x, b.y)) {
                 b.alive = false;
-                behaviour.onEntity(game, b, t);
+                behaviour.onEntity(game, b, e);
                 break;
             }
         }

@@ -15,7 +15,7 @@ import { spawnBullet } from "../shoot.js";
 /** Update watch-tower firing (auto-targets enemies in range with LOS). */
 export function updateWatchTowers(game, dt) {
     for (const base of game.bases) {
-        const enemyTeam = game.allTanks.filter((t) => t.team !== base.team);
+        const enemyTeam = game.enemiesOf(base.team);
         for (const tower of base.towers) {
             if (!tower.alive) continue;
             tower.fireCooldown -= dt;

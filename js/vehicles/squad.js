@@ -67,11 +67,8 @@ export const squad = {
         // No firing while performing the dig-in transition.
         if (!component.canFire) return;
 
-        // Pre-filtered candidates: alive, enemy-team tanks + structures.
-        const candidates = [
-            ...game.allTanks.filter((t) => t.alive && t.team !== squad.team),
-            ...game.baseStructures.filter((s) => s.alive && s.team !== squad.team),
-        ];
+        // Candidates come from the one enemy-entities surface (alive, enemy team).
+        const candidates = game.enemiesOf(squad.team);
         const hasLOS = (x1, y1, x2, y2) => game.map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin: true });
 
         for (const m of component.aliveMembers) {

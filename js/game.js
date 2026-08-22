@@ -106,6 +106,10 @@ export class Game {
     get damageables() {
         return this._allTanks.concat(this._allStructures);
     }
+    /** Alive enemy entities (tanks + structures) a team may shoot at. */
+    enemiesOf(team) {
+        return this.damageables.filter((e) => e.alive && e.team !== team);
+    }
     /** The first human tank (for single-viewport matches / HUD). */
     get humanTank() {
         return this._humanTanks[0];

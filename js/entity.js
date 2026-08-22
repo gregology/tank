@@ -62,6 +62,10 @@ export class GameEntity {
     distanceToPoint(x, y) {
         return distance(x, y, this.x, this.y);
     }
+    /** True if a world point is inside the entity's hitbox. */
+    hitTest(x, y) {
+        return distance(x, y, this.x, this.y) < this.size;
+    }
     /** Radius used for AoE falloff (a vehicle/structure's collision size). */
     get hitRadius() {
         return this.size;
