@@ -117,23 +117,15 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
 
     // Vehicle type indicator
     if (focusTank.alive) {
-        const vType =
-            focusTank.vehicleType === "drone"
-                ? "\u2716 DRONE"
-                : focusTank.vehicleType === "ifv"
-                  ? "\u25C7 IFV"
-                  : focusTank.vehicleType === "spg"
-                    ? "\u25B2 SPG"
-                    : focusTank.vehicleType === "squad"
-                      ? "\u25CF SQUAD"
-                      : "\u25C6 TANK";
+        const vStats = VEHICLES[focusTank.vehicleType];
+        const vType = `${vStats?.hudGlyph ?? "\u25C6"} ${focusTank.vehicleType.toUpperCase()}`;
         ctx.font = 'bold 13px "Courier New", monospace';
         ctx.fillStyle = focusTank.color;
         ctx.textAlign = "center";
         ctx.fillText(vType, cx, vy + ch - 20);
 
         // Infantry squad: member count + dig-in status
-        if (focusTank.vehicleType === "squad") {
+        if (focusTank.membersAlive > 0) {
             const n = focusTank.membersAlive;
             const state = focusTank.squad?.digIn?.state ?? "roaming";
             const label =
@@ -148,21 +140,21 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
             ctx.fillText(label, cx, vy + ch - 34);
         }
 
-        // Drone proximity damage indicator
-        if (focusTank.vehicleType === "drone") {
-            const blastR = VEHICLES.drone.blastRadius;
+        // Explosive vehicle: proximity damage indicator (drone's blast).
+        const blastRadius = vStats?.blastRadius;
+        if (blastRadius) {
             let bestDmg = 0;
             for (const t of game.allTanks) {
                 if (!t.alive || t.team === focusTank.team) continue;
                 const d = distance(focusTank.x, focusTank.y, t.x, t.y);
-                const dmg = Math.max(0, 1 - d / blastR);
+                const dmg = Math.max(0, 1 - d / blastRadius);
                 if (dmg > bestDmg) bestDmg = dmg;
             }
             for (const s of game.baseStructures) {
                 if (!s.alive || s.team === focusTank.team) continue;
                 const d = distance(focusTank.x, focusTank.y, s.x, s.y);
                 const edgeDist = Math.max(0, d - s.size);
-                const dmg = Math.max(0, 1 - edgeDist / blastR);
+                const dmg = Math.max(0, 1 - edgeDist / blastRadius);
                 if (dmg > bestDmg) bestDmg = dmg;
             }
 
@@ -221,25 +213,23 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
     }
 
     // Allied bot role roster (bottom-left)
-    if (game._bots) {
-        const roleNames = { cavalry: "CAV", sniper: "SNP", defender: "DEF", scout: "SCT" };
-        const roleColors = { cavalry: "#e55", sniper: "#5ae", defender: "#5c5", scout: "#da5" };
-        const allyBots = game._bots.filter((b) => b.tank.team === focusTank.team);
-        ctx.textAlign = "left";
-        ctx.font = 'bold 10px "Courier New", monospace';
-        const rx = vx + 12,
-            ry = vy + ch - 14 - allyBots.length * 13;
-        for (let i = 0; i < allyBots.length; i++) {
-            const b = allyBots[i];
-            const role = b.ai.role || "???";
-            const name = roleNames[role] || "???";
-            const alive = b.tank.alive;
-            ctx.fillStyle = alive ? roleColors[role] || "#aaa" : "#555";
-            ctx.fillText(`\u2022 ${name}`, rx, ry + i * 13);
-            if (!alive) {
-                ctx.fillStyle = "#777";
-                ctx.fillText(" \u2620", rx + 30, ry + i * 13);
-            }
+    const roleNames = { cavalry: "CAV", sniper: "SNP", defender: "DEF", scout: "SCT" };
+    const roleColors = { cavalry: "#e55", sniper: "#5ae", defender: "#5c5", scout: "#da5" };
+    const allyBots = (game.bots ?? []).filter((b) => b.tank.team === focusTank.team);
+    ctx.textAlign = "left";
+    ctx.font = 'bold 10px "Courier New", monospace';
+    const rx = vx + 12,
+        ry = vy + ch - 14 - allyBots.length * 13;
+    for (let i = 0; i < allyBots.length; i++) {
+        const b = allyBots[i];
+        const role = b.role || "???";
+        const name = roleNames[role] || "???";
+        const alive = b.tank.alive;
+        ctx.fillStyle = alive ? roleColors[role] || "#aaa" : "#555";
+        ctx.fillText(`\u2022 ${name}`, rx, ry + i * 13);
+        if (!alive) {
+            ctx.fillStyle = "#777";
+            ctx.fillText(" \u2620", rx + 30, ry + i * 13);
         }
     }
 

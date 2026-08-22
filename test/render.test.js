@@ -79,7 +79,7 @@ function gameFixture(overrides = {}) {
         bullets: [],
         particles: { particles: [] },
         bases: [],
-        _bots: [],
+        bots: [],
         factions: [],
         scores: new Map(),
         factionLabel: (id) => (id === 1 ? "P1" : "BOT"),
@@ -450,7 +450,7 @@ describe("minimap + HUD smoke", () => {
         const botTank = fakeTank("tank", { x: 12, y: 12 });
         const game = gameFixture({
             allTanks: [botTank],
-            _bots: [{ tank: botTank, ai: { role: "cavalry" } }],
+            bots: [{ tank: botTank, role: "cavalry" }],
         });
         const { ctx, calls } = fakeCtx();
         assert.doesNotThrow(() => drawMinimap(ctx, game, 1, 0, 0, 400, 300));
@@ -483,9 +483,9 @@ describe("minimap + HUD smoke", () => {
             allTanks: [enemy],
             baseStructures: [new BaseStructure("baseWall", 2, "#3366dd", "#223399")],
             bases: [baseFixture(1), baseFixture(2)],
-            _bots: [
-                { tank: fakeTank("tank", { team: 1 }), ai: { role: "cavalry" } },
-                { tank: fakeTank("tank", { team: 1, alive: false }), ai: { role: "sniper" } },
+            bots: [
+                { tank: fakeTank("tank", { team: 1 }), role: "cavalry" },
+                { tank: fakeTank("tank", { team: 1, alive: false }), role: "sniper" },
             ],
         });
 

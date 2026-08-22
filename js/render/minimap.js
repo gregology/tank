@@ -4,9 +4,42 @@
  * a border tinted with the local player's team colour.
  */
 
-import { TILE_VISUALS } from "../config.js";
+import { TILE_VISUALS, VEHICLES } from "../config.js";
 
 const ROLE_LETTERS = { cavalry: "C", sniper: "S", defender: "D", scout: "F" };
+
+/** Marker draw functions, keyed by `VEHICLES[type].minimapShape`. */
+const MARKERS = {
+    cross(ctx, dx, dy) {
+        ctx.fillRect(dx - 0.5, dy - 2, 1.5, 4.5);
+        ctx.fillRect(dx - 2, dy - 0.5, 4.5, 1.5);
+    },
+    diamond(ctx, dx, dy) {
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 1.5);
+        ctx.lineTo(dx + 1.5, dy);
+        ctx.lineTo(dx, dy + 1.5);
+        ctx.lineTo(dx - 1.5, dy);
+        ctx.closePath();
+        ctx.fill();
+    },
+    triangle(ctx, dx, dy) {
+        ctx.beginPath();
+        ctx.moveTo(dx, dy - 2);
+        ctx.lineTo(dx + 2, dy + 1.5);
+        ctx.lineTo(dx - 2, dy + 1.5);
+        ctx.closePath();
+        ctx.fill();
+    },
+    dot(ctx, dx, dy) {
+        ctx.beginPath();
+        ctx.arc(dx, dy, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+    },
+    square(ctx, dx, dy) {
+        ctx.fillRect(dx - 1, dy - 1, 3, 3);
+    },
+};
 
 export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
     const map = game.map;
@@ -30,51 +63,22 @@ export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
         }
     }
 
-    // Tank dots (IFVs slightly smaller) + role letters in team mode
+    // Tank dots (shape varies by vehicle type) + role letters in team mode
     for (const t of game.allTanks) {
         if (!t.alive) continue;
         ctx.fillStyle = t.color;
         const dx = mmX + t.x * px;
         const dy = mmY + t.y * px;
-        if (t.vehicleType === "drone") {
-            // Cross shape for drones
-            ctx.fillRect(dx - 0.5, dy - 2, 1.5, 4.5);
-            ctx.fillRect(dx - 2, dy - 0.5, 4.5, 1.5);
-        } else if (t.vehicleType === "ifv") {
-            // Diamond shape for IFVs
-            ctx.beginPath();
-            ctx.moveTo(dx, dy - 1.5);
-            ctx.lineTo(dx + 1.5, dy);
-            ctx.lineTo(dx, dy + 1.5);
-            ctx.lineTo(dx - 1.5, dy);
-            ctx.closePath();
-            ctx.fill();
-        } else if (t.vehicleType === "spg") {
-            // Triangle for SPG
-            ctx.beginPath();
-            ctx.moveTo(dx, dy - 2);
-            ctx.lineTo(dx + 2, dy + 1.5);
-            ctx.lineTo(dx - 2, dy + 1.5);
-            ctx.closePath();
-            ctx.fill();
-        } else if (t.vehicleType === "squad") {
-            // Small dot for infantry squads
-            ctx.beginPath();
-            ctx.arc(dx, dy, 1.6, 0, Math.PI * 2);
-            ctx.fill();
-        } else {
-            ctx.fillRect(dx - 1, dy - 1, 3, 3);
-        }
-        // Show role letter for allied bots in team mode
-        if (game._bots) {
-            const bot = game._bots.find((b) => b.tank === t);
-            if (bot?.ai.role) {
-                const letter = ROLE_LETTERS[bot.ai.role] || "?";
-                ctx.font = "bold 7px monospace";
-                ctx.fillStyle = "#fff";
-                ctx.textAlign = "center";
-                ctx.fillText(letter, dx, dy - 3);
-            }
+        (MARKERS[VEHICLES[t.vehicleType]?.minimapShape] ?? MARKERS.square)(ctx, dx, dy);
+
+        // Show role letter for allied bots in team mode.
+        const role = game.bots?.find((b) => b.tank === t)?.role;
+        if (role) {
+            const letter = ROLE_LETTERS[role] || "?";
+            ctx.font = "bold 7px monospace";
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "center";
+            ctx.fillText(letter, dx, dy - 3);
         }
     }
 

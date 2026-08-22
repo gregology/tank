@@ -62,6 +62,7 @@ export class Game {
         const mapH = this.settings.mapSize?.h;
         const density = this.settings.buildingDensity;
         this.map = new GameMap(mapW, mapH, density);
+        /** Particle system (world-space effects) — part of the world-model surface. */
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
         this.bullets = [];
@@ -101,9 +102,9 @@ export class Game {
     get humanTanks() {
         return this._humanTanks;
     }
-    /** All AI-controlled bots ({ ai, tank, enemies }). */
+    /** All AI-controlled bots as `{ tank, role }` pairs (for the HUD/minimap). */
     get bots() {
-        return this._bots;
+        return this._bots.map(({ tank, ai }) => ({ tank, role: ai.role }));
     }
     /** All cameras (one per human player). */
     get cameras() {
