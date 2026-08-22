@@ -104,7 +104,7 @@ against the root principle: *how would I add an N+1th of this?*
 
 ## 1. Extract the simulation loop out of `Game` — the last god object
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** `js/game.js` (643 lines) is now the largest single logic module.
 After `modes.js` and `js/vehicles/*` took the two *axes of variation* out, what
@@ -170,7 +170,7 @@ systems that need polymorphism (projectiles, towers) become the natural home for
 
 ## 2. Replace the three-way `unitClass` enum with independent capability flags
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Round two's #4 claimed to "generalise squad and air handling into
 entity capabilities", and it did move the *consumers* (`game.js`, `collision.js`,
@@ -232,7 +232,7 @@ crushing, or any combination) is a `VEHICLES` entry choosing its flags — no ne
 
 ## 3. Finish the combat seam: first-class shooters, a `kind`-dispatched projectile lifecycle, and one blast primitive
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Round two's #5 unified *targeting* (`pickTarget`) and retired
 `Bullet.sourceType`, but the rest of the combat pipeline is still bespoke and
@@ -305,7 +305,7 @@ structure entry + a behaviour, not a bespoke `Game` loop.
 
 ## 4. Make base structures data-driven and registry-dispatched (mirror vehicles)
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Base structures are the one entity family still using
 subclass-per-type instead of the strategy/registry the vehicles use:
@@ -361,7 +361,7 @@ finally obey the same "new kind = table entry + registry" rule.
 
 ## 5. Data-drive tile *visuals* (finish round two's #2)
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Round two's #2 made tile *logic* data-driven (`TILE_PROPS` in
 `js/config/tiles.js`), but the *visual* semantics are still a type code:
@@ -412,7 +412,7 @@ row — the logic and the visuals both pick it up automatically, and the AGENTS
 
 ## 6. Complete the strategy boundary and de-type the render/HUD layer
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Round two's #3 (world-model API) and #6 (sprite registry) stopped
 short at the *vehicle behaviours* and the *HUD/minimap*:
@@ -469,7 +469,7 @@ boundary the code *enforces*.
 
 ## 7. Move AI vehicle-specific think into the behaviours; data-drive particles
 
-**Status: not started.**
+**Status: ✅ implemented.**
 
 **Evidence.** Two smaller inconsistencies remain, both "the strategy seam stops
 one file early":
@@ -524,35 +524,45 @@ into the two places they currently don't.
 
 ## Suggested sequencing
 
-Status: **none started.** Suggested order, most leverage first, each step
-leaving the aggregate gate green:
+Status: **all seven opportunities are ✅ done**, committed one per opportunity
+in the suggested order (#1 → #7), each leaving the aggregate gate green
+(492 tests / 0 failures; ~97% line / ~89% branch / ~94% funcs; lint and
+dependency-cruiser clean at 88 modules):
 
-1. **#1 (extract the simulation systems)** — the container everything else
-   drops into; do it as a pure move first so the other re-shapes land in small
-   modules instead of growing `Game`.
-2. **#2 (capability flags)** — orthogonal, self-contained, and it removes the
-   deepest remaining type code; its getter change is internal to `VEHICLES` +
-   `tank.js`.
-3. **#3 (shooter + projectile + blast seam)** — the highest-leverage *logic*
-   refactor; it re-shapes the combat systems #1 just relocated, and it depends
-   on #1's boundaries (and pairs with #4's tower-as-shooter).
-4. **#4 (data-driven structures)** — depends on #3's shooter seam for towers;
-   otherwise independent.
-5. **#5 (tile visuals)** — independent and low-risk; can be done any time.
-6. **#6 (close the strategy boundary + de-type HUD/minimap)** — depends on
-   #3's `spawnBullet`/effects surface; finishes the render-layer guarantees.
-7. **#7 (AI think into behaviours + data-driven particles)** — independent,
-   lowest risk; a good tail.
+1. **#1 (extract the simulation systems)** — `Game` is now a thin orchestration
+   shell; the per-frame passes live in `js/systems/` (`projectiles`, `collision`,
+   `towers`, `respawn`, `effects`, `camera`, `win`).
+2. **#2 (capability flags)** — `VEHICLES[].unitClass` replaced with independent
+   `flies` / `soft` / `crushable` / `canCrush` / `hasSquad` flags; the capability
+   getters are single field reads.
+3. **#3 (shooter + projectile + blast seam)** — a shared `spawnBullet`/`flashMuzzle`
+   fire seam (`js/shoot.js`), a `kind`-dispatched projectile lifecycle
+   (`js/projectiles/` — `direct` / `shell`), one `applyBlast` primitive
+   (`js/vehicles/aoe.js`), towers as first-class shooters, and the O(N²)
+   `targetPriority` flattened into `TARGET_TYPES` class defaults + overrides
+   (`targetPriorityOf`).
+4. **#4 (data-driven structures)** — `BaseWall`/`BaseHQ`/`BaseWatchTower`
+   subclasses replaced by one `BaseStructure` reading `BASE_STRUCTURES`; sprites
+   split into `js/render/structures/` (registry + shared `drawIsoBlock`).
+5. **#5 (tile visuals)** — the `drawTile` switch and `TILE_COLORS` replaced by a
+   data-driven `TILE_VISUALS` table read by both the tile renderer and minimap.
+6. **#6 (strategy boundary + de-typed HUD/minimap)** — `game.bots` exposes
+   `{ tank, role }` pairs (render no longer reads `game._bots`); minimap markers
+   and HUD labels are data-driven (`minimapShape` / `hudGlyph`), and the
+   squad/drone HUD branches read capabilities (`membersAlive` / `blastRadius`).
+7. **#7 (AI think + data-driven particles)** — drone flight, squad dig-in, and
+   the immobilised pivot moved into the vehicle behaviours' `aiThink`; the
+   particle system is a data-driven `EFFECTS` table over one `emit(effect, …)`.
 
-#1 and #3 are the two "larger refactors" this round — and they are the two the
+#1 and #3 were the two "larger refactors" this round — and they are the two the
 earlier rounds explicitly deferred ("the last god object" and "the combat seam
 stops at targeting"). #2, #4, #5, #6, #7 each *finish* a seam the prior rounds
-opened but left half-done. None of them needs a new dependency, a build step, or
+opened but left half-done. None of them needed a new dependency, a build step, or
 a framework: the established patterns (thin-shell-over-package, data tables,
-strategy objects, registries) are the toolset, applied consistently.
+strategy objects, registries) were the toolset, applied consistently.
 
 What **not** to do: a wholesale ECS rewrite is still not warranted. The
 codebase is ~10k lines with working strategy tables, a working component
-(`Squad`), and a clean data leaf. The payoff is in *finishing* those patterns in
+(`Squad`), and a clean data leaf. The payoff was in *finishing* those patterns in
 the simulation core and the two type-code families (structures, tile visuals)
 that dodged the first two rounds — not in replacing them with a framework.

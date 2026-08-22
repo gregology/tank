@@ -12,7 +12,7 @@ leaf):
 ```
 main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
 game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js,
-            modes.js, projectiles.js, ai/targeting.js, vehicles/
+            modes.js, systems/, vehicles/
 ai.js  ──▶ pathfinder.js, vehicles/, ai/          (thin controller)
 ai/    ──▶ config.js                              (roles, targeting,
             navigation, recovery, aiming — pure helpers over AI state)
@@ -23,8 +23,10 @@ config/  imports nothing                          (the data leaf)
 modes.js ──▶ config.js, entity.js                 (uses the public Game API)
 map.js  ──▶ map/                                  (facade over the js/map/ package)
 map/    ──▶ config.js, utils.js
-vehicles/ ──▶ config.js, utils.js, bullet.js, squad.js
-projectiles.js ──▶ config.js, vehicles/aoe.js     (shell landing behaviour)
+systems/ ──▶ ai/, bullet.js, config.js, projectiles/, shoot.js, vehicles/, utils.js
+vehicles/ ──▶ ai/, config.js, utils.js, shoot.js, squad.js
+shoot.js ──▶ bullet.js                            (fire seam: spawnBullet + flashMuzzle)
+projectiles/ ──▶ config.js, vehicles/aoe.js       (kind-dispatched projectile lifecycle)
 renderer.js ──▶ js/render/*, layout.js      (thin shell)
 js/render/ ──▶ config.js, utils.js, draw-helpers.js, formation.js
 everything ──▶ config.js, utils.js   (config imports nothing)
@@ -39,8 +41,10 @@ module under `js/render/`:
   lives here**: flat tiles in pass 1, elevated tiles at depth `gx+gy+1`,
   drones at +2, items pushed tiles → tanks → structures → bullets →
   particles within a bucket.
-- `tiles.js` / `buildings.js` / `structures.js` — terrain, destructible
-  buildings, and base compounds.
+- `tiles.js` / `buildings.js` / `structures.js` — terrain (data-driven from
+  `TILE_VISUALS`), destructible buildings, and base compounds (`structures.js`
+  is a thin barrel over `structures/`: one sprite per type + a shared
+  `drawIsoBlock`, dispatched by the `STRUCTURE_SPRITES` registry).
 - `vehicles/` — the five vehicle sprites, one module each, plus `drawVehicle`
   via a `SPRITES` registry (`index.js`). `js/menu/background.js` imports
   `drawVehicle` from the `vehicles.js` barrel for previews (no prototype hack).
@@ -75,8 +79,10 @@ correct and the dependency leaf rule is enforced at the package boundary.
 
 The single source of truth for everything that varies:
 
-- `TILES` — tile type enum; `TILE_PROPS` — per-tile semantics
-  (passable/solid/road/water/building/height/hp), indexed by that enum.
+- `TILES` — tile type enum; `TILE_PROPS` — per-tile gameplay semantics
+  (passable/solid/road/water/building/height/hp), indexed by that enum;
+  `TILE_VISUALS` — per-tile *visual* semantics (draw kind, palette key,
+  variation, minimap colour), also indexed by that enum.
 - `CONFIG` — flat constants (map size, speed, armour arcs, role ranges, …).
 - `PLAYER_COLORS` — team colours in join order.
 - `ACTIONS` — the input action vocabulary (frozen).
@@ -84,10 +90,14 @@ The single source of truth for everything that varies:
   allowed vehicles, and which `GAME_OPTIONS` each shows.
 - `GAME_OPTIONS` + `resolveSettings()` — pre-game options resolved to a flat
   settings object.
-- `VEHICLES` — per-vehicle stats, `roleWeights`, `targetPriority`, `armour`.
+- `VEHICLES` — per-vehicle stats, `roleWeights`, `targetPriority`, `armour`,
+  and the interaction flags (`flies` / `soft` / `crushable` / `canCrush` /
+  `hasSquad`) plus `hudGlyph` / `minimapShape`.
+- `TARGET_TYPES` / `TARGET_CLASS_DEFAULTS` — the canonical target-type
+  vocabulary and per-class priority defaults (`js/config/targets.js`).
 - `SQUAD_MEMBERS` / `SQUAD_ATTENTION_ORDER` — squad member weapons and death
   order.
-- `BASE_STRUCTURES` — per-structure HP/size/weaponry.
+- `BASE_STRUCTURES` — per-structure HP/size/weaponry/`isShooter`.
 
 **When adding a mechanic, add a parameter here rather than a constant in a
 logic file.** `Tank.applyHit()` already reads `VEHICLES[tank.vehicleType].armour`
@@ -99,10 +109,8 @@ config change, not a logic change.
 ```
 GameEntity (entityType, team, color, darkColor)
   ├── Tank                 (vehicle: tank / ifv / drone / spg / squad)   tank.js
-  └── BaseStructure
-        ├── BaseWall       1×1 fortification wall
-        ├── BaseHQ         1×2 command tent
-        └── BaseWatchTower 1×1 armed guard tower
+  └── BaseStructure        (baseWall / baseTower / baseHQ — data-driven
+                            from BASE_STRUCTURES)                        entity.js
 ```
 
 - `Base` is a **compound container**, not an entity — it holds one team's HQ,
@@ -111,10 +119,11 @@ GameEntity (entityType, team, color, darkColor)
   `isShooter`, `isVehicle`, `isStructure`, `size`, and the interaction
   capabilities `flies` / `softTarget` / `crushable` / `canCrush` /
   `chargeable` (plus `incomingDamageMultiplier(map)`) — give targeting,
-  collision, and rendering one uniform interface. Subclasses override the ones
-  that apply to them; consumers read the capability, never `unitClass` or
-  `vehicleType` strings. **Prefer overriding a capability getter over adding
-  a type check.**
+  collision, and rendering one uniform interface. `Tank` derives its
+  interaction capabilities from independent `VEHICLES` flags (`flies`, `soft`,
+  `crushable`, `canCrush`, `hasSquad`); `BaseStructure.isShooter` reads
+  `BASE_STRUCTURES[type].isShooter`. Consumers read the capability, never a
+  type string. **Prefer overriding a capability getter over adding a type check.**
 
 ### 3. The `InputDevice` interface (`input.js`)
 
@@ -152,12 +161,16 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
   and humans, it decides factions and bot-fill counts. `Game` materialises the
   plan into `Tank` / `Camera` / `AIController` entities.
 - `Game` owns the simulation: tanks, bullets, bases, win logic, scores. It
-  exposes **uniform accessors** — `allTanks`, `humanTanks`, `factions`,
-  `cameras`, `bases`, `baseStructures`, `scores`, `winnerColor` — so the
-  renderer and HUD stay game-type-agnostic. The strategies (modes and vehicle
-  behaviours) are written against this public surface — the accessors plus
-  `setBases`, `creditKill`, `nearestEnemy` — never against `_`-prefixed
-  internals.
+  exposes **uniform accessors** — `allTanks`, `humanTanks`, `bots` (as
+  `{ tank, role }` pairs), `factions`, `cameras`, `bases`, `baseStructures`,
+  `scores`, `winnerColor` — so the renderer and HUD stay game-type-agnostic.
+  The strategies (modes and vehicle behaviours) are written against this
+  public surface — the accessors plus `setBases`, `creditKill`, `nearestEnemy`
+  — never against `_`-prefixed internals.
+- The per-frame simulation loop is a thin ordered list in `Game._update`; each
+  pass (bullets, collision/crush/push, towers, respawn, smoke, camera, win)
+  lives in `js/systems/` as a `(game, …)` function.  A new per-frame concern
+  is one system module + one line in the loop, not a new `Game` method.
 - **`Game` delegates the two real axes of variation.** Per-vehicle
   firing/attack rules live in the behaviour strategies (`js/vehicles/`,
   dispatched by `getVehicleBehaviour(tank.vehicleType)`); Skirmish-vs-Battle
@@ -174,30 +187,35 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
 
 `getVehicleBehaviour(type)` returns a plain strategy object — one module per
 vehicle (`tank.js`, `ifv.js`, `drone.js`, `spg.js`, `squad.js`, plus a shared
-`aoe.js` for structure splash). The hooks:
+`aoe.js` for the `applyBlast` primitive). The hooks:
 
 - `fire(game, tank, device, dt)` — per-frame firing/attack (drone detonation,
-  SPG charge, squad auto-fire, direct fire).
+  SPG charge, squad auto-fire, direct fire), built on `spawnBullet` /
+  `flashMuzzle` (`js/shoot.js`).
 - `move(tank, device, dt, map)` — per-frame movement (rotation, turret, drive).
   `Tank.update()` ticks the generic timers then delegates here, so the entity
   never branches on vehicle type.
 - `update(game, tank, dt)` — per-frame component updates (squad steering).
 - `aim(ai, me, target, map)` — the AI's turret-aim strategy (tank turret-aim,
   IFV opportunistic, SPG hold-to-charge).
-- `aiThink(ai, dt, me, enemies, map, objective)` — AI think-level dispatch;
-  return `true` when the behaviour consumed the whole think (drone flight,
-  squad dig-in hold).
+- `aiThink(ai, dt, me, enemies, map, objective)` — AI think-level dispatch.
+  The behaviour *contains* the logic here and returns `true` when it consumed
+  the whole think: `drone.js` flies the kamikaze, `squad.js` manages dig-in,
+  and the base `tank.js` pivots-and-fires when `me.trackDamaged` (via the
+  shared `thinkImmobilised`).  The controller no longer owns per-vehicle think.
 
-Arcing-shell landing is *not* a behaviour hook: bullets carry a `kind`
-("direct" / "shell") and `js/projectiles.js` dispatches the landing effect —
-the splash is a property of the projectile, not of the shooter.
+The projectile lifecycle is *not* a behaviour hook: bullets carry a `kind`
+("direct" / "shell") and `js/projectiles/` dispatches movement + terrain /
+entity / landing effects (`update` / `onTerrain` / `onEntity` / `onLand`) —
+the splash is a property of the projectile, not of the shooter.  Explosions
+(and the drone detonation) use one `applyBlast` (`js/vehicles/aoe.js`).
 
 Behaviours share a base (`tank.js`); a new vehicle usually reuses one and
 overrides a hook (`{ ...tank, aim: myAim }`). Per-vehicle *traits* that aren't
-behaviour live in `VEHICLES` as data: `unitClass` (`vehicle` / `infantry` /
-`air` — surfaced as the `flies` / `softTarget` / `crushable` / `canCrush`
-capabilities; `chargeRate` → `chargeable`), `turret` (`independent` / `fixed`
-— the `fixedGun` capability), `firesBullets`, `muzzleFlash`, `fireSound`.
+behaviour live in `VEHICLES` as data: the interaction flags (`flies` / `soft`
+/ `crushable` / `canCrush` / `hasSquad` — surfaced as the matching capability
+getters; `chargeRate` → `chargeable`), `turret` (`independent` / `fixed` — the
+`fixedGun` capability), `firesBullets`, `muzzleFlash`, `fireSound`.
 **Never branch on `vehicleType` in game logic — add a trait to `VEHICLES`, a
 capability getter, or a hook to a behaviour instead.**
 
@@ -240,7 +258,7 @@ switch.
 
 ### 9. AI roles, targeting, navigation, and recovery (`js/ai/`)
 
-`AIController` (`ai.js`, ~340 lines) is the orchestration glue — the
+`AIController` (`ai.js`, ~210 lines) is the orchestration glue — the
 `InputDevice` implementation, the per-life state, and the `think` loop —
 over a package of focused helper modules that all take the controller as
 their first argument:
@@ -252,7 +270,10 @@ their first argument:
   scoring (`findBestPosition`, `computeFlankPoint`) lives here too.
 - `targeting.js` — `pickTarget(candidates, priorities, origin, opts)`: the
   shared weighted `weight / distance` scoring core (with range/LOS filters),
-  used by `bestTarget(ai, me, enemies)` and by the watch towers in `game.js`.
+  used by `bestTarget(ai, me, enemies)` and by the watch-tower system
+  (`js/systems/towers.js`).  `targetPriorityOf(priorities, targetType)`
+  resolves a shooter's weight via explicit override → `TARGET_TYPES` class
+  default → 1, so a new target type is one `TARGET_TYPES` entry.
 - `navigation.js` — `updatePath` (A* refresh), `pickWaypoint` (walkable
   skip-ahead), `steerToPoint` (turn-and-drive), `patrol`, `nudge`.
 - `recovery.js` — `updateStuck` (position-history sampling), `handleStuck`
@@ -264,11 +285,12 @@ Behavioural invariants: the AI navigates with A* (`pathfinder.js`) and
 follows waypoints; navigation and combat are **separated** (bots navigate
 toward their objective and fire at enemies they pass, rather than chasing);
 per-role tuning lives in `CONFIG` and `VEHICLES[].roleWeights`. The public
-seams the vehicle behaviours call (`ai.steerTurretTo`, `ai.tryShootWall`,
-`ai.thinkDrone`, `ai.updateSquadDigIn`, `ai.holdPosition`, `ai.rng`) stay
-methods on the controller. **A new role = one `ROLE_STRATEGIES` entry + a
-`roleWeights` entry; a new AI capability (e.g. group/pheromone behaviour or
-lead-aiming) lands in the matching helper module, not in the controller.**
+seams the vehicle behaviours call (`ai.steerTurretTo`, `ai.aimAndFire`,
+`ai.tryShootWall`, `ai.holdPosition`, `ai.rng`) stay methods on the
+controller; per-vehicle *think* now lives in the behaviour's `aiThink`, not
+the controller. **A new role = one `ROLE_STRATEGIES` entry + a `roleWeights`
+entry; a new AI capability (e.g. group/pheromone behaviour or lead-aiming)
+lands in the matching helper module, not in the controller.**
 
 ### 10. Menu screens (`js/menu/`)
 
@@ -308,24 +330,34 @@ The root principles, made concrete for this directory:
 
 ## Known structural debt (do not expand it)
 
-Both refactor rounds are done; these are the current boundaries to keep, not
-expand:
+All three refactor rounds are done; these are the current boundaries to keep,
+not expand:
 
+- `game.js` stays a thin orchestration shell — the per-frame passes live in
+  `js/systems/` (`projectiles`, `collision`, `towers`, `respawn`, `effects`,
+  `camera`, `win`).  New simulation logic is a system module, not a `Game` method.
 - `renderer.js` stays a thin shell over `js/render/`; `js/render/vehicles.js`
-  stays a thin barrel over `js/render/vehicles/` (one sprite module per
-  vehicle, dispatched by the `SPRITES` registry). New drawing code goes in the
-  right module — never back into a god object.
+  and `js/render/structures.js` stay thin barrels over `js/render/vehicles/`
+  and `js/render/structures/` (sprites dispatched by the `SPRITES` /
+  `STRUCTURE_SPRITES` registries). New drawing code goes in the right module —
+  never back into a god object.
 - `map.js` stays a thin facade over `js/map/` (`grid` / `queries` /
-  `generation` / `compounds`). Tile semantics live in `TILE_PROPS`; the
-  geometry API lives in `queries.js`.
+  `generation` / `compounds`). Tile semantics live in `TILE_PROPS` + `TILE_VISUALS`;
+  the geometry API lives in `queries.js`.
 
 Done — do not reintroduce: vehicle `vehicleType` dispatch (now the behaviour
-strategies in `js/vehicles/`, including movement via `move`), the per-vehicle
-branches that used to live in `Tank.update()` (now in the behaviours),
-duplicated line-of-sight / passability queries (one `GameMap` geometry API),
-the god-object shapes of `ai.js` / `menu.js` / `config.js` / `renderer.js` /
-`render/vehicles.js` / `map.js` (now thin shells over packages), dead code /
-backward-compat shims (#10), the `unitClass === "…"` / `if (squad)` special
-cases in game/collision/render (now entity capabilities), the duplicated
-targeting loop in `updateWatchTowers` (now the shared `pickTarget`), and
-`Bullet.sourceType` (now `Bullet.kind` + `js/projectiles.js`).
+strategies in `js/vehicles/`, including movement via `move` and think via
+`aiThink`), the per-vehicle branches that used to live in `Tank.update()` /
+`AIController` (now in the behaviours), duplicated line-of-sight / passability
+queries (one `GameMap` geometry API), duplicated firing/blast loops (now
+`spawnBullet` / `flashMuzzle` / `applyBlast`), the god-object shapes of
+`ai.js` / `menu.js` / `config.js` / `renderer.js` / `render/vehicles.js` /
+`map.js` / `game.js` (now thin shells over packages), dead code /
+backward-compat shims, the `unitClass === "…"` / `if (squad)` special cases
+(now independent `VEHICLES` capability flags), the structure subclasses
+(`BaseWall`/`BaseHQ`/`BaseWatchTower` — now one `BaseStructure`), the tile /
+structure / HUD / minimap `switch`/`vehicleType ===` dispatch (now
+`TILE_VISUALS` / `STRUCTURE_SPRITES` / `hudGlyph` / `minimapShape`), the
+bespoke particle emitters (now the `EFFECTS` table + `emit`), the duplicated
+targeting loop in `updateWatchTowers` (now `pickTarget` + `targetPriorityOf`),
+and `Bullet.sourceType` (now `Bullet.kind` + `js/projectiles/`).

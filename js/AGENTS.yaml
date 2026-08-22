@@ -3,7 +3,7 @@ context:
       The module dependency graph is:
         main.js → game.js, renderer.js, audio.js, menu.js, input.js
         game.js → map.js, tank.js, bullet.js, particles.js, camera.js,
-                  ai.js, modes.js, projectiles.js, ai/targeting.js, vehicles/
+                  ai.js, modes.js, systems/, vehicles/
         ai.js → pathfinder.js, vehicles/, ai/   (thin controller)
         ai/ → config.js
         menu.js → lobby.js, menu/               (thin shell)
@@ -12,6 +12,10 @@ context:
         modes.js → config.js, entity.js         (uses the public Game API)
         map.js → map/                           (facade over the js/map/ package)
         map/ → config.js, utils.js
+        systems/ → ai/, bullet.js, config.js, projectiles/, shoot.js, vehicles/, utils.js
+        vehicles/ → ai/, config.js, utils.js, shoot.js, squad.js
+        shoot.js → bullet.js                    (spawnBullet + flashMuzzle)
+        projectiles/ → config.js, vehicles/aoe.js  (kind-dispatched lifecycle)
         renderer.js → js/render/*, layout.js    (thin shell)
         js/render/* → config.js, utils.js, draw-helpers.js, formation.js
       All modules import config.js and utils.js.  Avoid circular dependencies.
@@ -20,13 +24,13 @@ context:
     when: before
 
   - content: |
-      config.js exports TILES (tile type enum), TILE_PROPS (per-tile
-      semantics: passable/solid/road/water/building/height/hp), and CONFIG
-      (all constants).  Adding a tile type = a new TILES id + a new TILE_PROPS
-      row; the tile-property queries in js/map/grid.js read that table, so no
-      switch statements need editing.  Visuals still need js/render/tiles.js
-      (drawTile switch), js/render/minimap.js (TILE_COLORS), and
-      js/render/canvas-utils.js (PALETTE).
+      config.js exports TILES (tile type enum), TILE_PROPS (per-tile gameplay
+      semantics: passable/solid/road/water/building/height/hp), TILE_VISUALS
+      (per-tile visuals: draw kind, palette key, variation, minimap colour),
+      and CONFIG (all constants).  Adding a tile type = a new TILES id + a new
+      TILE_PROPS row + a new TILE_VISUALS row; the tile-property queries in
+      js/map/grid.js and the renderer (js/render/tiles.js, js/render/minimap.js)
+      read those tables, so no switch statements or colour tables need editing.
     match: ["config.js"]
     on: edit
     when: after
