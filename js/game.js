@@ -396,8 +396,9 @@ export class Game {
     applyHitToTank(source, tank, damage) {
         let dmg = damage;
 
-        // Infantry squads reduce incoming damage via cover / dig-in.
-        if (tank.squad && tank.alive) dmg *= tank.squad.damageMultiplier(this.map);
+        // Cover / dig-in damage reduction is a per-entity capability (1 for
+        // everything except infantry squads).
+        dmg *= tank.incomingDamageMultiplier(this.map);
 
         const zone = tank.getHitZone(source.x, source.y);
         const result = tank.applyHit(zone, dmg);
@@ -461,26 +462,26 @@ export class Game {
     }
 
     /**
-     * Enemy vehicles run over exposed (non-dug-in) infantry.  Overlapping
-     * a soldier kills that specific member; killing the last member
-     * destroys the squad with kill credit to the vehicle.
+     * Ground vehicles run over exposed (non-dug-in) infantry.  The
+     * interaction is expressed through capabilities (`canCrush` vs
+     * `crushable`) rather than unit-class checks, so a new soft or
+     * crushing unit inherits it.
      */
     _resolveCrushes() {
-        for (const squad of this._allTanks) {
-            if (!squad.alive || VEHICLES[squad.vehicleType].unitClass !== "infantry" || !squad.squad) continue;
-            const component = squad.squad;
+        for (const target of this._allTanks) {
+            if (!target.alive || !target.crushable) continue;
 
             for (const v of this._allTanks) {
-                if (!v.alive || v.team === squad.team || VEHICLES[v.vehicleType].unitClass !== "vehicle") continue;
+                if (!v.alive || v.team === target.team || !v.canCrush) continue;
 
-                const idx = component.crushedMemberBy(v);
+                const idx = target.crushedMemberBy(v);
                 if (idx < 0) continue;
 
-                if (component.crushMember(idx)) {
-                    squad.kill();
-                    this.particles.emitExplosion(squad.x, squad.y);
-                    this.emit("destroy", { tank: squad });
-                    this.mode.onKill(this, v.team, squad);
+                if (target.crushMember(idx)) {
+                    target.kill();
+                    this.particles.emitExplosion(target.x, target.y);
+                    this.emit("destroy", { tank: target });
+                    this.mode.onKill(this, v.team, target);
                 }
             }
         }
@@ -488,7 +489,7 @@ export class Game {
 
     pushFromStructures() {
         for (const t of this._allTanks) {
-            if (!t.alive || VEHICLES[t.vehicleType].unitClass === "air") continue;
+            if (!t.alive || t.flies) continue;
             for (const s of this._allStructures) {
                 if (!s.alive) continue;
                 // Push from each tile the structure occupies

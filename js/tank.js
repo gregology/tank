@@ -165,6 +165,30 @@ export class Tank extends GameEntity {
         return VEHICLES[this.vehicleType].firesBullets !== false;
     }
 
+    /* ── interaction capabilities (data-driven from unitClass) ── */
+
+    /** Air units fly over terrain and other units. */
+    get flies() {
+        return VEHICLES[this.vehicleType].unitClass === "air";
+    }
+    /** Infantry is soft against enemy vehicles (run-over), but solid to friendlies. */
+    get softTarget() {
+        return VEHICLES[this.vehicleType].unitClass === "infantry";
+    }
+    /** Exposed soldiers can be run over (dug-in squads are protected). */
+    get crushable() {
+        return this.squad?.isCrushable ?? false;
+    }
+    /** Ground vehicles crush exposed infantry. */
+    get canCrush() {
+        return VEHICLES[this.vehicleType].unitClass === "vehicle";
+    }
+    /** Incoming damage multiplier after cover/dig-in (1 = no reduction). */
+    incomingDamageMultiplier(map) {
+        if (!this.alive || !this.squad) return 1;
+        return this.squad.damageMultiplier(map);
+    }
+
     /* ── distributed-hitbox capabilities (squads use member positions) ── */
 
     /** Distance from a world point to the vehicle's hitbox (squads use their nearest member). */
@@ -185,6 +209,16 @@ export class Tank extends GameEntity {
     hitTest(x, y) {
         if (this.squad) return this.squad.bulletHit(x, y);
         return distance(x, y, this.x, this.y) < this.size;
+    }
+
+    /** Index of the first crushable soldier under `vehicle`, or -1. */
+    crushedMemberBy(vehicle) {
+        return this.squad?.crushedMemberBy(vehicle) ?? -1;
+    }
+
+    /** Crush one soldier; returns true if the squad was destroyed. */
+    crushMember(index) {
+        return this.squad ? this.squad.crushMember(index) : false;
     }
 
     /* ── per-frame update ─────────────────────────────────── */

@@ -58,6 +58,22 @@ export class GameEntity {
     get size() {
         return 0.45;
     }
+    get flies() {
+        return false;
+    }
+    get softTarget() {
+        return false;
+    }
+    get crushable() {
+        return false;
+    }
+    get canCrush() {
+        return false;
+    }
+    /** Incoming damage multiplier after cover/dig-in (1 = no reduction). */
+    incomingDamageMultiplier(_map) {
+        return 1;
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════ *

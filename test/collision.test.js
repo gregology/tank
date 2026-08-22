@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { vehiclesSeparate } from "../js/collision.js";
+import { VEHICLES } from "../js/config.js";
 
-const v = (vehicleType, team) => ({ vehicleType, team });
+// Build a capability-bearing unit for the policy function, deriving the
+// interaction capabilities from the same VEHICLES data the Tank getters use.
+const v = (vehicleType, team) => {
+    const unitClass = VEHICLES[vehicleType].unitClass;
+    return { team, flies: unitClass === "air", softTarget: unitClass === "infantry" };
+};
 
 describe("vehiclesSeparate (collision policy)", () => {
     it("separates solid vehicles from each other (same or enemy team)", () => {

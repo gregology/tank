@@ -13,24 +13,24 @@
  * policy is unit-testable without constructing a full Game.
  */
 
-import { VEHICLES } from "./config.js";
-
 /**
  * Whether two alive vehicles should be pushed apart by the separation pass.
  *
- * @param {{vehicleType: string, team: number}} a
- * @param {{vehicleType: string, team: number}} b
+ * The policy is expressed in terms of the entity's interaction capabilities
+ * (`flies`, `softTarget`, `team`) rather than the raw `unitClass` string, so
+ * a new air or soft unit inherits the rule automatically.
+ *
+ * @param {{flies: boolean, softTarget: boolean, team: number}} a
+ * @param {{flies: boolean, softTarget: boolean, team: number}} b
  * @returns {boolean}
  */
 export function vehiclesSeparate(a, b) {
     // Air units fly over ground units (and vice versa).
-    if ((VEHICLES[a.vehicleType].unitClass === "air") !== (VEHICLES[b.vehicleType].unitClass === "air")) return false;
+    if (a.flies !== b.flies) return false;
 
-    // Infantry is soft against enemy vehicles (run-over), but friendly
-    // vehicles still treat it as solid.
-    const aInfantry = VEHICLES[a.vehicleType].unitClass === "infantry";
-    const bInfantry = VEHICLES[b.vehicleType].unitClass === "infantry";
-    if (aInfantry !== bInfantry && a.team !== b.team) return false;
+    // Soft targets are driven through by enemy vehicles (run-over), but
+    // friendly vehicles still treat them as solid.
+    if (a.softTarget !== b.softTarget && a.team !== b.team) return false;
 
     return true;
 }

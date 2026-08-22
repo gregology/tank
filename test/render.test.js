@@ -26,7 +26,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CONFIG, TILES as T } from "../js/config.js";
+import { CONFIG, TILES as T, VEHICLES } from "../js/config.js";
 import { drawMenuVehicle } from "../js/menu/background.js";
 import { drawBuilding } from "../js/render/buildings.js";
 import { drawArcingBullet, drawBullet, drawParticle } from "../js/render/effects.js";
@@ -63,6 +63,7 @@ function fakeTank(vehicleType, overrides = {}) {
         x: 0,
         y: 0,
         team: 1,
+        flies: VEHICLES[vehicleType]?.unitClass === "air",
         ...overrides,
     };
 }
@@ -168,7 +169,7 @@ describe("collectDepthItems — two-pass depth-sort contract", () => {
 
     it("gives drones a +2 depth bonus so they fly above buildings", () => {
         const map = customMap([{ x: 5, y: 5, tile: T.BLDG_LARGE }]);
-        const drone = { x: 5.5, y: 5.5, vehicleType: "drone", alive: true, respawnTimer: 0 };
+        const drone = { x: 5.5, y: 5.5, vehicleType: "drone", alive: true, respawnTimer: 0, flies: true };
         const buckets = collectDepthItems(gameFixture({ map, allTanks: [drone] }), -INF, INF, -INF, INF);
 
         assert.equal(buckets[11]?.length, 1, "building at depth 11");

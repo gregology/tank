@@ -79,7 +79,7 @@ export function rotateTurret(tank, device, dt) {
  */
 export function drive(tank, device, dt, map, canDrive = true) {
     const v = VEHICLES[tank.vehicleType];
-    const flying = v.unitClass === "air";
+    const flying = tank.flies;
     let move = 0;
     if (canDrive) {
         if (device.isDown(ACTIONS.forward)) move = 1;
