@@ -851,24 +851,14 @@ describe("SPG vehicle type", () => {
         assert.ok(VEHICLES.spg.turretSpeed < VEHICLES.tank.turretSpeed);
     });
 
-    it("kill() resets charge state", () => {
+    it("respawnAt() recreates a fresh charge component", () => {
         const t = new Tank(1, "#c33", "#822");
         t.vehicleType = "spg";
-        t.isCharging = true;
-        t.chargeTime = 2.0;
-        t.kill();
-        assert.equal(t.chargeTime, 0);
-        assert.equal(t.isCharging, false);
-    });
-
-    it("respawnAt() resets charge state", () => {
-        const t = new Tank(1, "#c33", "#822");
-        t.vehicleType = "spg";
-        t.isCharging = true;
-        t.chargeTime = 1.5;
+        t.charge.isCharging = true;
+        t.charge.chargeTime = 1.5;
         t.respawnAt(10, 10);
-        assert.equal(t.chargeTime, 0);
-        assert.equal(t.isCharging, false);
+        assert.equal(t.charge.chargeTime, 0);
+        assert.equal(t.charge.isCharging, false);
     });
 
     it("SPG cannot drive while charging (isCharging blocks movement)", () => {
@@ -879,7 +869,7 @@ describe("SPG vehicle type", () => {
         t.x = 32.5;
         t.y = 32.5;
         t.angle = 0;
-        t.isCharging = true;
+        t.charge.isCharging = true;
 
         const startX = t.x;
         const fakeInput = { isDown: (k) => k === ACTIONS.forward };
@@ -895,7 +885,7 @@ describe("SPG vehicle type", () => {
         t.x = 32.5;
         t.y = 32.5;
         t.angle = 1.0;
-        t.isCharging = true;
+        t.charge.isCharging = true;
 
         const fakeInput = { isDown: (k) => k === ACTIONS.right };
         for (let i = 0; i < 10; i++) t.update(0.016, fakeInput, map);
@@ -1220,14 +1210,14 @@ describe("Game – human firing", () => {
         spg.vehicleType = "spg";
 
         game.update(0.05);
-        assert.ok(spg.isCharging, "charging while fire held");
-        assert.ok(spg.chargeTime > 0);
+        assert.ok(spg.charge.isCharging, "charging while fire held");
+        assert.ok(spg.charge.chargeTime > 0);
 
         held = false;
         const fires = [];
         game.on("fire", (d) => fires.push(d));
         game.update(0.05);
-        assert.ok(!spg.isCharging, "released");
+        assert.ok(!spg.charge.isCharging, "released");
         assert.equal(fires.length, 1);
         const shell = game.bullets.find((b) => b.arcing);
         assert.ok(shell, "arcing shell fired");
@@ -1237,13 +1227,13 @@ describe("Game – human firing", () => {
     it("squad members auto-fire at enemies in range with LOS", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const squad = game.humanTank;
-        squad.vehicleType = "squad";
         const enemy = game.allTanks.find((t) => t.team === 2);
-        // Place the enemy a few tiles east on clear ground.
+        // Place the squad and enemy a few tiles apart on clear ground.
         squad.x = 10.5;
         squad.y = 10.5;
         enemy.x = 14.5;
         enemy.y = 10.5;
+        squad.vehicleType = "squad"; // init creates the component at (10.5, 10.5)
         for (let gx = 8; gx <= 16; gx++) {
             game.map.setTile(gx, 9, T.GRASS);
             game.map.setTile(gx, 10, T.GRASS);
@@ -1660,8 +1650,8 @@ describe("Game – deeper coverage", () => {
         const spg = game.humanTank;
         spg.vehicleType = "spg";
         game._handleFiring(spg, fakeDevice(), 0.016); // not held, not charging
-        assert.equal(spg.isCharging, false);
-        assert.equal(spg.chargeTime, 0);
+        assert.equal(spg.charge.isCharging, false);
+        assert.equal(spg.charge.chargeTime, 0);
     });
 
     it("artillery splash destroys nearby enemy structures", () => {
@@ -1751,12 +1741,12 @@ describe("Game – firing dispatch", () => {
     it("_handleFiring routes squad tanks to the squad handler", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const squad = game.humanTank;
-        squad.vehicleType = "squad";
         const enemy = game.allTanks.find((t) => t.team === 2);
         squad.x = 10.5;
         squad.y = 10.5;
         enemy.x = 14.5;
         enemy.y = 10.5;
+        squad.vehicleType = "squad"; // init creates the component at (10.5, 10.5)
         for (let gx = 8; gx <= 16; gx++) {
             game.map.setTile(gx, 9, T.GRASS);
             game.map.setTile(gx, 10, T.GRASS);

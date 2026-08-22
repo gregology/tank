@@ -71,9 +71,9 @@ export function renderViewport(ctx, game, focusTank, camera, vx, vy, vw, vh) {
     drawDepthBuckets(ctx, collectDepthItems(game, visLeft, visRight, visTop, visBottom), game);
 
     // ── Charging vehicle's targeting indicator (drawn in camera space) ──
-    if (focusTank.alive && focusTank.isCharging) {
+    if (focusTank.alive && focusTank.charge?.isCharging) {
         const vStats = VEHICLES[focusTank.vehicleType];
-        const range = Math.min(vStats.minRange + focusTank.chargeTime * vStats.chargeRate, vStats.maxRange);
+        const range = Math.min(vStats.minRange + focusTank.charge.chargeTime * vStats.chargeRate, vStats.maxRange);
         const tAngle = focusTank.turretWorld;
         const targetWX = focusTank.x + Math.cos(tAngle) * range;
         const targetWY = focusTank.y + Math.sin(tAngle) * range;

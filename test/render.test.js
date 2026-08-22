@@ -58,8 +58,7 @@ function fakeTank(vehicleType, overrides = {}) {
         turretDisabled: false,
         recoilTimer: 0,
         treadPhase: 0.4,
-        isCharging: false,
-        chargeTime: 0,
+        charge: null,
         x: 0,
         y: 0,
         team: 1,
@@ -326,7 +325,7 @@ describe("vehicle smoke", () => {
 
     it("draws the SPG charge ring, including the full-charge tick", () => {
         const { ctx, calls } = fakeCtx();
-        const spg = fakeTank("spg", { isCharging: true, chargeTime: 999 }); // ≥ max charge
+        const spg = fakeTank("spg", { charge: { isCharging: true, chargeTime: 999 } }); // ≥ max charge
         drawVehicle(ctx, spg, 0, 0);
         assert.ok(calls.filter((c) => c === "arc").length >= 2, "charge ring + tick should both arc");
     });
@@ -493,9 +492,32 @@ describe("minimap + HUD smoke", () => {
             { vehicleType: "tank", alive: true, color: "#cc3333", team: 1 },
             { vehicleType: "drone", alive: true, color: "#cc3333", team: 1, x: 10, y: 10 }, // adjacent to enemy → DMG bar
             { vehicleType: "drone", alive: true, color: "#cc3333", team: 1, x: 500, y: 500 }, // far → "FIRE to detonate"
-            { vehicleType: "spg", alive: true, color: "#cc3333", team: 1, isCharging: true, chargeTime: 999 },
-            { vehicleType: "spg", alive: true, color: "#cc3333", team: 1, isCharging: false, fireCooldown: 1.5 },
-            { vehicleType: "spg", alive: true, color: "#cc3333", team: 1, isCharging: false, fireCooldown: 0 },
+            {
+                vehicleType: "spg",
+                alive: true,
+                color: "#cc3333",
+                team: 1,
+                chargeable: true,
+                charge: { isCharging: true, chargeTime: 999 },
+            },
+            {
+                vehicleType: "spg",
+                alive: true,
+                color: "#cc3333",
+                team: 1,
+                chargeable: true,
+                charge: { isCharging: false, chargeTime: 0 },
+                fireCooldown: 1.5,
+            },
+            {
+                vehicleType: "spg",
+                alive: true,
+                color: "#cc3333",
+                team: 1,
+                chargeable: true,
+                charge: { isCharging: false, chargeTime: 0 },
+                fireCooldown: 0,
+            },
             {
                 vehicleType: "squad",
                 alive: true,
@@ -575,7 +597,7 @@ describe("renderViewport smoke", () => {
 
     it("renders the SPG targeting indicator when the focus tank charges", () => {
         const game = viewportGame();
-        const spg = fakeTank("spg", { isCharging: true, chargeTime: 1, x: 9, y: 9 });
+        const spg = fakeTank("spg", { charge: { isCharging: true, chargeTime: 1 }, x: 9, y: 9 });
         const { ctx, calls } = fakeCtx();
         renderViewport(ctx, game, spg, { x: 0, y: 0 }, 0, 0, 400, 300);
         assert.ok(calls.includes("stroke"), "charging SPG should draw the target indicator");

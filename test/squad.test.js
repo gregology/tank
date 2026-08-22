@@ -9,13 +9,12 @@ import { ACTIONS, customMap, T, Tank } from "./helpers.js";
 /** Build a squad vehicle at a position with its component initialised. */
 function squadTank(x, y, team = 1) {
     const t = new Tank(1, "#55aa44", "#337722");
-    t.vehicleType = "squad";
     t.team = team;
     t.alive = true;
     t.x = x;
     t.y = y;
     t.angle = 0;
-    void t.squad; // force lazy component creation at (x, y)
+    t.vehicleType = "squad"; // the setter's init hook creates the Squad at (x, y)
     return t;
 }
 

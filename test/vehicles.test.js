@@ -105,11 +105,11 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
         const spg = placedTank("spg");
         const held = fakeDevice({ held: [ACTIONS.fire] });
         getVehicleBehaviour("spg").fire(game, spg, held, 0.5);
-        assert.ok(spg.isCharging);
-        assert.equal(spg.chargeTime, 0.5);
+        assert.ok(spg.charge.isCharging);
+        assert.equal(spg.charge.chargeTime, 0.5);
 
         getVehicleBehaviour("spg").fire(game, spg, fakeDevice(), 0.016);
-        assert.ok(!spg.isCharging);
+        assert.ok(!spg.charge.isCharging);
         assert.equal(game.bullets.length, 1);
         assert.ok(game.bullets[0].arcing, "shell arcs over terrain");
         assert.equal(game.bullets[0].kind, "shell");
@@ -121,7 +121,7 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
         const spg = placedTank("spg");
         const held = fakeDevice({ held: [ACTIONS.fire] });
         getVehicleBehaviour("spg").fire(game, spg, held, 1000);
-        assert.ok(spg.chargeTime <= (VEHICLES.spg.maxRange - VEHICLES.spg.minRange) / VEHICLES.spg.chargeRate);
+        assert.ok(spg.charge.chargeTime <= (VEHICLES.spg.maxRange - VEHICLES.spg.minRange) / VEHICLES.spg.chargeRate);
     });
 
     it("shell impact splashes tanks, structures, and the impact tile", () => {
@@ -296,7 +296,7 @@ describe("AI aim strategies", () => {
         getVehicleBehaviour("spg").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], true, "charging while the shell falls short");
 
-        me.chargeTime = 999; // fully charged past the target range
+        me.charge.chargeTime = 999; // fully charged past the target range
         ai.keys = {};
         getVehicleBehaviour("spg").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], undefined, "releases fire when the charge is enough");

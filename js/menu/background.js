@@ -56,8 +56,7 @@ export function drawMenuVehicle(ctx, sx, sy, angle, type, color, dark, scale, ti
         turretDisabled: false,
         recoilTimer: 0,
         treadPhase: (time * 2.5) % 1,
-        isCharging: false,
-        chargeTime: 0,
+        charge: null,
     };
     ctx.save();
     ctx.translate(sx, sy);

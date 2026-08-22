@@ -153,6 +153,9 @@ export function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
 }
 
 export const tank = {
+    /** Create this vehicle's per-instance components (no-op for the base). */
+    init(_tank) {},
+
     fire(game, tank, device, _dt) {
         if (!device.isDown(ACTIONS.fire) || !tank.canFire()) return;
         tank.fire();

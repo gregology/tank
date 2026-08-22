@@ -36,7 +36,6 @@
 
 import { CONFIG, VEHICLES } from "./config.js";
 import { GameEntity } from "./entity.js";
-import { Squad } from "./squad.js";
 import { distance } from "./utils.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
 
@@ -66,7 +65,8 @@ export class Tank extends GameEntity {
         this.angle = 0; // hull angle (radians – 0 = east in world space)
         this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
 
-        // Vehicle type
+        // Vehicle type — the setter clears per-vehicle components and lets
+        // the behaviour's `init` hook create them (squad, SPG charge).
         this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg', 'squad'
 
         // Gameplay
@@ -81,18 +81,41 @@ export class Tank extends GameEntity {
         this.leftTrackDisabled = false; // left-side hit: can't drive straight
         this.rightTrackDisabled = false; // right-side hit: can't drive straight
 
-        // SPG charge state
-        this.chargeTime = 0; // seconds fire button has been held
-        this.isCharging = false; // true while holding fire to charge range
-
-        // Squad component (lazily created for infantry units)
-        this._squad = null;
-
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
         this.recoilTimer = 0; // barrel recoil animation
         this.treadPhase = 0; // 0–1 tread scroll offset (animated)
         this.smokeTimer = 0; // damage smoke emitter cooldown
+    }
+
+    /* ── vehicle type + per-vehicle components ───────────── */
+
+    /** Vehicle type key (tank / ifv / drone / spg / squad). */
+    get vehicleType() {
+        return this._vehicleType;
+    }
+
+    /**
+     * Assign the vehicle type.  The setter drops any per-vehicle components
+     * from the previous type and calls the new behaviour's `init` hook to
+     * create the ones it needs (squad component, SPG charge) — the entity
+     * never branches on type.
+     */
+    set vehicleType(type) {
+        this._vehicleType = type;
+        this._initVehicleComponents();
+    }
+
+    /** SPG hold-to-charge state (owned by the spg behaviour); null otherwise. */
+    get charge() {
+        return this._charge;
+    }
+
+    /** Recreate this vehicle's components at its current position. */
+    _initVehicleComponents() {
+        this._charge = null;
+        this._squad = null;
+        getVehicleBehaviour(this._vehicleType).init?.(this);
     }
 
     /** World-space angle the turret is pointing. */
@@ -117,11 +140,10 @@ export class Tank extends GameEntity {
 
     /**
      * The squad component (soldiers, dig-in state machine, damage) for
-     * infantry vehicles; null otherwise.  Lazily created on first access.
+     * infantry vehicles; null otherwise.  Created and owned by the squad
+     * behaviour's `init` hook — the entity only stores it.
      */
     get squad() {
-        if (!VEHICLES[this.vehicleType].hasSquad) return null;
-        if (!this._squad) this._squad = new Squad(this);
         return this._squad;
     }
 
@@ -367,8 +389,6 @@ export class Tank extends GameEntity {
     kill() {
         this.alive = false;
         this.respawnTimer = CONFIG.TANK_RESPAWN_TIME;
-        this.chargeTime = 0;
-        this.isCharging = false;
     }
 
     respawnAt(x, y) {
@@ -377,19 +397,15 @@ export class Tank extends GameEntity {
         this.angle = Math.random() * Math.PI * 2;
         this.turretAngle = 0; // turret starts aligned with hull
 
-        // Clear charge state
-        this.chargeTime = 0;
-        this.isCharging = false;
-
-        // Discard the squad component — a fresh one is created lazily on
-        // next access (which also resets members, dig-in, and cooldowns).
-        this._squad = null;
-
         // Clear all damage
         this.damaged = false;
         this.damageAccum = 0;
         this.turretDisabled = false;
         this.leftTrackDisabled = false;
         this.rightTrackDisabled = false;
+
+        // Recreate per-vehicle components (squad members, SPG charge) at
+        // the new spawn position — the behaviour owns their state.
+        this._initVehicleComponents();
     }
 }

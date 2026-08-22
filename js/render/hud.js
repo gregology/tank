@@ -182,9 +182,9 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
 
     // Chargeable-vehicle HUD: charge bar / reload / hold-to-charge hint.
     if (focusTank.chargeable) {
-        if (focusTank.isCharging) {
+        if (focusTank.charge?.isCharging) {
             const vStats = VEHICLES[focusTank.vehicleType];
-            const range = Math.min(vStats.minRange + focusTank.chargeTime * vStats.chargeRate, vStats.maxRange);
+            const range = Math.min(vStats.minRange + focusTank.charge.chargeTime * vStats.chargeRate, vStats.maxRange);
             const frac = (range - vStats.minRange) / (vStats.maxRange - vStats.minRange);
             const barW = 100,
                 barH = 8;

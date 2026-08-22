@@ -13,7 +13,7 @@
 
 import { ACTIONS, SQUAD_MEMBERS, VEHICLES } from "../config.js";
 import { flashMuzzle, spawnBullet } from "../shoot.js";
-import { pickSquadTarget } from "../squad.js";
+import { pickSquadTarget, Squad } from "../squad.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
 /** Fire one member's weapon at a target.  Shotguns fire a pellet spread. */
@@ -47,6 +47,10 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
 }
 
 export const squad = {
+    init(tank) {
+        tank._squad = new Squad(tank);
+    },
+
     fire(game, squad, device, dt) {
         if (!squad.alive || !squad.squad) return;
         const component = squad.squad;

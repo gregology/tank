@@ -12,22 +12,39 @@ import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
 import { spawnBullet } from "../shoot.js";
 import { groundMove } from "./tank.js";
 
+/**
+ * Hold-to-charge state for the SPG.  Lives on the tank as `tank.charge`,
+ * owned by this behaviour's `init` hook — the entity never declares SPG
+ * fields itself.
+ */
+export class Charge {
+    constructor() {
+        this.chargeTime = 0; // seconds fire has been held
+        this.isCharging = false; // true while holding fire to charge range
+    }
+}
+
 export const spg = {
+    init(tank) {
+        tank._charge = new Charge();
+    },
+
     fire(game, tank, device, dt) {
         if (!tank.alive) return;
 
         const fireHeld = device.isDown(ACTIONS.fire);
         const vStats = VEHICLES.spg;
+        const charge = tank.charge;
 
         if (fireHeld && tank.fireCooldown <= 0) {
-            tank.isCharging = true;
-            tank.chargeTime += dt;
+            charge.isCharging = true;
+            charge.chargeTime += dt;
             const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
-            if (tank.chargeTime > maxCharge) tank.chargeTime = maxCharge;
-        } else if (tank.isCharging && !fireHeld) {
-            const range = Math.min(vStats.minRange + tank.chargeTime * vStats.chargeRate, vStats.maxRange);
-            tank.isCharging = false;
-            tank.chargeTime = 0;
+            if (charge.chargeTime > maxCharge) charge.chargeTime = maxCharge;
+        } else if (charge.isCharging && !fireHeld) {
+            const range = Math.min(vStats.minRange + charge.chargeTime * vStats.chargeRate, vStats.maxRange);
+            charge.isCharging = false;
+            charge.chargeTime = 0;
             tank.fire();
 
             const fireAngle = tank.turretWorld;
@@ -46,14 +63,14 @@ export const spg = {
             });
             game.emit("fire", { tank, bullet: b });
         } else {
-            tank.isCharging = false;
-            tank.chargeTime = 0;
+            charge.isCharging = false;
+            charge.chargeTime = 0;
         }
     },
 
     /** Ground movement, but deployed (charging) artillery cannot drive. */
     move(tank, device, dt, map) {
-        groundMove(tank, device, dt, map, !tank.isCharging && !tank.trackDamaged);
+        groundMove(tank, device, dt, map, !tank.charge.isCharging && !tank.trackDamaged);
     },
 
     update(_game, _tank, _dt) {},
@@ -77,7 +94,7 @@ export const spg = {
         // Charge only as long as the shell would fall short of the target.
         const clampedDist = Math.max(vStats.minRange, Math.min(dist, vStats.maxRange));
         const neededCharge = (clampedDist - vStats.minRange) / vStats.chargeRate;
-        if (me.chargeTime < neededCharge + 0.05) {
+        if (me.charge.chargeTime < neededCharge + 0.05) {
             ai.keys[ACTIONS.fire] = true;
         }
     },

@@ -359,10 +359,10 @@ export function drawSPG(ctx, tank, sx, sy) {
     ctx.fill();
 
     /* ── 6. Charge indicator (ring above turret while charging) ── */
-    if (tank.isCharging) {
+    if (tank.charge?.isCharging) {
         const vStats = VEHICLES.spg;
         const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
-        const frac = Math.min(1, tank.chargeTime / maxCharge);
+        const frac = Math.min(1, tank.charge.chargeTime / maxCharge);
         const center = lift([PT(TURR_CX, 0)], turrTop - 8)[0];
         const ringR = 5 + frac * 7;
         ctx.strokeStyle = frac > 0.9 ? "rgba(255,50,0,0.85)" : "rgba(255,180,0,0.65)";
