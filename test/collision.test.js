@@ -6,8 +6,8 @@ import { VEHICLES } from "../js/config.js";
 // Build a capability-bearing unit for the policy function, deriving the
 // interaction capabilities from the same VEHICLES data the Tank getters use.
 const v = (vehicleType, team) => {
-    const unitClass = VEHICLES[vehicleType].unitClass;
-    return { team, flies: unitClass === "air", softTarget: unitClass === "infantry" };
+    const flags = VEHICLES[vehicleType];
+    return { team, flies: flags.flies, softTarget: flags.soft };
 };
 
 describe("vehiclesSeparate (collision policy)", () => {

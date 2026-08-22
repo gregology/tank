@@ -7,18 +7,18 @@
  *   - enemy vehicles drive through infantry so they can run soldiers
  *     over; friendly vehicles still treat infantry as solid
  *
- * The classes are data-driven (VEHICLES[type].unitClass: "vehicle" /
- * "infantry" / "air"), so a new air or infantry unit inherits the
- * interaction policy automatically.  Kept as a pure function so the
- * policy is unit-testable without constructing a full Game.
+ * The classes are data-driven (VEHICLES[type].flies / .soft flags), so a
+ * new air or infantry unit inherits the interaction policy automatically.
+ * Kept as a pure function so the policy is unit-testable without
+ * constructing a full Game.
  */
 
 /**
  * Whether two alive vehicles should be pushed apart by the separation pass.
  *
  * The policy is expressed in terms of the entity's interaction capabilities
- * (`flies`, `softTarget`, `team`) rather than the raw `unitClass` string, so
- * a new air or soft unit inherits the rule automatically.
+ * (`flies`, `softTarget`, `team`) rather than the raw config flags, so a new
+ * air or soft unit inherits the rule automatically.
  *
  * @param {{flies: boolean, softTarget: boolean, team: number}} a
  * @param {{flies: boolean, softTarget: boolean, team: number}} b

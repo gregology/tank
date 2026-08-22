@@ -34,10 +34,14 @@
  * The applyHit() method in tank.js reads this table generically --
  * adding a new vehicle or tweaking durability is purely a config change.
  *
+ * Interaction capabilities (read by js/tank.js, js/collision.js, and the
+ * render layer) are independent flags, not one class string:
+ *   flies      true for air units (fly over terrain and other units).
+ *   soft       true for soft targets (driven through by enemy vehicles).
+ *   crushable  true for units that can be run over.
+ *   canCrush   true for ground vehicles that run over crushable units.
+ *   hasSquad   true for infantry that owns a Squad component.
  * Behaviour fields (consumed by js/vehicles/, js/modes.js, ai.js, audio.js):
- *   unitClass    "vehicle" (ground vehicles: run over infantry, pushed by
- *                 structures), "infantry" (soft against enemy vehicles),
- *                 or "air" (flies over everything, no separation).
  *   turret       "independent" (aims independently of the hull) or "fixed"
  *                 (fires straight ahead — the fixedGun capability).
  *   firesBullets false only for vehicles whose "fire" detonates instead of
@@ -49,7 +53,10 @@
  */
 export const VEHICLES = {
     tank: {
-        unitClass: "vehicle",
+        flies: false,
+        soft: false,
+        crushable: false,
+        canCrush: true,
         turret: "independent",
         speed: 3.0,
         rotationSpeed: 3.5,
@@ -74,7 +81,10 @@ export const VEHICLES = {
         },
     },
     ifv: {
-        unitClass: "vehicle",
+        flies: false,
+        soft: false,
+        crushable: false,
+        canCrush: true,
         turret: "fixed",
         muzzleFlash: "ifv",
         fireSound: "ifv",
@@ -100,7 +110,10 @@ export const VEHICLES = {
         },
     },
     drone: {
-        unitClass: "air",
+        flies: true,
+        soft: false,
+        crushable: false,
+        canCrush: false,
         turret: "fixed",
         firesBullets: false,
         speed: 6.0,
@@ -124,7 +137,10 @@ export const VEHICLES = {
         },
     },
     spg: {
-        unitClass: "vehicle",
+        flies: false,
+        soft: false,
+        crushable: false,
+        canCrush: true,
         turret: "independent",
         fireSound: "spg",
         speed: 2.0,
@@ -155,7 +171,11 @@ export const VEHICLES = {
         },
     },
     squad: {
-        unitClass: "infantry",
+        flies: false,
+        soft: true,
+        crushable: true,
+        canCrush: false,
+        hasSquad: true,
         turret: "fixed",
         speed: 2.6,
         rotationSpeed: 4.0,

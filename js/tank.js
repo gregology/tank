@@ -120,7 +120,7 @@ export class Tank extends GameEntity {
      * infantry vehicles; null otherwise.  Lazily created on first access.
      */
     get squad() {
-        if (VEHICLES[this.vehicleType].unitClass !== "infantry") return null;
+        if (!VEHICLES[this.vehicleType].hasSquad) return null;
         if (!this._squad) this._squad = new Squad(this);
         return this._squad;
     }
@@ -165,23 +165,23 @@ export class Tank extends GameEntity {
         return VEHICLES[this.vehicleType].firesBullets !== false;
     }
 
-    /* ── interaction capabilities (data-driven from unitClass) ── */
+    /* ── interaction capabilities (data-driven flags) ── */
 
     /** Air units fly over terrain and other units. */
     get flies() {
-        return VEHICLES[this.vehicleType].unitClass === "air";
+        return VEHICLES[this.vehicleType].flies;
     }
     /** Infantry is soft against enemy vehicles (run-over), but solid to friendlies. */
     get softTarget() {
-        return VEHICLES[this.vehicleType].unitClass === "infantry";
+        return VEHICLES[this.vehicleType].soft;
     }
     /** Exposed soldiers can be run over (dug-in squads are protected). */
     get crushable() {
-        return this.squad?.isCrushable ?? false;
+        return VEHICLES[this.vehicleType].crushable && (this.squad?.isCrushable ?? false);
     }
     /** Ground vehicles crush exposed infantry. */
     get canCrush() {
-        return VEHICLES[this.vehicleType].unitClass === "vehicle";
+        return VEHICLES[this.vehicleType].canCrush;
     }
     /** Chargeable vehicles hold fire to charge a ranged (arcing) shot. */
     get chargeable() {
