@@ -4,6 +4,7 @@ import { steerTurretTo, updateWobble } from "../js/ai/aiming.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "../js/ai/navigation.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "../js/ai/recovery.js";
 import { AI_ROLES, chooseGoalAndTarget, computeFlankPoint, findBestPosition } from "../js/ai/roles.js";
+import { targetPriorityOf } from "../js/ai/targeting.js";
 import { ACTIONS } from "../js/config.js";
 import { createBot, customMap, seededRng, Tank, wallH } from "./helpers.js";
 
@@ -294,5 +295,22 @@ describe("AI modules – position scoring", () => {
         assert.ok(pos, "should find a flank point");
         const midDist = Math.hypot(pos.x - 20, pos.y - 20);
         assert.ok(midDist >= 8 && midDist <= 14, `flank point should ring the midpoint, got ${midDist.toFixed(1)}`);
+    });
+});
+
+describe("AI modules – target priority resolution", () => {
+    it("returns the explicit override when the shooter lists the target type", () => {
+        assert.equal(targetPriorityOf({ spg: 10 }, "spg"), 10);
+        assert.equal(targetPriorityOf({ drone: 0 }, "drone"), 0);
+    });
+
+    it("falls back to the target's class default for an unlisted type", () => {
+        assert.equal(targetPriorityOf({}, "tank"), 5, "vehicle class default");
+        assert.equal(targetPriorityOf({}, "drone"), 3, "air class default");
+        assert.equal(targetPriorityOf({}, "baseHQ"), 5, "structure class default");
+    });
+
+    it("defaults to 1 for an unknown target type", () => {
+        assert.equal(targetPriorityOf({}, "mystery_unit"), 1);
     });
 });

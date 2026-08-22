@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ACTIONS, TILES as T, VEHICLES } from "../js/config.js";
-import { applyProjectileImpact } from "../js/projectiles.js";
+import { getProjectileBehaviour } from "../js/projectiles/index.js";
 import { Tank } from "../js/tank.js";
 import { getVehicleBehaviour } from "../js/vehicles/index.js";
 import { customMap, fakeDevice } from "./helpers.js";
@@ -139,7 +139,7 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
             structures: [{ alive: true, team: 2, x: 14.5, y: 12.5, size: 0.5, applyDamage: () => false }],
         });
         const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
-        applyProjectileImpact(game, b);
+        getProjectileBehaviour("shell").onLand(game, b);
         assert.equal(game.hits.length, 1, "tank hit by splash");
         assert.equal(game.hits[0].tank.team, 2);
         assert.equal(game.damagedTiles.length, 1, "impact tile damaged");
@@ -153,7 +153,7 @@ describe("SPG behaviour (hold-to-charge artillery)", () => {
             tanks: [placedTank("tank", 12.5, 12.5, 1)],
         });
         const b = { kind: "shell", x: 12.5, y: 12.5, team: 1, damage: 3.0 };
-        applyProjectileImpact(game, b);
+        getProjectileBehaviour("shell").onLand(game, b);
         assert.equal(game.hits.length, 0, "own team not damaged");
     });
 });

@@ -15,5 +15,6 @@ export * from "./config/constants.js";
 export * from "./config/options.js";
 export * from "./config/players.js";
 export * from "./config/structures.js";
+export * from "./config/targets.js";
 export * from "./config/tiles.js";
 export * from "./config/vehicles.js";

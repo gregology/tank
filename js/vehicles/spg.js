@@ -8,8 +8,8 @@
  * the projectile, not of the shooter.
  */
 
-import { Bullet } from "../bullet.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
+import { spawnBullet } from "../shoot.js";
 import { groundMove } from "./tank.js";
 
 export const spg = {
@@ -31,22 +31,19 @@ export const spg = {
             tank.fire();
 
             const fireAngle = tank.turretWorld;
-            const b = new Bullet(
-                tank.x,
-                tank.y,
-                fireAngle,
-                tank.playerNumber,
-                tank.team,
-                vStats.bulletDamage,
-                vStats.bulletSpeed,
-                true,
-                range,
-            );
-            game.bullets.push(b);
-
-            const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            game.particles.emitSPGFlash(tipX, tipY, fireAngle);
+            const b = spawnBullet(game, {
+                x: tank.x,
+                y: tank.y,
+                angle: fireAngle,
+                owner: tank.playerNumber,
+                team: tank.team,
+                damage: vStats.bulletDamage,
+                speed: vStats.bulletSpeed,
+                arcing: true,
+                targetDistance: range,
+                flash: "spg",
+                flashOffset: CONFIG.TANK_BARREL_LENGTH,
+            });
             game.emit("fire", { tank, bullet: b });
         } else {
             tank.isCharging = false;

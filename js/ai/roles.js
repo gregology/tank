@@ -19,7 +19,7 @@
  */
 
 import { CONFIG, VEHICLES } from "../config.js";
-import { bestTarget } from "./targeting.js";
+import { bestTarget, targetPriorityOf } from "./targeting.js";
 
 /* ── Role names ───────────────────────────────────────────── */
 
@@ -173,7 +173,7 @@ export const ROLE_STRATEGIES = {
                 closestDist = Infinity;
             for (const e of enemies) {
                 if (!e.alive) continue;
-                if ((priorities[e.targetType] ?? 1) <= 0) continue;
+                if (targetPriorityOf(priorities, e.targetType) <= 0) continue;
                 const d = Math.hypot(e.x - ft.x, e.y - ft.y);
                 if (d < engageRange && d < closestDist) {
                     closestThreat = e;

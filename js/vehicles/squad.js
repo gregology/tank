@@ -11,8 +11,8 @@
  * the turret (no-op `aim`) and never fire arcing shells.
  */
 
-import { Bullet } from "../bullet.js";
 import { ACTIONS, SQUAD_MEMBERS } from "../config.js";
+import { flashMuzzle, spawnBullet } from "../shoot.js";
 import { pickSquadTarget } from "../squad.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
@@ -29,25 +29,20 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
     const spread = weapon.spread ?? 0;
     for (let p = 0; p < pellets; p++) {
         const a = pellets > 1 ? angle - spread / 2 + (spread * p) / (pellets - 1) : angle;
-        const b = new Bullet(
-            memberPos.x,
-            memberPos.y,
-            a,
-            squad.playerNumber,
-            squad.team,
-            dmg,
-            weapon.bulletSpeed,
-            false,
-            0,
+        spawnBullet(game, {
+            x: memberPos.x,
+            y: memberPos.y,
+            angle: a,
+            owner: squad.playerNumber,
+            team: squad.team,
+            damage: dmg,
+            speed: weapon.bulletSpeed,
             lifetime,
-        );
-        game.bullets.push(b);
+        });
     }
 
     // Muzzle flash + event (the weapon tag drives the sound)
-    const tipX = memberPos.x + Math.cos(angle) * 0.3;
-    const tipY = memberPos.y + Math.sin(angle) * 0.3;
-    game.particles.emitIFVFlash(tipX, tipY, angle);
+    flashMuzzle(game, "ifv", memberPos.x + Math.cos(angle) * 0.3, memberPos.y + Math.sin(angle) * 0.3, angle);
     game.emit("fire", { tank: squad, bullet: game.bullets[game.bullets.length - 1], weapon: weapon.weapon });
 }
 

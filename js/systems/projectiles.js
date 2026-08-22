@@ -3,43 +3,23 @@
  *
  * These two passes used to live as `Game._tickBullets` / `_checkBulletHits`;
  * they were extracted so the simulation loop (`Game._update`) is a short,
- * ordered list of system calls and the bullet logic is independently
- * testable.  Each system receives the `Game` as its first argument (the
- * same strategy-context convention the modes and vehicle behaviours use).
- *
- * Arcing-shell *landing* behaviour stays in `js/projectiles.js` (dispatched
- * by `Bullet.kind`); this module owns movement, terrain/structure collision,
- * and direct-bullet entity hits.
+ * ordered list of system calls.  Movement and impact effects are dispatched
+ * through the projectile behaviour (`js/projectiles/`, keyed by `Bullet.kind`),
+ * so the systems themselves never branch on bullet type — they just ask the
+ * behaviour what to do with a bullet that died.
  */
 
-import { applyProjectileImpact } from "../projectiles.js";
+import { getProjectileBehaviour } from "../projectiles/index.js";
 
-/** Advance bullets; resolve terrain/structure collisions and shell landings. */
+/** Advance bullets; dispatch terrain impacts and shell landings. */
 export function tickBullets(game, dt) {
     for (const b of game.bullets) {
         const wasAlive = b.alive;
         b.update(dt, game.map);
         if (wasAlive && !b.alive) {
-            if (b.arcing && b.landed) {
-                // Arcing shells apply their impact through the projectile system.
-                applyProjectileImpact(game, b);
-            } else if (!b.arcing && game.map.blocksProjectile(b.x, b.y)) {
-                game.particles.emitImpact(b.x, b.y);
-                game.emit("impact", { bullet: b });
-                const gx = Math.floor(b.x),
-                    gy = Math.floor(b.y);
-                // Check for a base structure at this tile.
-                const structure = game._getStructureAt(gx, gy);
-                if (structure) {
-                    if (b.team !== structure.team) {
-                        if (structure.applyDamage(b.damage)) {
-                            game.onStructureDestroyed(structure);
-                        }
-                    }
-                } else {
-                    game.damageTileAt(gx, gy, b.damage);
-                }
-            }
+            const behaviour = getProjectileBehaviour(b.kind);
+            if (b.landed) behaviour.onLand?.(game, b);
+            else if (b.hitTerrain) behaviour.onTerrain?.(game, b);
         }
     }
 }
@@ -47,12 +27,14 @@ export function tickBullets(game, dt) {
 /** Resolve direct-bullet hits against enemy tanks (squads use member hitboxes). */
 export function checkBulletHits(game) {
     for (const b of game.bullets) {
-        if (!b.alive || b.arcing) continue;
+        if (!b.alive) continue;
+        const behaviour = getProjectileBehaviour(b.kind);
+        if (!behaviour.onEntity) continue; // shells damage via onLand, not per-entity hits
         for (const t of game.allTanks) {
             if (!t.alive || b.team === t.team) continue;
             if (t.hitTest(b.x, b.y)) {
                 b.alive = false;
-                game.applyHitToTank(b, t, b.damage);
+                behaviour.onEntity(game, b, t);
                 break;
             }
         }

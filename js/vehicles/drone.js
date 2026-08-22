@@ -8,7 +8,7 @@
  */
 
 import { ACTIONS, VEHICLES } from "../config.js";
-import { splashStructures } from "./aoe.js";
+import { applyBlast } from "./aoe.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
 export const drone = {
@@ -19,18 +19,7 @@ export const drone = {
         const blastR = vStats.blastRadius;
         const maxDmg = vStats.blastDamage;
 
-        for (const t of game.allTanks) {
-            if (!t.alive || t.team === drone.team) continue;
-            const d = t.distanceToPoint(drone.x, drone.y);
-            if (d >= blastR) continue;
-
-            const dmg = maxDmg * Math.max(0, 1 - d / blastR);
-            if (dmg <= 0) continue;
-
-            game.applyHitToTank(drone, t, dmg);
-        }
-
-        splashStructures(game, drone.x, drone.y, blastR, maxDmg, drone.team);
+        applyBlast(game, drone.x, drone.y, blastR, maxDmg, drone.team);
 
         game.particles.emitDroneExplosion(drone.x, drone.y);
         game.emit("drone_strike", { drone });

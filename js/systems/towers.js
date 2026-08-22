@@ -8,8 +8,8 @@
  */
 
 import { pickTarget } from "../ai/targeting.js";
-import { Bullet } from "../bullet.js";
 import { BASE_STRUCTURES } from "../config.js";
+import { spawnBullet } from "../shoot.js";
 
 /** Update watch-tower firing (auto-targets enemies in range with LOS). */
 export function updateWatchTowers(game, dt) {
@@ -20,8 +20,10 @@ export function updateWatchTowers(game, dt) {
             tower.fireCooldown -= dt;
             if (tower.fireCooldown > 0) continue;
 
+            const cfg = BASE_STRUCTURES[tower.entityType];
+            if (!cfg?.bulletSpeed) continue; // non-shooting structure
+
             // Find best target in range (shared weighted-targeting core).
-            const cfg = BASE_STRUCTURES.baseTower;
             const pick = pickTarget(enemyTeam, cfg.targetPriority, tower, {
                 range: cfg.fireRange,
                 hasLineOfSight: (x1, y1, x2, y2) => game.map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin: true }),
@@ -29,15 +31,20 @@ export function updateWatchTowers(game, dt) {
             if (!pick) continue;
             const best = pick.target;
 
-            // Fire
             const angle = Math.atan2(best.y - tower.y, best.x - tower.x);
             tower.turretAngle = angle;
             tower.fireCooldown = cfg.bulletCooldown;
-            const b = new Bullet(tower.x, tower.y, angle, 0, tower.team, cfg.bulletDamage, cfg.bulletSpeed);
-            game.bullets.push(b);
-            const tipX = tower.x + Math.cos(angle) * 0.3;
-            const tipY = tower.y + Math.sin(angle) * 0.3;
-            game.particles.emitIFVFlash(tipX, tipY, angle);
+            const b = spawnBullet(game, {
+                x: tower.x,
+                y: tower.y,
+                angle,
+                owner: 0,
+                team: tower.team,
+                damage: cfg.bulletDamage,
+                speed: cfg.bulletSpeed,
+                flash: "ifv",
+                flashOffset: 0.3,
+            });
             game.emit("fire", { tower, bullet: b });
         }
     }

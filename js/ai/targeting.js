@@ -14,7 +14,20 @@
  * rest of the AI.
  */
 
-import { VEHICLES } from "../config.js";
+import { TARGET_CLASS_DEFAULTS, TARGET_TYPES, VEHICLES } from "../config.js";
+
+/**
+ * Resolve a shooter's priority weight for a target type: an explicit
+ * override in the shooter's table, then the target's class default, then 1.
+ * This is what flattens the old O(N²) targetPriority matrix — a new target
+ * type is one `TARGET_TYPES` entry (inheriting its class default) instead
+ * of an edit to every shooter's table.
+ */
+export function targetPriorityOf(priorities, targetType) {
+    if (priorities[targetType] != null) return priorities[targetType];
+    const cls = TARGET_TYPES[targetType]?.class;
+    return (cls && TARGET_CLASS_DEFAULTS[cls]) ?? 1;
+}
 
 /**
  * Pick the best candidate from `candidates` using priority-weighted
@@ -33,7 +46,7 @@ export function pickTarget(candidates, priorities, origin, { range = Infinity, h
     let bestScore = -1;
     for (const e of candidates) {
         if (!e.alive) continue;
-        const w = priorities[e.targetType] ?? 1;
+        const w = targetPriorityOf(priorities, e.targetType);
         if (w <= 0) continue;
         const d = Math.hypot(e.x - origin.x, e.y - origin.y);
         if (d > range) continue;

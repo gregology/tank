@@ -44,7 +44,7 @@ import { steerTurretTo, updateWobble } from "./ai/aiming.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "./ai/navigation.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "./ai/recovery.js";
 import { chooseGoalAndTarget } from "./ai/roles.js";
-import { bestTarget } from "./ai/targeting.js";
+import { bestTarget, targetPriorityOf } from "./ai/targeting.js";
 import { ACTIONS, BASE_STRUCTURES, VEHICLES } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
@@ -241,7 +241,7 @@ export class AIController {
         const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
         for (const e of enemies) {
             if (!e.alive) continue;
-            if ((priorities[e.targetType] ?? 1) <= 0) continue;
+            if (targetPriorityOf(priorities, e.targetType) <= 0) continue;
             const d = Math.hypot(e.x - me.x, e.y - me.y);
             if (d < detonateRange) {
                 this.keys[ACTIONS.fire] = true;

@@ -21,8 +21,8 @@
  * than re-deriving rotation/turret/tread logic.
  */
 
-import { Bullet } from "../bullet.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
+import { spawnBullet } from "../shoot.js";
 import { normalizeAngle } from "../utils.js";
 
 /* ── shared movement primitives ───────────────────────────── */
@@ -124,20 +124,17 @@ export const tank = {
         tank.fire();
         const fireAngle = tank.turretWorld;
         const vStats = VEHICLES[tank.vehicleType];
-        const b = new Bullet(
-            tank.x,
-            tank.y,
-            fireAngle,
-            tank.playerNumber,
-            tank.team,
-            vStats.bulletDamage,
-            vStats.bulletSpeed,
-        );
-        game.bullets.push(b);
-        const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-        const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-        if (vStats.muzzleFlash === "ifv") game.particles.emitIFVFlash(tipX, tipY, fireAngle);
-        else game.particles.emitMuzzleFlash(tipX, tipY, fireAngle);
+        const b = spawnBullet(game, {
+            x: tank.x,
+            y: tank.y,
+            angle: fireAngle,
+            owner: tank.playerNumber,
+            team: tank.team,
+            damage: vStats.bulletDamage,
+            speed: vStats.bulletSpeed,
+            flash: vStats.muzzleFlash ?? "muzzle",
+            flashOffset: CONFIG.TANK_BARREL_LENGTH,
+        });
         game.emit("fire", { tank, bullet: b });
     },
 
