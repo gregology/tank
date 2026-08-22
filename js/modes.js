@@ -72,6 +72,7 @@ function playerLabelFor(game, faction, winner) {
 
 const skirmish = {
     hasBases: false,
+    hud: "score",
 
     init(_game) {},
 
@@ -141,6 +142,7 @@ const skirmish = {
 
 const battle = {
     hasBases: true,
+    hud: "battle",
 
     /** Build both factions' compounds and register their structures. */
     init(game) {

@@ -82,6 +82,7 @@ function gameFixture(overrides = {}) {
         factions: [],
         scores: new Map(),
         factionLabel: (id) => (id === 1 ? "P1" : "BOT"),
+        mode: { hud: "score" },
         gameOver: false,
         winner: null,
         winnerLabel: "",
@@ -689,7 +690,7 @@ describe("Renderer shell", () => {
 
             // Battle: base HUD branch.
             const battle = gameFixture({
-                hasBases: true,
+                mode: { hud: "battle" },
                 humanTanks: [tank],
                 cameras: [{ x: 0, y: 0 }],
                 allTanks: [tank],

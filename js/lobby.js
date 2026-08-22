@@ -9,6 +9,7 @@
 
 import {
     GAME_OPTIONS,
+    GAME_TYPE_ORDER,
     GAME_TYPES,
     getDefaultOptionValues,
     MAX_PLAYERS,
@@ -49,8 +50,13 @@ export class Lobby {
         if (i >= 0) this.players.splice(i, 1);
     }
 
+    /** The team-assignment rule for the current game type (see GAME_TYPES). */
+    get teamSet() {
+        return GAME_TYPES[this.gameType].teamSet;
+    }
+
     cycleTeam(player) {
-        if (this.gameType === "battle") {
+        if (this.teamSet === "two") {
             player.team = player.team === 1 ? 2 : 1;
         } else {
             player.team = (player.team % MAX_PLAYERS) + 1;
@@ -58,7 +64,7 @@ export class Lobby {
     }
 
     defaultTeam(joinIndex) {
-        return this.gameType === "battle" ? (joinIndex % 2) + 1 : joinIndex + 1;
+        return this.teamSet === "two" ? (joinIndex % 2) + 1 : joinIndex + 1;
     }
 
     /* ── game type & options ──────────────────────────────── */
@@ -85,7 +91,8 @@ export class Lobby {
 
     changeRow(row, right) {
         if (row.type === "gameType") {
-            this.setGameType(this.gameType === "skirmish" ? "battle" : "skirmish");
+            const idx = GAME_TYPE_ORDER.indexOf(this.gameType);
+            this.setGameType(GAME_TYPE_ORDER[(idx + 1) % GAME_TYPE_ORDER.length]);
             return;
         }
         if (row.type !== "option") return;

@@ -3,20 +3,10 @@
  * start) and its rendering.
  */
 
-import { ACTIONS, GAME_OPTIONS, MAX_PLAYERS, PLAYER_COLORS } from "../config.js";
+import { ACTIONS, GAME_OPTIONS, GAME_TYPE_ORDER, GAME_TYPES, MAX_PLAYERS, PLAYER_COLORS } from "../config.js";
 import { roundedRect } from "../render/canvas-utils.js";
 import { cursorBar, drawGrid } from "./background.js";
 import { anyPressed, joinCandidates } from "./input.js";
-
-export const GAME_TYPE_LABELS = {
-    skirmish: "SKIRMISH",
-    battle: "BATTLE",
-};
-
-export const GAME_TYPE_DESC = {
-    skirmish: "kill race \u00b7 teams optional \u00b7 tanks only",
-    battle: "tower/base objective \u00b7 2 teams \u00b7 all vehicles",
-};
 
 export const lobbyScreen = {
     update(menu, input, audio) {
@@ -106,16 +96,16 @@ export const lobbyScreen = {
         ctx.fillText("MATCH  SETUP", cx, 44);
         ctx.font = '13px "Courier New", monospace';
         ctx.fillStyle = "#555";
-        ctx.fillText(GAME_TYPE_DESC[lobby.gameType], cx, 66);
+        ctx.fillText(GAME_TYPES[lobby.gameType].desc, cx, 66);
 
         // Game type toggle (cursor row 0)
         const gtY = 92;
         if (lobby.cursor === 0) cursorBar(ctx, cx - 200, gtY - 20, 400, 32, t);
         ctx.font = 'bold 22px "Courier New", monospace';
-        for (const [i, type] of ["skirmish", "battle"].entries()) {
+        for (const [i, type] of GAME_TYPE_ORDER.entries()) {
             const x = cx + (i === 0 ? -90 : 90);
             ctx.fillStyle = lobby.gameType === type ? "#fff" : "#555";
-            ctx.fillText(GAME_TYPE_LABELS[type], x, gtY + 3);
+            ctx.fillText(GAME_TYPES[type].label, x, gtY + 3);
         }
         ctx.font = 'bold 18px "Courier New", monospace';
         ctx.fillStyle = "#888";
@@ -178,7 +168,7 @@ export const lobbyScreen = {
             let value = "";
             if (row.type === "gameType") {
                 label = "GAME TYPE";
-                value = GAME_TYPE_LABELS[lobby.gameType];
+                value = GAME_TYPES[lobby.gameType].label;
             } else if (row.type === "start") {
                 label = "";
                 value = "START";

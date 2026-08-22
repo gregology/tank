@@ -28,6 +28,8 @@
  */
 export const GAME_TYPES = {
     skirmish: {
+        label: "SKIRMISH",
+        desc: "kill race \u00b7 teams optional \u00b7 tanks only",
         win: "score",
         teamSet: "players",
         bases: false,
@@ -36,6 +38,8 @@ export const GAME_TYPES = {
         defaults: { mapSize: 0 },
     },
     battle: {
+        label: "BATTLE",
+        desc: "tower/base objective \u00b7 2 teams \u00b7 all vehicles",
         win: "base",
         teamSet: "two",
         bases: true,
@@ -43,6 +47,9 @@ export const GAME_TYPES = {
         options: ["mapSize", "buildingDensity", "baseType", "teamSize"],
     },
 };
+
+/** The ordered game-type list for the lobby toggle (and any UI that lists modes). */
+export const GAME_TYPE_ORDER = ["skirmish", "battle"];
 
 /**
  * Available game options.  Each defines its UI type, labels, allowed

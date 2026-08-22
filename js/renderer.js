@@ -26,6 +26,9 @@ import { drawBattleHUD, drawScoreHUD } from "./render/hud.js";
 import { drawGameOver } from "./render/overlay.js";
 import { drawViewportBorders, renderViewport } from "./render/viewport.js";
 
+/** HUD draw functions, keyed by the mode strategy's `hud` field. */
+const HUD_DRAWERS = { battle: drawBattleHUD, score: drawScoreHUD };
+
 export class Renderer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -54,8 +57,7 @@ export class Renderer {
             const r = rects[i];
             const tank = humans[i];
             renderViewport(ctx, game, tank, game.cameras[i], r.x, r.y, r.w, r.h);
-            if (game.hasBases) drawBattleHUD(ctx, game, i, r.x, r.y, r.w, r.h, tank);
-            else drawScoreHUD(ctx, game, i, r.x, r.y, r.w, r.h, tank);
+            (HUD_DRAWERS[game.mode.hud] ?? drawScoreHUD)(ctx, game, i, r.x, r.y, r.w, r.h, tank);
         }
 
         drawViewportBorders(ctx, rects, cw, ch);
