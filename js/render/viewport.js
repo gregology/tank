@@ -70,9 +70,9 @@ export function renderViewport(ctx, game, focusTank, camera, vx, vy, vw, vh) {
     // share depth buckets with tanks, bullets, and particles.
     drawDepthBuckets(ctx, collectDepthItems(game, visLeft, visRight, visTop, visBottom), game);
 
-    // ── SPG targeting indicator (drawn in camera space) ──
-    if (focusTank.alive && focusTank.vehicleType === "spg" && focusTank.isCharging) {
-        const vStats = VEHICLES.spg;
+    // ── Charging vehicle's targeting indicator (drawn in camera space) ──
+    if (focusTank.alive && focusTank.isCharging) {
+        const vStats = VEHICLES[focusTank.vehicleType];
         const range = Math.min(vStats.minRange + focusTank.chargeTime * vStats.chargeRate, vStats.maxRange);
         const tAngle = focusTank.turretWorld;
         const targetWX = focusTank.x + Math.cos(tAngle) * range;

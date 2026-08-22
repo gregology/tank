@@ -183,6 +183,10 @@ export class Tank extends GameEntity {
     get canCrush() {
         return VEHICLES[this.vehicleType].unitClass === "vehicle";
     }
+    /** Chargeable vehicles hold fire to charge a ranged (arcing) shot. */
+    get chargeable() {
+        return VEHICLES[this.vehicleType].chargeRate != null;
+    }
     /** Incoming damage multiplier after cover/dig-in (1 = no reduction). */
     incomingDamageMultiplier(map) {
         if (!this.alive || !this.squad) return 1;

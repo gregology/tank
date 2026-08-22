@@ -64,6 +64,7 @@ function fakeTank(vehicleType, overrides = {}) {
         y: 0,
         team: 1,
         flies: VEHICLES[vehicleType]?.unitClass === "air",
+        chargeable: VEHICLES[vehicleType]?.chargeRate != null,
         ...overrides,
     };
 }

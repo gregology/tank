@@ -188,10 +188,10 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
         }
     }
 
-    // SPG charge bar
-    if (focusTank.vehicleType === "spg") {
+    // Chargeable-vehicle HUD: charge bar / reload / hold-to-charge hint.
+    if (focusTank.chargeable) {
         if (focusTank.isCharging) {
-            const vStats = VEHICLES.spg;
+            const vStats = VEHICLES[focusTank.vehicleType];
             const range = Math.min(vStats.minRange + focusTank.chargeTime * vStats.chargeRate, vStats.maxRange);
             const frac = (range - vStats.minRange) / (vStats.maxRange - vStats.minRange);
             const barW = 100,
