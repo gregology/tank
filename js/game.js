@@ -26,35 +26,23 @@
  *         artillery_impact, drone_strike
  */
 
-import { pickTarget } from "./ai/targeting.js";
 import { AIController, pickRoleForVehicle } from "./ai.js";
-import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { vehiclesSeparate } from "./collision.js";
-import { BASE_STRUCTURES, CONFIG, GAME_TYPES, TILES as T, VEHICLES } from "./config.js";
+import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
 import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
 import { getMode } from "./modes.js";
 import { ParticleSystem } from "./particles.js";
-import { applyProjectileImpact } from "./projectiles.js";
+import { updateCamera } from "./systems/camera.js";
+import { pushFromStructures as pushFromStructuresSystem, resolveCrushes, separatePairs } from "./systems/collision.js";
+import { emitDamageSmoke } from "./systems/effects.js";
+import { checkBulletHits, tickBullets } from "./systems/projectiles.js";
+import { handleRespawns } from "./systems/respawn.js";
+import { updateWatchTowers as updateWatchTowersSystem } from "./systems/towers.js";
+import { checkWin } from "./systems/win.js";
 import { Tank } from "./tank.js";
-import { distance, worldToScreen } from "./utils.js";
-import { getVehicleBehaviour } from "./vehicles/index.js";
-
-/* ── Vehicle type selection ─────────────────────────────── */
-
-/** Pick a random vehicle type from an allowed list using spawn weights. */
-function pickVehicleType(allowed) {
-    if (allowed.length === 1) return allowed[0];
-    const entries = allowed.map((t) => [t, VEHICLES[t]]);
-    const total = entries.reduce((s, [, v]) => s + v.spawnWeight, 0);
-    let r = Math.random() * total;
-    for (const [type, v] of entries) {
-        r -= v.spawnWeight;
-        if (r <= 0) return type;
-    }
-    return entries[entries.length - 1][0];
-}
+import { worldToScreen } from "./utils.js";
+import { getVehicleBehaviour, pickVehicleType } from "./vehicles/index.js";
 
 /* ================================================================== */
 
@@ -112,6 +100,10 @@ export class Game {
     /** All human-controlled tanks (viewport order = join order). */
     get humanTanks() {
         return this._humanTanks;
+    }
+    /** All AI-controlled bots ({ ai, tank, enemies }). */
+    get bots() {
+        return this._bots;
     }
     /** All cameras (one per human player). */
     get cameras() {
@@ -334,37 +326,13 @@ export class Game {
     /* ── respawn logic ────────────────────────────────────── */
 
     _handleRespawns(dt) {
-        for (const t of this._allTanks) {
-            if (t.alive) continue;
-            t.respawnTimer -= dt;
-            if (t.respawnTimer <= 0) {
-                // Mode picks the spawn point (battle: inside the compound);
-                // skirmish keeps the position reserved at kill time.
-                const sp = this.mode.respawn(this, t);
-                if (sp) t.respawnAt(sp.x, sp.y);
-                t.alive = true;
-                t.flashTimer = 1;
-                // Re-randomise vehicle type on respawn
-                t.vehicleType = pickVehicleType(this.typeDef.vehicles);
-                // Re-assign AI role
-                const bot = this._bots.find((b) => b.tank === t);
-                if (bot) {
-                    bot.ai.role = pickRoleForVehicle(t.vehicleType);
-                    bot.ai.resetLife();
-                }
-            }
-        }
+        handleRespawns(this, dt);
     }
 
     /* ── win condition ────────────────────────────────────── */
 
     _checkWin() {
-        const winner = this.mode.checkWin(this);
-        if (winner != null) {
-            this.gameOver = true;
-            this.winner = winner;
-            this.emit("win", { winner });
-        }
+        checkWin(this);
     }
 
     /** Short label for a faction (HUD scoreboard). */
@@ -418,142 +386,31 @@ export class Game {
     }
 
     _tickBullets(dt) {
-        for (const b of this.bullets) {
-            const wasAlive = b.alive;
-            b.update(dt, this.map);
-            if (wasAlive && !b.alive) {
-                if (b.arcing && b.landed) {
-                    // Arcing shells apply their impact through the projectile system.
-                    applyProjectileImpact(this, b);
-                } else if (!b.arcing && this.map.blocksProjectile(b.x, b.y)) {
-                    this.particles.emitImpact(b.x, b.y);
-                    this.emit("impact", { bullet: b });
-                    const gx = Math.floor(b.x),
-                        gy = Math.floor(b.y);
-                    // Check for base structure at this tile
-                    const structure = this._getStructureAt(gx, gy);
-                    if (structure) {
-                        if (b.team !== structure.team) {
-                            if (structure.applyDamage(b.damage)) {
-                                this.onStructureDestroyed(structure);
-                            }
-                        }
-                    } else {
-                        this.damageTileAt(gx, gy, b.damage);
-                    }
-                }
-            }
-        }
+        tickBullets(this, dt);
     }
 
     _checkBulletHits() {
-        for (const b of this.bullets) {
-            if (!b.alive || b.arcing) continue;
-            for (const t of this.allTanks) {
-                if (!t.alive || b.team === t.team) continue;
-                // Squads use a distributed hitbox — the bullet must strike
-                // an individual soldier, not the squad centre.
-                if (t.hitTest(b.x, b.y)) {
-                    b.alive = false;
-
-                    this.applyHitToTank(b, t, b.damage);
-                    break;
-                }
-            }
-        }
+        checkBulletHits(this);
     }
 
     /**
-     * Ground vehicles run over exposed (non-dug-in) infantry.  The
-     * interaction is expressed through capabilities (`canCrush` vs
-     * `crushable`) rather than unit-class checks, so a new soft or
-     * crushing unit inherits it.
+     * Ground vehicles run over exposed (non-dug-in) infantry.  See
+     * `js/systems/collision.js#resolveCrushes`.
      */
     _resolveCrushes() {
-        for (const target of this._allTanks) {
-            if (!target.alive || !target.crushable) continue;
-
-            for (const v of this._allTanks) {
-                if (!v.alive || v.team === target.team || !v.canCrush) continue;
-
-                const idx = target.crushedMemberBy(v);
-                if (idx < 0) continue;
-
-                if (target.crushMember(idx)) {
-                    target.kill();
-                    this.particles.emitExplosion(target.x, target.y);
-                    this.emit("destroy", { tank: target });
-                    this.mode.onKill(this, v.team, target);
-                }
-            }
-        }
+        resolveCrushes(this);
     }
 
     pushFromStructures() {
-        for (const t of this._allTanks) {
-            if (!t.alive || t.flies) continue;
-            for (const s of this._allStructures) {
-                if (!s.alive) continue;
-                // Push from each tile the structure occupies
-                for (const pos of s.tilePositions) {
-                    const sx = pos.gx + 0.5,
-                        sy = pos.gy + 0.5;
-                    const d = distance(t.x, t.y, sx, sy);
-                    const min = VEHICLES[t.vehicleType].size + 0.5;
-                    if (d < min && d > 0.001) {
-                        const nx = (t.x - sx) / d;
-                        const ny = (t.y - sy) / d;
-                        const newX = sx + nx * min;
-                        const newY = sy + ny * min;
-                        if (this.map.canStand(newX, newY)) {
-                            t.x = newX;
-                            t.y = newY;
-                        }
-                    }
-                }
-            }
-        }
+        pushFromStructuresSystem(this);
     }
 
     _emitDamageSmoke(dt) {
-        for (const t of this.allTanks) {
-            if (!t.alive || !t.damaged) continue;
-            t.smokeTimer -= dt;
-            if (t.smokeTimer <= 0) {
-                t.smokeTimer = 0.15 + Math.random() * 0.1;
-                this.particles.emitSmoke(t.x, t.y);
-            }
-        }
+        emitDamageSmoke(this, dt);
     }
 
     _separatePairs(tanks) {
-        const alive = tanks.filter((t) => t.alive);
-        for (let i = 0; i < alive.length; i++) {
-            for (let j = i + 1; j < alive.length; j++) {
-                const a = alive[i],
-                    b = alive[j];
-                if (!vehiclesSeparate(a, b)) continue;
-                const d = distance(a.x, a.y, b.x, b.y);
-                const min = VEHICLES[a.vehicleType].size + VEHICLES[b.vehicleType].size;
-                if (d < min && d > 0.001) {
-                    const o = (min - d) / 2;
-                    const nx = (b.x - a.x) / d,
-                        ny = (b.y - a.y) / d;
-                    const ax = a.x - nx * o,
-                        ay = a.y - ny * o;
-                    const bx = b.x + nx * o,
-                        by = b.y + ny * o;
-                    if (this.map.canStand(ax, ay, VEHICLES[a.vehicleType].size)) {
-                        a.x = ax;
-                        a.y = ay;
-                    }
-                    if (this.map.canStand(bx, by, VEHICLES[b.vehicleType].size)) {
-                        b.x = bx;
-                        b.y = by;
-                    }
-                }
-            }
-        }
+        separatePairs(this, tanks);
     }
 
     _invalidatePathfinders() {
@@ -600,44 +457,10 @@ export class Game {
 
     /** Update watch tower firing (auto-targeting enemies in range). */
     updateWatchTowers(dt) {
-        for (const base of this._bases) {
-            const enemyTeam = this._allTanks.filter((t) => t.team !== base.team);
-            for (const tower of base.towers) {
-                if (!tower.alive) continue;
-                tower.fireCooldown -= dt;
-                if (tower.fireCooldown > 0) continue;
-
-                // Find best target in range (shared weighted-targeting core).
-                const cfg = BASE_STRUCTURES.baseTower;
-                const pick = pickTarget(enemyTeam, cfg.targetPriority, tower, {
-                    range: cfg.fireRange,
-                    hasLineOfSight: (x1, y1, x2, y2) => this.map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin: true }),
-                });
-                if (!pick) continue;
-                const best = pick.target;
-
-                // Fire
-                const angle = Math.atan2(best.y - tower.y, best.x - tower.x);
-                tower.turretAngle = angle;
-                tower.fireCooldown = cfg.bulletCooldown;
-                const b = new Bullet(tower.x, tower.y, angle, 0, tower.team, cfg.bulletDamage, cfg.bulletSpeed);
-                this.bullets.push(b);
-                const tipX = tower.x + Math.cos(angle) * 0.3;
-                const tipY = tower.y + Math.sin(angle) * 0.3;
-                this.particles.emitIFVFlash(tipX, tipY, angle);
-                this.emit("fire", { tower, bullet: b });
-            }
-        }
+        updateWatchTowersSystem(this, dt);
     }
 
     _updateCamera(cam, tank, dt) {
-        if (tank.alive) {
-            const s = worldToScreen(tank.x, tank.y);
-            const la = VEHICLES[tank.vehicleType]?.cameraLookAhead ?? CONFIG.CAMERA_LOOK_AHEAD;
-            const aim = tank.turretWorld;
-            const dx = Math.cos(aim) * la;
-            const dy = Math.sin(aim) * la;
-            cam.follow(s.x + (dx - dy) * (CONFIG.TILE_WIDTH / 2), s.y + (dx + dy) * (CONFIG.TILE_HEIGHT / 2), dt);
-        }
+        updateCamera(cam, tank, dt);
     }
 }

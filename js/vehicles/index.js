@@ -9,6 +9,7 @@
  * `{ ...tank, fire: myFire }` — instead of touching Game.
  */
 
+import { VEHICLES } from "../config.js";
 import { drone } from "./drone.js";
 import { ifv } from "./ifv.js";
 import { spg } from "./spg.js";
@@ -26,4 +27,17 @@ export const VEHICLE_BEHAVIOURS = {
 /** Look up the behaviour strategy for a vehicle type (defaults to the tank). */
 export function getVehicleBehaviour(type) {
     return VEHICLE_BEHAVIOURS[type] ?? tank;
+}
+
+/** Pick a random vehicle type from an allowed list using spawn weights. */
+export function pickVehicleType(allowed) {
+    if (allowed.length === 1) return allowed[0];
+    const entries = allowed.map((t) => [t, VEHICLES[t]]);
+    const total = entries.reduce((s, [, v]) => s + v.spawnWeight, 0);
+    let r = Math.random() * total;
+    for (const [type, v] of entries) {
+        r -= v.spawnWeight;
+        if (r <= 0) return type;
+    }
+    return entries[entries.length - 1][0];
 }
