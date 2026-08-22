@@ -123,7 +123,7 @@ the places the first three rounds left half-done.
 
 ## 1. Complete the entity/component boundary — make `Tank` a data shell
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Round two's #1 claimed to move per-vehicle state out of `Tank`,
 but it did not: `chargeTime`/`isCharging` (SPG-only, `js/tank.js:84-86`) and
@@ -178,7 +178,7 @@ multi-body or soft entity inherits the hitbox strategy rather than a new
 
 ## 2. Extract the damage model into a `damageModel` seam with data-driven subsystems
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Durability numbers are data, but the damage *rules* are code split
 across four files: `Tank.applyHit`'s rule chain (rear instant-kill →
@@ -232,7 +232,7 @@ combat seam round three #3 opened at *targeting/firing* finally extends to
 
 ## 3. Finish the projectile seam: `Bullet` as an entity, `kind` as a parameter, one hittable surface
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Three gaps in what round three #3 claimed to finish:
 
@@ -285,7 +285,7 @@ tower/squad shots.
 
 ## 4. Data-drive the audio engine and the event→sound mapping
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** `js/audio.js` (412 lines) is the particle-system *before* round
 three's #7: 14 `play*` methods (`playShoot`…`playWin`, `js/audio.js:61-381`),
@@ -334,7 +334,7 @@ method, no new branch chain. ~412 lines collapse to a ~100-line engine + a
 
 ## 5. Give the event bus a typed, normalised contract
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** `game.on`/`game.emit` take bare magic strings with no registry
 (`js/game.js:132-138`); the names exist only in a comment (`js/game.js:25-26`).
@@ -375,7 +375,7 @@ subscribe to one vocabulary instead of hand-probing heterogeneous objects.
 
 ## 6. Close the last strategy/system boundary leaks
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Three `_`-prefixed reaches remain, contradicting the documented
 "strategies/systems depend on the public world-model surface" rule:
@@ -423,7 +423,7 @@ per-frame pass has one unambiguous home.
 
 ## 7. Data-drive map generation: a biome/style seam + promote procedural constants to the leaf
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** `js/map/generation.js` is a fixed island pipeline with no
 `style`/`biome` parameter (the facade only takes
@@ -467,7 +467,7 @@ pipeline pass; map "feel" is tuned in config, not logic.
 
 ## 8. Decompose `map/compounds.js` and generalise the structure taxonomy
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Two coupled problems:
 
@@ -516,7 +516,7 @@ drifting between stampers and spawn helpers.
 
 ## 9. Unify the targeting vocabulary and finish the AI package
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Four residual AI/targeting seams:
 
@@ -573,7 +573,7 @@ a `roleWeights` entry, with its state encapsulated in the strategy.
 
 ## 10. De-type the render/HUD/menu layer and sweep the remaining magic numbers into the leaf
 
-**Status:** open.
+**Status:** ✅ implemented.
 
 **Evidence.** Round three's #6 de-typed `hud.js`/`minimap.js` glyphs, but the
 render/UI layer still has residual type codes and duplicated formulas:
@@ -649,29 +649,47 @@ layers.
 
 ## Suggested sequencing
 
-Status: **all ten opportunities are open** (none implemented yet). The order
-above is the recommended sequence, grouped for review:
+Status: **all ten opportunities are ✅ done**, committed one per opportunity in
+the suggested order (#1 → #10), each leaving the aggregate gate green
+(479 tests / 0 failures; ~97.5% line / ~89% branch / ~93.7% funcs; lint and
+dependency-cruiser clean at 92 modules):
 
-- **Structural (largest leverage):** #1 (entity/component boundary) and #2
-  (damage-model seam) are the two "larger refactors" this round, and they are
-  each other's neighbours: #1 empties `Tank` of state so #2's damage model has
-  a clean host. #3 (projectile/entity surface) rides on #2's damageable
-  surface.
-- **The last god-objects-in-miniature:** #4 (audio) is the single highest
-  copy-paste payoff and fixes a real bug; #8 (compounds) splits the largest
-  remaining logic file.
-- **Boundary/contract tightening (fast, safe, unblock the rest):** #5 (event
-  bus), #6 (boundary leaks), #9 (targeting/role vocabulary) — each is mostly
-  mechanical and removes the "touch N files" surprises that would otherwise
-  bite the structural work.
-- **Data-leaf and render finish:** #7 (map biome seam) and #10 (de-type render/
-  HUD/menu + magic-number sweep) complete the data-driven and registry patterns
-  in the two places the rounds kept deferring.
+1. **#1 (entity/component boundary)** — per-vehicle state (`chargeTime`/`_squad`)
+   moved into behaviour `init` hooks (`Charge` component, `Squad` created by the
+   squad behaviour); `Tank` is a data shell with a `vehicleType` setter that
+   (re)creates components.
+2. **#2 (damage-model seam)** — `js/damage.js` with `armour`/`members`/`hp`
+   models behind `resolveDamage`; `VEHICLES[].armour.subsystems` are data-driven
+   `{ prop, resetTurret }` descriptors (no `SUBSYSTEM_PROPS`/`if (key === "turret")`).
+3. **#3 (projectile seam)** — `Bullet.kind` and `tracer` are constructor
+   parameters (a third `kind` is constructible); the bullet visual is driven by
+   `tracer`, not `damage < 1.0`; `Game.damageables` + `distanceToPoint`/`hitRadius`
+   on `GameEntity` unify the `applyBlast` loop.
+4. **#4 (audio engine)** — `SOUNDS` table + one `play(soundKey)` engine;
+   `fire` carries a `sound` key; `BASE_STRUCTURES.baseTower.fireSound` fixes the
+   tower-sound bug.
+5. **#5 (event contract)** — `GAME_EVENTS` constants + normalised `fire`/
+   `destroy`/`impact` payloads; `terrain_changed` event drives pathfinder
+   invalidation (replacing `ai._pf` reach).
+6. **#6 (boundary leaks)** — public `getBot(tank)` / `structureAt(gx, gy)`;
+   `respawn.js`/`direct.js` no longer read `game._bots`/`_getStructureAt`.
+7. **#7 (map biomes)** — `MAP_STYLES` table + composable `paintTerrain`/
+   `placeVillages` passes; `grid.style` selects a biome.
+8. **#8 (structure taxonomy)** — `Base.structures` + filtered `hq`/`walls`/
+   `towers` views; `buildBase` constructs from a flat `layout.structures` list;
+   `COMPOUND_HALF` de-duplicates tier geometry.
+9. **#9 (targeting + AI)** — `pickSquadTarget` uses the shared `pickTarget` core;
+   `targetPriority` trimmed to overrides; per-role state on `ai.roleState`;
+   `js/ai/positioning.js` extracted.
+10. **#10 (render/menu de-typing)** — `flashMuzzle` is a direct `EFFECTS` lookup;
+    `chargeRange`/`chargeFraction` shared helpers; menu stat bars read `display*`
+    fields (no `type ===`); `AIM_DEADZONE` promoted; dead config deleted.
 
-#1 and #2 are the round's "larger refactors", just as #1 and #3 were in round
-three; #4 is the round's most mechanically rewarding single change. Every item
-keeps the aggregate gate green (492 tests, lint, dependency-cruiser) as the
-guardrail, and each leaves the codebase smaller, not larger.
+#1 and #2 were the round's "larger refactors"; #4 was the most mechanically
+rewarding single change. None needed a new dependency, a build step, or a
+framework — the established idioms (components, data tables, registries,
+events) were applied to the entity, the combat seam, the data leaf, and the four
+half-open registries the first three rounds left behind.
 
 ## Direction (the north star, not a standalone task)
 

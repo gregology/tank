@@ -176,17 +176,19 @@ around them. (Details live in `js/AGENTS.md`.)
   renderer game-type-agnostic. The per-frame passes live in `js/systems/`;
   `Game._update` is a thin ordered list of system calls.
 - **Vehicle behaviour strategy** (`js/vehicles/`) — `getVehicleBehaviour(type)`
-  returns a strategy object (`fire` / `move` / `update` / `aim` / `aiThink`
-  hooks). `Game` and `ai.js` never branch on `vehicleType`; `Tank.update()`
-  delegates movement to `move`, and `aiThink` *contains* each vehicle's whole
-  think (drone flight, squad dig-in, immobilised pivot). Adding a vehicle is
-  one `VEHICLES` entry + one behaviour module (or a reused one). Per-vehicle
-  *traits* (`flies`/`soft`/`crushable`/`canCrush`/`hasSquad`, `turret`,
-  `firesBullets`, `fireSound`, `muzzleFlash`) are data fields in `VEHICLES`,
-  surfaced as capability getters. Firing shares `spawnBullet`/`flashMuzzle`
-  (`js/shoot.js`), explosions share `applyBlast`, and the projectile lifecycle
-  (`update`/`onTerrain`/`onEntity`/`onLand`) is a `kind`-dispatched behaviour
-  (`js/projectiles/`), not a vehicle hook.
+  returns a strategy object (`init` / `fire` / `move` / `update` / `aim` /
+  `aiThink` hooks). `Game` and `ai.js` never branch on `vehicleType`;
+  `Tank.update()` delegates movement to `move`, `init` owns per-vehicle
+  *state* (squad component, SPG charge) so `Tank` stays a data shell, and
+  `aiThink` *contains* each vehicle's whole think (drone flight, squad dig-in,
+  immobilised pivot). Adding a vehicle is one `VEHICLES` entry + one behaviour
+  module (or a reused one). Per-vehicle *traits* (`flies`/`soft`/`crushable`/
+  `canCrush`/`hasSquad`, `turret`, `firesBullets`, `fireSound`, `muzzleFlash`)
+  are data fields in `VEHICLES`, surfaced as capability getters. Firing shares
+  `spawnBullet`/`flashMuzzle` (`js/shoot.js`), explosions share `applyBlast`,
+  the projectile lifecycle (`update`/`onTerrain`/`onEntity`/`onLand`) is a
+  `kind`-dispatched behaviour (`js/projectiles/`), and the damage *rules* are
+  the `damageModel` seam (`js/damage.js`).
 - **Game-mode strategy** (`modes.js`) — `getMode(gameType)` returns the
   Skirmish or Battle strategy (spawn, win condition, scoring, labels). The
   shared simulation loop stays in `Game`; a third mode is one `GAME_TYPES`
@@ -213,9 +215,10 @@ around them. (Details live in `js/AGENTS.md`.)
 
 ## Current hot spots
 
-All three refactor rounds are done (`docs/refactor_opportunities.md`,
-`docs/refactor_opportunities_2nd_round.md`, and
-`docs/refactor_opportunities_3rd_round.md`). The boundaries to keep, in brief:
+All four refactor rounds are done (`docs/refactor_opportunities.md`,
+`docs/refactor_opportunities_2nd_round.md`,
+`docs/refactor_opportunities_3rd_round.md`, and
+`docs/refactor_opportunities_4th_round.md`). The boundaries to keep, in brief:
 
 - The god objects are gone: `renderer.js`, `map.js`, `ai.js`, `menu.js`,
   `config.js`, `game.js`, and the render vehicle/structure sprites are all
@@ -224,14 +227,17 @@ All three refactor rounds are done (`docs/refactor_opportunities.md`,
   `js/systems/`, `js/projectiles/`). Put new code in the right module; never
   grow a shell back into a god object.
 - Variation is data + strategies, not type codes: vehicle behaviour
-  (`js/vehicles/`, incl. movement + `aiThink`), tile semantics (`TILE_PROPS` +
-  `TILE_VISUALS`), entity interaction capabilities (independent `VEHICLES`
-  flags → `flies` / `softTarget` / `crushable` / `canCrush` / `chargeable`),
-  structure sprites (`STRUCTURE_SPRITES`), the projectile lifecycle
-  (`Bullet.kind` + `js/projectiles/`), targeting (`pickTarget` +
-  `targetPriorityOf`), and particle effects (`EFFECTS` + `emit`). A new
-  vehicle, tile, structure, unit kind, projectile, turret, or effect is a
-  table entry / strategy / capability, not another `if (type === …)`.
+  (`js/vehicles/`, incl. `init` state + movement + `aiThink`), tile semantics
+  (`TILE_PROPS` + `TILE_VISUALS`) and biomes (`MAP_STYLES`), entity
+  interaction capabilities (independent `VEHICLES` flags → `flies` /
+  `softTarget` / `crushable` / `canCrush` / `chargeable`), the damage *rules*
+  (`damageModel` seam in `js/damage.js`), structure sprites
+  (`STRUCTURE_SPRITES`) and a flat `Base.structures` list, the projectile
+  lifecycle (`Bullet.kind` + `js/projectiles/`), targeting (`pickTarget` +
+  `targetPriorityOf`), sound synthesis (`SOUNDS` + `play`), particle effects
+  (`EFFECTS` + `emit`), and the event vocabulary (`GAME_EVENTS`). A new
+  vehicle, tile, biome, structure, unit kind, projectile, turret, sound, or
+  effect is a table entry / strategy / capability, not another `if (type === …)`.
 - The strategies are written against the public `Game` world-model API
   (accessors + `setBases` / `creditKill` / `nearestEnemy`), never `_`-prefixed
   internals.

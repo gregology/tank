@@ -97,7 +97,9 @@ The single source of truth for everything that varies:
   vocabulary and per-class priority defaults (`js/config/targets.js`).
 - `SQUAD_MEMBERS` / `SQUAD_ATTENTION_ORDER` — squad member weapons and death
   order.
-- `BASE_STRUCTURES` — per-structure HP/size/weaponry/`isShooter`.
+- `BASE_STRUCTURES` — per-structure HP/size/weaponry/`isShooter`/`fireSound`.
+- `MAP_STYLES` — per-biome terrain palette + noise tuning (`js/config/biomes.js`),
+  selected by `grid.style`.
 
 **When adding a mechanic, add a parameter here rather than a constant in a
 logic file.** `Tank.applyHit()` already reads `VEHICLES[tank.vehicleType].armour`
@@ -113,8 +115,14 @@ GameEntity (entityType, team, color, darkColor)
                             from BASE_STRUCTURES)                        entity.js
 ```
 
-- `Base` is a **compound container**, not an entity — it holds one team's HQ,
-  walls, and towers.
+- `Base` is a **compound container**, not an entity — it holds one team's
+  structures in a flat `structures` list, with `hq` / `walls` / `towers`
+  as filtered views (so a new structure category is a `BASE_STRUCTURES`
+  entry + a layout slot, no edits to `Base`).
+- Damage *rules* live in `js/damage.js` — `armour` (directional hit zones +
+  data-driven subsystems), `members` (squad), and `hp` (structures) models
+  behind one `resolveDamage(entity, zone, damage)` seam, selected by the
+  entity's `damageModel` getter.
 - Capability getters on `GameEntity` — `targetable`, `collidable`, `mobile`,
   `isShooter`, `isVehicle`, `isStructure`, `size`, and the interaction
   capabilities `flies` / `softTarget` / `crushable` / `canCrush` /
@@ -178,10 +186,13 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
   (`js/modes.js`, `getMode(gameType)`). New logic belongs behind those seams,
   not as new `if (vehicleType === …)` / `if (typeDef.bases)` branches here.
 - The **event bus** (`game.on(event, fn)` / `game.emit(event, data)`) decouples
-  cross-cutting concerns. Events: `fire`, `hit`, `destroy`, `impact`,
-  `destroy_tile`, `win`, `artillery_impact`, `drone_strike`. `audio.js`
-  subscribes; `game.js` never imports audio. **Wire new sound/UI reactions
-  through an event, not a direct call.**
+  cross-cutting concerns. The event names are the frozen `GAME_EVENTS`
+  constants (`js/events.js`) with normalised payloads (`fire` → `{ source,
+  bullet, sound }`, `destroy` → `{ entity }`); events: `fire`, `hit`,
+  `destroy`, `impact`, `destroy_tile`, `win`, `artillery_impact`,
+  `drone_strike`, `terrain_changed`. `audio.js` subscribes; `game.js` never
+  imports audio. **Wire new sound/UI/pathfinding reactions through an event,
+  not a direct call.**
 
 ### 5. Vehicle behaviour strategies (`js/vehicles/`)
 
@@ -189,6 +200,10 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
 vehicle (`tank.js`, `ifv.js`, `drone.js`, `spg.js`, `squad.js`, plus a shared
 `aoe.js` for the `applyBlast` primitive). The hooks:
 
+- `init(tank)` — create this vehicle's per-instance components (the squad
+  behaviour creates `Squad`, the SPG behaviour creates a `Charge` component;
+  others no-op).  Called by the `Tank.vehicleType` setter and on respawn, so
+  per-vehicle *state* lives in components, never as fields on `Tank`.
 - `fire(game, tank, device, dt)` — per-frame firing/attack (drone detonation,
   SPG charge, squad auto-fire, direct fire), built on `spawnBullet` /
   `flashMuzzle` (`js/shoot.js`).
@@ -234,8 +249,9 @@ object — never more `if (typeDef.bases)` sprinkles.**
 `GameMap` (`js/map.js`) is a facade over the `js/map/` package: `grid.js`
 (tile data + tile-property queries, data-driven from `TILE_PROPS`),
 `queries.js` (the spatial geometry below), `generation.js` (procedural
-terrain), `compounds.js` (base layout + spawn helpers). One implementation
-per geometric question; nothing re-implements them:
+terrain, reading the per-biome `MAP_STYLES` table), `compounds.js` (base
+layout + spawn helpers). One implementation per geometric question; nothing
+re-implements them:
 
 - `map.canStand(wx, wy, size)` — the four-corner passability box (movement,
   separation, structure pushing, base spawn).
@@ -247,7 +263,8 @@ per geometric question; nothing re-implements them:
 ### 8. The component pattern (`squad.js`)
 
 A squad is **one** `Tank` entity (the leader) that **owns** a `Squad` component
-(`tank.squad`), created lazily. The component owns the soldiers, the dig-in
+(`tank.squad`), created by the squad behaviour's `init` hook. The component
+owns the soldiers, the dig-in
 state machine, and the squad damage model; member positions are world-space
 and authoritative (rendering, firing, hit tests, run-over all read them).
 
@@ -266,8 +283,11 @@ their first argument:
 - `roles.js` — `AI_ROLES`, `pickRoleForVehicle`, and `ROLE_STRATEGIES`:
   each role (`cavalry`, `sniper`, `defender`, `scout`) plus the no-role
   default is a plain strategy object with a `goal(ai, ctx)` hook,
-  dispatched by `chooseGoalAndTarget` from `ai.role`. Shared position
-  scoring (`findBestPosition`, `computeFlankPoint`) lives here too.
+  dispatched by `chooseGoalAndTarget` from `ai.role`. Per-role per-life
+  state lives on the controller's opaque `roleState` object (the role owns
+  it, so a new role doesn't edit `AIController`).
+- `positioning.js` — shared position scoring (`findBestPosition`,
+  `computeFlankPoint`), extracted from `roles.js`.
 - `targeting.js` — `pickTarget(candidates, priorities, origin, opts)`: the
   shared weighted `weight / distance` scoring core (with range/LOS filters),
   used by `bestTarget(ai, me, enemies)` and by the watch-tower system
@@ -330,7 +350,7 @@ The root principles, made concrete for this directory:
 
 ## Known structural debt (do not expand it)
 
-All three refactor rounds are done; these are the current boundaries to keep,
+All four refactor rounds are done; these are the current boundaries to keep,
 not expand:
 
 - `game.js` stays a thin orchestration shell — the per-frame passes live in
