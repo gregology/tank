@@ -23,6 +23,7 @@
 
 import { bestTarget } from "../ai/targeting.js";
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
 import { normalizeAngle } from "../utils.js";
 
@@ -173,7 +174,7 @@ export const tank = {
             flash: vStats.muzzleFlash ?? "muzzle",
             flashOffset: CONFIG.TANK_BARREL_LENGTH,
         });
-        game.emit("fire", { tank, bullet: b, sound: vStats.fireSound ?? "tank" });
+        game.emit(GAME_EVENTS.FIRE, { source: tank, bullet: b, sound: vStats.fireSound ?? "tank" });
     },
 
     /** Ground movement: tracks lock the drive but still allow pivoting. */

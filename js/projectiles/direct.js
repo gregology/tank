@@ -7,6 +7,8 @@
  * to live in `Bullet.update` and `Game._tickBullets`/`_checkBulletHits`.
  */
 
+import { GAME_EVENTS } from "../events.js";
+
 export const direct = {
     update(b, dt, map) {
         const dx = Math.cos(b.angle) * b.speed * dt;
@@ -31,7 +33,7 @@ export const direct = {
     /** Apply the terrain/structure impact of a direct bullet that hit solid ground. */
     onTerrain(game, b) {
         game.particles.emit("impact", b.x, b.y);
-        game.emit("impact", { bullet: b });
+        game.emit(GAME_EVENTS.IMPACT, { bullet: b });
         const gx = Math.floor(b.x),
             gy = Math.floor(b.y);
         const structure = game._getStructureAt(gx, gy);

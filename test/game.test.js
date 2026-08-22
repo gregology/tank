@@ -1524,7 +1524,7 @@ describe("Game – separation, crush, structures, towers", () => {
         game.on("fire", (d) => fires.push(d));
         game.updateWatchTowers(0.016);
         assert.ok(
-            fires.some((f) => f.tower === tower),
+            fires.some((f) => f.source === tower),
             "tower fired",
         );
     });

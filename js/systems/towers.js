@@ -9,6 +9,7 @@
 
 import { pickTarget } from "../ai/targeting.js";
 import { BASE_STRUCTURES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
 
 /** Update watch-tower firing (auto-targets enemies in range with LOS). */
@@ -46,7 +47,7 @@ export function updateWatchTowers(game, dt) {
                 flash: "ifv",
                 flashOffset: 0.3,
             });
-            game.emit("fire", { tower, bullet: b, sound: cfg.fireSound ?? "tower" });
+            game.emit(GAME_EVENTS.FIRE, { source: tower, bullet: b, sound: cfg.fireSound ?? "tower" });
         }
     }
 }

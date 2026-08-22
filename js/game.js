@@ -29,6 +29,7 @@
 import { AIController, pickRoleForVehicle } from "./ai.js";
 import { Camera } from "./camera.js";
 import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
+import { GAME_EVENTS } from "./events.js";
 import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
 import { getMode } from "./modes.js";
@@ -71,6 +72,12 @@ export class Game {
         this.winner = null; // winning faction id
         /** @type {Record<string,Function[]>} */
         this._listeners = {};
+
+        // Cross-cutting pathfinder invalidation: any terrain change invalidates
+        // every bot's cached A* route (was a direct `ai._pf` reach before).
+        this.on(GAME_EVENTS.TERRAIN_CHANGED, () => {
+            for (const { ai } of this._bots) ai.invalidatePath();
+        });
 
         this._init();
     }
@@ -380,11 +387,11 @@ export class Game {
 
         if (result === "destroyed") {
             this.particles.emit("explosion", tank.x, tank.y);
-            this.emit("destroy", { tank });
+            this.emit(GAME_EVENTS.DESTROY, { entity: tank });
             this.mode.onKill(this, source.team, tank);
         } else if (result === "damaged") {
             this.particles.emit("impact", source.x, source.y);
-            this.emit("hit", { tank, zone });
+            this.emit(GAME_EVENTS.HIT, { tank, zone });
         } else {
             this.particles.emit("tinyImpact", source.x, source.y);
         }
@@ -418,10 +425,6 @@ export class Game {
         separatePairs(this, tanks);
     }
 
-    _invalidatePathfinders() {
-        for (const { ai } of this._bots) ai._pf?.invalidate();
-    }
-
     /* ── Base compound helpers ─────────────────────────────── */
 
     /** Register the mode's base compounds and their structures (battle init). */
@@ -448,16 +451,16 @@ export class Game {
             this._structureMap.delete(`${pos.gx},${pos.gy}`);
         }
         this.particles.emit("explosion", structure.x, structure.y);
-        this.emit("destroy", { structure });
-        this._invalidatePathfinders();
+        this.emit(GAME_EVENTS.DESTROY, { entity: structure });
+        this.emit(GAME_EVENTS.TERRAIN_CHANGED, { structure });
     }
 
     /** Apply damage to a destructible tile; emits the destroy_tile event on break. */
     damageTileAt(gx, gy, damage) {
         if (!this.map.damageTile(gx, gy, damage)) return;
         this.particles.emit("explosion", gx + 0.5, gy + 0.5);
-        this.emit("destroy_tile", { gx, gy });
-        this._invalidatePathfinders();
+        this.emit(GAME_EVENTS.DESTROY_TILE, { gx, gy });
+        this.emit(GAME_EVENTS.TERRAIN_CHANGED, { gx, gy });
     }
 
     /** Update watch tower firing (auto-targeting enemies in range). */

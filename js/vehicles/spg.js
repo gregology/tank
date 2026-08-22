@@ -9,6 +9,7 @@
  */
 
 import { ACTIONS, CONFIG, VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { spawnBullet } from "../shoot.js";
 import { groundMove } from "./tank.js";
 
@@ -61,7 +62,7 @@ export const spg = {
                 flash: "spg",
                 flashOffset: CONFIG.TANK_BARREL_LENGTH,
             });
-            game.emit("fire", { tank, bullet: b, sound: VEHICLES.spg.fireSound ?? "tank" });
+            game.emit(GAME_EVENTS.FIRE, { source: tank, bullet: b, sound: VEHICLES.spg.fireSound ?? "tank" });
         } else {
             charge.isCharging = false;
             charge.chargeTime = 0;

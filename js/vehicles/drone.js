@@ -11,6 +11,7 @@ import { patrol } from "../ai/navigation.js";
 import { chooseGoalAndTarget } from "../ai/roles.js";
 import { targetPriorityOf } from "../ai/targeting.js";
 import { ACTIONS, BASE_STRUCTURES, VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { applyBlast } from "./aoe.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
 
@@ -25,7 +26,7 @@ export const drone = {
         applyBlast(game, drone.x, drone.y, blastR, maxDmg, drone.team);
 
         game.particles.emit("droneExplosion", drone.x, drone.y);
-        game.emit("drone_strike", { drone });
+        game.emit(GAME_EVENTS.DRONE_STRIKE, { drone });
         drone.kill();
     },
 

@@ -11,6 +11,8 @@
  * Menu screens call `play("select")` / `play("confirm")` directly.
  */
 
+import { GAME_EVENTS } from "./events.js";
+
 /**
  * Synth voices, keyed by sound name.
  *
@@ -191,14 +193,14 @@ export class AudioManager {
 
     /** Subscribe to a Game's event bus. */
     hookIntoGame(game) {
-        game.on("fire", (d) => this.play(d.sound ?? "tank"));
-        game.on("artillery_impact", () => this.play("spgLand"));
-        game.on("drone_strike", () => this.play("droneStrike"));
-        game.on("destroy", () => this.play("explosion"));
-        game.on("destroy_tile", () => this.play("explosion"));
-        game.on("impact", () => this.play("impact"));
-        game.on("hit", () => this.play("hit"));
-        game.on("win", () => this.play("win"));
+        game.on(GAME_EVENTS.FIRE, (d) => this.play(d.sound ?? "tank"));
+        game.on(GAME_EVENTS.ARTILLERY_IMPACT, () => this.play("spgLand"));
+        game.on(GAME_EVENTS.DRONE_STRIKE, () => this.play("droneStrike"));
+        game.on(GAME_EVENTS.DESTROY, () => this.play("explosion"));
+        game.on(GAME_EVENTS.DESTROY_TILE, () => this.play("explosion"));
+        game.on(GAME_EVENTS.IMPACT, () => this.play("impact"));
+        game.on(GAME_EVENTS.HIT, () => this.play("hit"));
+        game.on(GAME_EVENTS.WIN, () => this.play("win"));
     }
 
     /* ── sound engine ──────────────────────────────────────── */

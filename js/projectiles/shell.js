@@ -8,6 +8,7 @@
  */
 
 import { VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { applyBlast } from "../vehicles/aoe.js";
 
 export const shell = {
@@ -37,6 +38,6 @@ export const shell = {
         applyBlast(game, b.x, b.y, VEHICLES.spg.splashRadius, b.damage, b.team);
         game.damageTileAt(Math.floor(b.x), Math.floor(b.y), b.damage);
         game.particles.emit("artilleryImpact", b.x, b.y);
-        game.emit("artillery_impact", { bullet: b });
+        game.emit(GAME_EVENTS.ARTILLERY_IMPACT, { bullet: b });
     },
 };

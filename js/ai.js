@@ -136,6 +136,11 @@ export class AIController {
         this.stuckTime = 0;
     }
 
+    /** Invalidate the cached pathfinder after terrain changes. */
+    invalidatePath() {
+        this._pf?.invalidate();
+    }
+
     /* ════════════════════════════════════════════════════════ *
      *  Main think                                              *
      * ════════════════════════════════════════════════════════ */

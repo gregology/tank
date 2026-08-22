@@ -9,6 +9,8 @@
  * it rather than copying the loop.
  */
 
+import { GAME_EVENTS } from "../events.js";
+
 /**
  * Apply radial blast damage to enemy tanks and structures.
  *
@@ -38,7 +40,7 @@ export function applyBlast(game, x, y, radius, damage, team) {
                 game.onStructureDestroyed(e);
             } else {
                 game.particles.emit("impact", x, y);
-                game.emit("impact", {});
+                game.emit(GAME_EVENTS.IMPACT, { point: { x, y } });
             }
         } else {
             game.applyHitToTank({ x, y, team }, e, dmg);

@@ -12,6 +12,7 @@
  */
 
 import { ACTIONS, SQUAD_MEMBERS, VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
 import { flashMuzzle, spawnBullet } from "../shoot.js";
 import { pickSquadTarget, Squad } from "../squad.js";
 import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
@@ -44,7 +45,7 @@ function fireMemberAt(game, squad, memberPos, weapon, target) {
 
     // Muzzle flash + event (the weapon's sound key drives the audio)
     flashMuzzle(game, "ifv", memberPos.x + Math.cos(angle) * 0.3, memberPos.y + Math.sin(angle) * 0.3, angle);
-    game.emit("fire", { tank: squad, bullet: game.bullets[game.bullets.length - 1], sound: weapon.sound });
+    game.emit(GAME_EVENTS.FIRE, { source: squad, bullet: game.bullets[game.bullets.length - 1], sound: weapon.sound });
 }
 
 export const squad = {

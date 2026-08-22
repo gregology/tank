@@ -75,7 +75,7 @@ describe("tank behaviour (direct fire)", () => {
         assert.equal(game.bullets[0].speed, VEHICLES.tank.bulletSpeed);
         assert.ok(tank.fireCooldown > 0, "fire cooldown set");
         assert.equal(game.events[0].event, "fire");
-        assert.equal(game.events[0].d.tank, tank);
+        assert.equal(game.events[0].d.source, tank);
     });
 
     it("does not fire while the cooldown is active", () => {
