@@ -206,7 +206,7 @@ describe("Base compounds", () => {
         const [l1] = map.buildBaseCompounds();
         const s = VEHICLES.tank.size * 0.85;
         for (let i = 0; i < 20; i++) {
-            const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+            const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
             assert.ok(
                 map.isPassable(sp.x - s, sp.y - s) &&
                     map.isPassable(sp.x + s, sp.y - s) &&
@@ -223,7 +223,7 @@ describe("Base compounds", () => {
             const map = new GameMap(sz, sz);
             const [l1] = map.buildBaseCompounds();
             for (let i = 0; i < 10; i++) {
-                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
                 assert.ok(
                     map.isPassable(sp.x - s, sp.y - s) &&
                         map.isPassable(sp.x + s, sp.y - s) &&

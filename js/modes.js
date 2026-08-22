@@ -39,6 +39,7 @@ function buildBase(layout, team, color, darkColor) {
     base.origin = { x: layout.ox, y: layout.oy };
     base.entranceDir = layout.dir;
     base.compoundSize = layout.size;
+    base.half = layout.half;
 
     for (const spec of layout.structures) {
         const structure = new BaseStructure(spec.type, team, color, darkColor);
@@ -161,7 +162,7 @@ const battle = {
             const enemyBase = game.bases.find((b) => b.team !== f.id);
             if (!base) continue;
             for (const t of f.entities) {
-                const sp = game.map.getBaseSpawnPoint(base.center.x, base.center.y);
+                const sp = game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half);
                 t.respawnAt(sp.x, sp.y);
                 t.alive = true;
                 t.angle = enemyBase
@@ -197,7 +198,9 @@ const battle = {
     /** Respawn inside the compound, or anywhere if the base is gone. */
     respawn(game, tank) {
         const base = game.bases.find((b) => b.team === tank.team);
-        return base?.alive ? game.map.getBaseSpawnPoint(base.center.x, base.center.y) : game.map.getSpawnPoint();
+        return base?.alive
+            ? game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half)
+            : game.map.getSpawnPoint();
     },
 
     /** No scoring — timed respawns are handled by Game._handleRespawns. */

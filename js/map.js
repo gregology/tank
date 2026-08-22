@@ -54,8 +54,8 @@ export class GameMap extends TileGrid {
     }
 
     /** Random passable spawn point inside a compound's interior. */
-    getBaseSpawnPoint(cx, cy) {
-        return baseSpawnPoint(this, cx, cy);
+    getBaseSpawnPoint(cx, cy, half) {
+        return baseSpawnPoint(this, cx, cy, half);
     }
 
     /** Random passable spawn point, far from (ax, ay). */

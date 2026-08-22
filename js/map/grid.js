@@ -33,8 +33,6 @@ export class TileGrid {
         this.maxHp = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions (new island every game). */
         this.seed = Math.floor(Math.random() * 2147483647);
-        /** Compound tier — set by buildBaseCompounds(). */
-        this._compoundTier = null;
     }
 
     getTile(gx, gy) {

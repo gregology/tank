@@ -48,7 +48,6 @@ function loop(timestamp) {
             if (anyPressed(ACTIONS.confirm)) {
                 audio.init();
                 game.restart();
-                audio.hookIntoGame(game); // re-subscribe (new ParticleSystem)
             }
             // Back to the lobby (joins preserved) — any device backs out.
             if (anyPressed(ACTIONS.back)) {

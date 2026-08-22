@@ -153,6 +153,11 @@ export class Game {
         if (!this._listeners[event]) this._listeners[event] = [];
         this._listeners[event].push(fn);
     }
+    off(event, fn) {
+        const list = this._listeners[event];
+        if (!list) return;
+        this._listeners[event] = list.filter((f) => f !== fn);
+    }
     emit(event, d) {
         for (const fn of this._listeners[event] ?? []) fn(d);
     }

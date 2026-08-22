@@ -19,7 +19,7 @@ import {
 
 /** Passable spawn points near each compound centre (battle maps). */
 function baseSpawns(map, layouts) {
-    return layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y));
+    return layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y, l.half));
 }
 
 /* ── Helper: run a navigation scenario across N fixed seeds ── *

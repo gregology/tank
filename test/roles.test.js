@@ -367,14 +367,14 @@ describe("AI Roles – team simulation with roles", () => {
         for (let trial = 0; trial < 5; trial++) {
             const map = new GameMap();
             const [l1, l2] = map.buildBaseCompounds();
-            const sp1 = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+            const sp1 = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
             const tp2 = l2.hqCenter;
             const friendlyBase = { x: sp1.x, y: sp1.y, alive: true };
             const objective = { x: tp2.x, y: tp2.y, alive: true };
 
             const roles = [AI_ROLES.CAVALRY, AI_ROLES.SNIPER, AI_ROLES.DEFENDER, AI_ROLES.SCOUT];
             const bots = roles.map((role, i) => {
-                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
                 const bot = createRoleBot(sp.x, sp.y, 0, map, role, { friendlyBase });
                 bot.tank.team = 1;
                 bot.tank.playerNumber = i + 2;

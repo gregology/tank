@@ -175,6 +175,8 @@ export class AudioManager {
         this.initialized = false;
         this.muted = false;
         this._noiseCache = null;
+        /** The Game this manager is already subscribed to (idempotent hooking). */
+        this._hookedGame = null;
     }
 
     /* ── lifecycle ─────────────────────────────────────────── */
@@ -191,8 +193,11 @@ export class AudioManager {
         }
     }
 
-    /** Subscribe to a Game's event bus. */
+    /** Subscribe to a Game's event bus (idempotent per game). */
     hookIntoGame(game) {
+        if (this._hookedGame === game) return;
+        this._hookedGame = game;
+
         game.on(GAME_EVENTS.FIRE, (d) => this.play(d.sound ?? "tank"));
         game.on(GAME_EVENTS.ARTILLERY_IMPACT, () => this.play("spgLand"));
         game.on(GAME_EVENTS.DRONE_STRIKE, () => this.play("droneStrike"));

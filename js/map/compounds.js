@@ -35,8 +35,8 @@ export function buildBaseCompounds(grid, baseType) {
 
     // Pick compound tier based on map size
     const mapMin = Math.min(grid.width, grid.height);
-    grid._compoundTier = mapMin <= 80 ? "small" : mapMin <= 160 ? "medium" : "large";
-    const compoundR = COMPOUND_HALF[grid._compoundTier] + 2;
+    const tier = mapMin <= 80 ? "small" : mapMin <= 160 ? "medium" : "large";
+    const compoundR = COMPOUND_HALF[tier] + 2;
 
     // Scale spatial parameters from island radius
     const clearR = Math.round(maxR * 0.25); // clear terrain radius around base
@@ -58,9 +58,7 @@ export function buildBaseCompounds(grid, baseType) {
     const dir2 = angleToCardinal(angle2);
 
     // Stamp compounds onto the map (size scales with map)
-    const stamp = { small: stampCompoundSmall, medium: stampCompoundMedium, large: stampCompoundLarge }[
-        grid._compoundTier
-    ];
+    const stamp = { small: stampCompoundSmall, medium: stampCompoundMedium, large: stampCompoundLarge }[tier];
     const layout1 = stamp(grid, Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
     const layout2 = stamp(grid, Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
 
@@ -392,10 +390,9 @@ function connectCompoundToRoad(grid, layout) {
  * Pick a random spawn point inside a compound's interior.
  * @param {number} cx  compound centre grid X
  * @param {number} cy  compound centre grid Y
+ * @param {number} half  compound half-extent in tiles (from the layout)
  */
-export function getBaseSpawnPoint(grid, cx, cy) {
-    const tier = grid._compoundTier ?? "small";
-    const half = COMPOUND_HALF[tier] ?? COMPOUND_HALF.small;
+export function getBaseSpawnPoint(grid, cx, cy, half = COMPOUND_HALF.small) {
     const interior = (half - 1) * 2;
     const ox = Math.floor(cx) - half,
         oy = Math.floor(cy) - half;
