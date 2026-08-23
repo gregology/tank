@@ -7,7 +7,7 @@ import { ACTIONS } from "../config.js";
 import { roundedRect } from "../render/canvas-utils.js";
 import { drawGrid, drawMenuVehicle } from "./background.js";
 import { anyPressed } from "./input.js";
-import { getStatValue, STAT_METRICS, VEHICLE_INFO } from "./vehicle-info.js";
+import { getStatValue, STAT_METRICS, VEHICLE_INFO, vehicleStats } from "./vehicle-info.js";
 
 export const aboutScreen = {
     update(menu, input, audio) {
@@ -96,7 +96,8 @@ export const aboutScreen = {
 
         // Stats row
         const statsY = previewY + 106;
-        const statKeys = Object.keys(vi.stats);
+        const stats = vehicleStats(vi.type);
+        const statKeys = Object.keys(stats);
         const statSpacing = Math.min(110, (W - 60) / statKeys.length);
         const statStart = cx - (statSpacing * (statKeys.length - 1)) / 2;
 
@@ -111,7 +112,7 @@ export const aboutScreen = {
             ctx.fillStyle = "#555";
             ctx.fillText(key, sx, statsY - 2);
             ctx.fillStyle = vi.color;
-            ctx.fillText(`${vi.stats[key]}`, sx, statsY + 12);
+            ctx.fillText(`${stats[key]}`, sx, statsY + 12);
         }
 
         // Description

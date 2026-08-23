@@ -16,7 +16,6 @@ export const VEHICLE_INFO = [
         tagline: "Main Battle Tank",
         color: "#cc3333",
         dark: "#882222",
-        stats: { SPD: 3.0, ARM: 2, DMG: 1.0, ROF: "Med", TUR: "Yes" },
         desc: [
             "The backbone of any fighting force.",
             "Independent rotating turret lets you",
@@ -35,7 +34,6 @@ export const VEHICLE_INFO = [
         tagline: "Infantry Fighting Vehicle",
         color: "#3366dd",
         dark: "#223399",
-        stats: { SPD: 4.5, ARM: 1, DMG: 0.25, ROF: "Fast", TUR: "No" },
         desc: [
             "Fast wheeled recon vehicle with a",
             "rapid-fire autocannon. Fixed forward",
@@ -54,7 +52,6 @@ export const VEHICLE_INFO = [
         tagline: "FPV Kamikaze Quadcopter",
         color: "#44bb44",
         dark: "#228822",
-        stats: { SPD: 6.0, ARM: 1, DMG: "1.0 AoE", ROF: "N/A", TUR: "No" },
         desc: [
             "Extremely fast FPV drone that flies",
             "over ALL terrain including water,",
@@ -73,7 +70,6 @@ export const VEHICLE_INFO = [
         tagline: "Self-Propelled Gun",
         color: "#dd8833",
         dark: "#885522",
-        stats: { SPD: 2.0, ARM: 1, DMG: 1.5, ROF: "Slow", TUR: "Yes" },
         desc: [
             "Heavy artillery that lobs shells in",
             "a high arc OVER terrain obstacles.",
@@ -92,7 +88,6 @@ export const VEHICLE_INFO = [
         tagline: "Infantry Fireteam",
         color: "#55aa44",
         dark: "#337722",
-        stats: { SPD: 2.6, ARM: 1, DMG: 1.0, ROF: "Auto", TUR: "No" },
         desc: [
             "Five-man squad that fights on its own.",
             "Each member auto-fires at its target:",
@@ -129,4 +124,20 @@ export const STAT_METRICS = [
 export function getStatValue(type, key) {
     const metric = STAT_METRICS.find((m) => m.key === key);
     return metric ? metric.value(VEHICLES[type], type) : 0;
+}
+
+/**
+ * Player-facing stat summary for a vehicle, derived from `VEHICLES` (the
+ * data leaf) — speed and turret come straight from the table, while damage
+ * and fire-rate read the explicit `displayDmg` / `displayRoF` labels.
+ */
+export function vehicleStats(type) {
+    const v = VEHICLES[type];
+    return {
+        SPD: v.speed,
+        ARM: v.displayArmour ?? 1,
+        DMG: v.displayDmg,
+        ROF: v.displayRoF,
+        TUR: v.turret === "independent" ? "Yes" : "No",
+    };
 }
