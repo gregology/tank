@@ -74,13 +74,13 @@ export const ROLE_STRATEGIES = {
 
             const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
             if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
-                fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                fireTarget = { target: objective, dist: objDist };
             }
 
             // Engage nearby enemies (don't detour to chase — just shoot)
             const bestEnemy = bestTarget(ai, me, enemies);
             if (bestEnemy && bestEnemy.dist < CONFIG.CAVALRY_ENGAGE_RANGE) {
-                fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+                fireTarget = bestEnemy;
             }
 
             return { navGoal, fireTarget };
@@ -130,7 +130,7 @@ export const ROLE_STRATEGIES = {
                     navGoal = { x: ai.roleState.flankPoint.x, y: ai.roleState.flankPoint.y };
                     // Fire at tower if already in range while flanking
                     if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
-                        fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                        fireTarget = { target: objective, dist: objDist };
                     }
                 }
             }
@@ -140,7 +140,7 @@ export const ROLE_STRATEGIES = {
                 if (posReached) {
                     navGoal = { x: me.x, y: me.y };
                     if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
-                        fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                        fireTarget = { target: objective, dist: objDist };
                     }
                 } else if (objDist < minRange) {
                     // Too close — back off
@@ -149,11 +149,11 @@ export const ROLE_STRATEGIES = {
                         x: objective.x + Math.cos(awayAngle) * fireRange,
                         y: objective.y + Math.sin(awayAngle) * fireRange,
                     };
-                    fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                    fireTarget = { target: objective, dist: objDist };
                 } else {
                     navGoal = ai.roleState.sniperPos || { x: objective.x, y: objective.y };
                     if (objDist < fireRange + CONFIG.SNIPER_FIRE_MARGIN) {
-                        fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                        fireTarget = { target: objective, dist: objDist };
                     }
                 }
             }
@@ -161,7 +161,7 @@ export const ROLE_STRATEGIES = {
             // Self-defence: engage enemies only when very close
             const bestEnemy = bestTarget(ai, me, enemies);
             if (bestEnemy && bestEnemy.dist < CONFIG.SNIPER_ENGAGE_RANGE) {
-                fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+                fireTarget = bestEnemy;
             }
 
             return { navGoal, fireTarget };
@@ -200,8 +200,7 @@ export const ROLE_STRATEGIES = {
                 // Intercept the closest threat to our tower
                 navGoal = { x: closestThreat.x, y: closestThreat.y };
                 fireTarget = {
-                    x: closestThreat.x,
-                    y: closestThreat.y,
+                    target: closestThreat,
                     dist: Math.hypot(closestThreat.x - me.x, closestThreat.y - me.y),
                 };
             } else {
@@ -225,7 +224,7 @@ export const ROLE_STRATEGIES = {
                 // Fire at any enemy within personal range
                 const bestEnemy = bestTarget(ai, me, enemies);
                 if (bestEnemy && bestEnemy.dist < CONFIG.DEFENDER_PERSONAL_RANGE) {
-                    fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+                    fireTarget = bestEnemy;
                 }
             }
 
@@ -263,13 +262,13 @@ export const ROLE_STRATEGIES = {
 
             // Fire at tower when in range
             if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
-                fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                fireTarget = { target: objective, dist: objDist };
             }
 
             // Only engage enemies that are very close (self-defence)
             const bestEnemy = bestTarget(ai, me, enemies);
             if (bestEnemy && bestEnemy.dist < CONFIG.SCOUT_ENGAGE_RANGE) {
-                fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+                fireTarget = bestEnemy;
             }
 
             return { navGoal, fireTarget };
@@ -289,12 +288,12 @@ const DEFAULT_ROLE = {
             navGoal = { x: objective.x, y: objective.y };
             const objDist = Math.hypot(objective.x - me.x, objective.y - me.y);
             if (objDist < CONFIG.OBJECTIVE_ENGAGE_RANGE) {
-                fireTarget = { x: objective.x, y: objective.y, dist: objDist };
+                fireTarget = { target: objective, dist: objDist };
             }
         }
 
         if (bestEnemy && bestEnemy.dist < CONFIG.DEFAULT_ENGAGE_RANGE) {
-            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+            fireTarget = bestEnemy;
             if (!objective && bestEnemy.dist < CONFIG.DEFAULT_CHASE_RANGE) {
                 navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
             }
@@ -302,7 +301,7 @@ const DEFAULT_ROLE = {
 
         if (!navGoal && bestEnemy) {
             navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
-            fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+            fireTarget = bestEnemy;
         }
 
         return { navGoal, fireTarget };

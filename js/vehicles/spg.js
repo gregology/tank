@@ -78,13 +78,12 @@ export const spg = {
     update(_game, _tank, _dt) {},
 
     /** Hold fire to charge until the shell would reach the target, then release. */
-    aim(ai, me, target, _map) {
+    aim(ai, me, { target, dist }, _map) {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
         ai.steerTurretTo(me, desiredWorld);
 
         if (Math.abs(angleDiff(me.turretWorld, desiredWorld)) > 0.3) return;
 
-        const dist = target.dist;
         const vStats = VEHICLES.spg;
         if (dist < vStats.minRange * 0.5 || dist > vStats.maxRange * 1.1) return;
         if (me.fireCooldown > 0) return;

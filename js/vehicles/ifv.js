@@ -14,7 +14,7 @@ import { tank } from "./tank.js";
 export const ifv = {
     ...tank,
 
-    aim(ai, me, target, map) {
+    aim(ai, me, { target }, map) {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
         if (Math.abs(angleDiff(me.turretWorld, desiredWorld)) > 0.4) return;
         if (ai.fireDelay > 0) return;

@@ -51,7 +51,7 @@ export const drone = {
         // If we have a fire target nearby, prioritise diving at it.
         let target = navGoal;
         if (fireTarget && fireTarget.dist < 20) {
-            target = { x: fireTarget.x, y: fireTarget.y };
+            target = fireTarget.target;
         }
 
         if (!target) {

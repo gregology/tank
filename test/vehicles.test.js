@@ -265,7 +265,7 @@ describe("AI aim strategies", () => {
         const me = placedTank("tank", 10.5, 10.5);
         me.angle = 0;
         const ai = stubAi(me);
-        const target = { x: 14.5, y: 10.5, dist: 4 };
+        const target = { target: { x: 14.5, y: 10.5 }, dist: 4 };
         getVehicleBehaviour("tank").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], true, "fired after aiming east at an eastern target");
     });
@@ -275,7 +275,7 @@ describe("AI aim strategies", () => {
         const me = placedTank("tank", 10.5, 10.5);
         me.angle = 0;
         const ai = stubAi(me);
-        const target = { x: 14.5, y: 10.5, dist: 4 };
+        const target = { target: { x: 14.5, y: 10.5 }, dist: 4 };
         getVehicleBehaviour("tank").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], undefined, "no LOS → no fire");
     });
@@ -285,7 +285,7 @@ describe("AI aim strategies", () => {
         const me = placedTank("ifv", 10.5, 10.5);
         me.angle = 0;
         const ai = stubAi(me);
-        const target = { x: 14.5, y: 12.0, dist: 4.3 }; // slightly off the hull line
+        const target = { target: { x: 14.5, y: 12.0 }, dist: 4.3 }; // slightly off the hull line
         getVehicleBehaviour("ifv").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], true);
     });
@@ -296,7 +296,7 @@ describe("AI aim strategies", () => {
         me.angle = 0;
         const ai = stubAi(me);
         const dist = 10;
-        const target = { x: 10.5 + dist, y: 10.5, dist };
+        const target = { target: { x: 10.5 + dist, y: 10.5 }, dist };
         getVehicleBehaviour("spg").aim(ai, me, target, map);
         assert.equal(ai.keys[ACTIONS.fire], true, "charging while the shell falls short");
 

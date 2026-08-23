@@ -127,28 +127,28 @@ export function groundMove(tank, device, dt, map, canDrive) {
  */
 function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
     const bestEnemy = bestTarget(ai, me, enemies);
-    let target = null;
+    let fireTarget = null;
 
     if (bestEnemy && bestEnemy.dist < CONFIG.IMMOBILISED_ENGAGE_RANGE) {
-        target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+        fireTarget = bestEnemy;
     } else if (objective) {
         const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-        target = { x: objective.x, y: objective.y, dist: d };
+        fireTarget = { target: objective, dist: d };
     } else if (bestEnemy) {
-        target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
+        fireTarget = bestEnemy;
     }
 
-    if (!target) return;
+    if (!fireTarget) return;
 
     // Rotate the hull toward the target (since we can't drive).
-    const desired = Math.atan2(target.y - me.y, target.x - me.x);
+    const desired = Math.atan2(fireTarget.target.y - me.y, fireTarget.target.x - me.x);
     const diff = angleDiff(me.angle, desired);
 
     if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
     if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
     // Also aim the turret if it is functional.
-    ai.aimAndFire(me, target, map);
+    ai.aimAndFire(me, fireTarget, map);
 }
 
 export const tank = {
@@ -187,7 +187,7 @@ export const tank = {
      * when the turret is disabled), then fire when aimed and LOS is
      * clear; otherwise shoot destructible terrain in front.
      */
-    aim(ai, me, target, map) {
+    aim(ai, me, { target }, map) {
         const desiredWorld = Math.atan2(target.y - me.y, target.x - me.x);
 
         if (me.turretDisabled) {
