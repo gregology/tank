@@ -37,7 +37,7 @@ export function normalizeAngle(a) {
 }
 
 /** Wrap an angle to [-PI, PI]. */
-export function normalizeAngleSigned(a) {
+function normalizeAngleSigned(a) {
     let r = a % (Math.PI * 2);
     if (r > Math.PI) r -= Math.PI * 2;
     if (r < -Math.PI) r += Math.PI * 2;

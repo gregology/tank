@@ -144,7 +144,7 @@ export function drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time) {
  * includes tile rows, eave overhang with shadow, and a small 3-D
  * chimney on the lit slope.
  */
-export function drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr) {
+function drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr) {
     const { fill } = createDrawHelpers(ctx);
     const rh = tile === T.BLDG_SMALL ? 7 : 9; // peak rise above wall top
     const ov = 2.5; // eave overhang (px)
@@ -237,7 +237,7 @@ export function drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr) {
 /**
  * Flat roof with a parapet rim and rooftop clutter (large buildings).
  */
-export function drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot) {
+function drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot) {
     const { fill, outline } = createDrawHelpers(ctx);
     const lip = 2; // parapet height
     const rim = [
@@ -296,7 +296,7 @@ export function drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot) {
  * a→b = wall top edge (screen points), y0 = px below the wall top,
  * t0..t1 = window span as fractions along the edge, wh = height.
  */
-export function drawWallWindow(ctx, a, b, y0, t0, t1, wh, frameCol) {
+function drawWallWindow(ctx, a, b, y0, t0, t1, wh, frameCol) {
     const { fill } = createDrawHelpers(ctx);
     const topL = lerpPt(a, b, t0),
         topR = lerpPt(a, b, t1);
@@ -328,7 +328,7 @@ export function drawWallWindow(ctx, a, b, y0, t0, t1, wh, frameCol) {
  * Draw a door lying in a wall plane, anchored at the wall base.
  * a→b = wall top edge, h = wall height, t0..t1 = door span.
  */
-export function drawWallDoor(ctx, a, b, h, t0, t1, frameCol) {
+function drawWallDoor(ctx, a, b, h, t0, t1, frameCol) {
     const { fill } = createDrawHelpers(ctx);
     const doorH = Math.min(h * 0.55, 10),
         y0 = h - doorH;

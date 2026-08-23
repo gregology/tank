@@ -67,7 +67,7 @@ export function drawTile(ctx, { gx, gy, tile, sx, sy }, time, map) {
 }
 
 /** Draw a flat isometric diamond (top face of a ground-level tile). */
-export function drawDiamond(ctx, sx, sy, color) {
+function drawDiamond(ctx, sx, sy, color) {
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
@@ -79,7 +79,7 @@ export function drawDiamond(ctx, sx, sy, color) {
 }
 
 /** Draw an elevated tile (top face + two visible side faces). */
-export function drawElevatedTile(ctx, sx, sy, h, topC, leftC, rightC, v) {
+function drawElevatedTile(ctx, sx, sy, h, topC, leftC, rightC, v) {
     // Left (SW) side
     ctx.fillStyle = rgb(leftC.r + v * 2, leftC.g + v * 2, leftC.b + v * 2);
     ctx.beginPath();

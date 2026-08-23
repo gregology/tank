@@ -125,7 +125,7 @@ export function groundMove(tank, device, dt, map, canDrive) {
  * rotate the hull toward the nearest threat (or the objective) and keep
  * firing.  Shared by the ground vehicles via the base `tank` behaviour.
  */
-export function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
+function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
     const bestEnemy = bestTarget(ai, me, enemies);
     let target = null;
 

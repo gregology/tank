@@ -104,7 +104,7 @@ export function patrol(ai) {
  * Light reactive obstacle avoidance: if the tile straight ahead is
  * impassable, steer around it (or stop rather than drive into it).
  */
-export function nudge(ai, me, map) {
+function nudge(ai, me, map) {
     const k = ACTIONS,
         a = me.angle;
     const bk = (ang, d) => !map.isPassable(me.x + Math.cos(ang) * d, me.y + Math.sin(ang) * d);

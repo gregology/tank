@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Game } from "../js/game.js";
 import { HIT_ZONE } from "../js/tank.js";
+import { getVehicleBehaviour } from "../js/vehicles/index.js";
 import {
     ACTIONS,
     BASE_STRUCTURES,
@@ -1249,7 +1250,7 @@ describe("Game – human firing", () => {
         }
         const fires = [];
         game.on("fire", (d) => fires.push(d));
-        game._handleFiring(squad, fakeDevice(), 0.016);
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, fakeDevice(), 0.016);
         assert.ok(fires.length >= 1, "squad members fired");
         assert.ok(game.bullets.length >= 1);
     });
@@ -1260,11 +1261,11 @@ describe("Game – human firing", () => {
         squad.vehicleType = "squad";
         const comp = squad.squad;
         const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
-        game._handleFiring(squad, toggle, 0.016);
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, toggle, 0.016);
         assert.equal(comp.digIn.state, "diggingIn");
         comp.update(1.1, game.map);
         assert.equal(comp.digIn.state, "dugIn");
-        game._handleFiring(squad, toggle, 0.016);
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, toggle, 0.016);
         assert.equal(comp.digIn.state, "roaming");
     });
 });
@@ -1647,9 +1648,9 @@ describe("Game – deeper coverage", () => {
         squad.vehicleType = "squad";
         const comp = squad.squad;
         const toggle = fakeDevice({ pressed: [ACTIONS.fire] });
-        game._handleFiring(squad, toggle, 0.016); // roaming → diggingIn
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, toggle, 0.016); // roaming → diggingIn
         assert.equal(comp.digIn.state, "diggingIn");
-        game._handleFiring(squad, toggle, 0.016); // diggingIn → cancel → roaming
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, toggle, 0.016); // diggingIn → cancel → roaming
         assert.equal(comp.digIn.state, "roaming");
     });
 
@@ -1657,7 +1658,7 @@ describe("Game – deeper coverage", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const spg = game.humanTank;
         spg.vehicleType = "spg";
-        game._handleFiring(spg, fakeDevice(), 0.016); // not held, not charging
+        getVehicleBehaviour(spg.vehicleType).fire(game, spg, fakeDevice(), 0.016); // not held, not charging
         assert.equal(spg.charge.isCharging, false);
         assert.equal(spg.charge.chargeTime, 0);
     });
@@ -1695,7 +1696,7 @@ describe("Game – deeper coverage", () => {
         const tower = game.bases[1].towers[0];
         drone.x = tower.x + 1;
         drone.y = tower.y;
-        game._handleFiring(drone, fakeDevice({ held: [ACTIONS.fire] }));
+        getVehicleBehaviour(drone.vehicleType).fire(game, drone, fakeDevice({ held: [ACTIONS.fire] }), 0.016);
         assert.ok(!drone.alive);
         assert.ok(tower.hp < BASE_STRUCTURES.baseTower.hp, "tower damaged by blast");
     });
@@ -1746,7 +1747,7 @@ describe("Game – deeper coverage", () => {
 });
 
 describe("Game – firing dispatch", () => {
-    it("_handleFiring routes squad tanks to the squad handler", () => {
+    it("squad tanks fire through the behaviour dispatch", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const squad = game.humanTank;
         const enemy = game.allTanks.find((t) => t.team === 2);
@@ -1762,17 +1763,17 @@ describe("Game – firing dispatch", () => {
         }
         const fires = [];
         game.on("fire", (d) => fires.push(d));
-        game._handleFiring(squad, fakeDevice(), 0.016);
+        getVehicleBehaviour(squad.vehicleType).fire(game, squad, fakeDevice(), 0.016);
         assert.ok(fires.length >= 1, "squad fired through the dispatch");
     });
 
-    it("_handleFiring routes drones to the detonation handler", () => {
+    it("drones detonate through the behaviour dispatch", () => {
         const game = new Game(skirmishConfig([human(1), human(2)]));
         const drone = game.humanTank;
         drone.vehicleType = "drone";
         const strikes = [];
         game.on("drone_strike", () => strikes.push("strike"));
-        game._handleFiring(drone, fakeDevice({ held: [ACTIONS.fire] }), 0.016);
+        getVehicleBehaviour(drone.vehicleType).fire(game, drone, fakeDevice({ held: [ACTIONS.fire] }), 0.016);
         assert.equal(strikes.length, 1);
         assert.ok(!drone.alive);
     });

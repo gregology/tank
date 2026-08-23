@@ -299,9 +299,9 @@ their first argument:
   resolves a shooter's weight via explicit override → `TARGET_TYPES` class
   default → 1, so a new target type is one `TARGET_TYPES` entry.
 - `navigation.js` — `updatePath` (A* refresh), `pickWaypoint` (walkable
-  skip-ahead), `steerToPoint` (turn-and-drive), `patrol`, `nudge`.
+  skip-ahead), `steerToPoint` (turn-and-drive), `patrol`.
 - `recovery.js` — `updateStuck` (position-history sampling), `handleStuck`
-  / `evade` (escalation), `tryShootWall` / `blastNearestWall`.
+  / `evade` (escalation), `tryShootWall`.
 - `aiming.js` — `steerTurretTo` (the shared turret-steering primitive),
   `aimTurretForward`, `updateWobble`.
 

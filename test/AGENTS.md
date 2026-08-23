@@ -137,17 +137,17 @@ Reusable, deterministic utilities:
   `update()` (artillery splash, crush resolution, watch towers, structure
   destruction), the suite calls the `_`-prefixed method directly after
   arranging state through public entities — assert on events/state, not
-  internals. Firing tests drive the vehicle behaviours through the Game
-  dispatch seam (`game._handleFiring(tank, device, dt)`), and geometry
-  queries are asserted on the shared API (`game.map.hasLineOfSight`,
-  `game.map.canStand`).
+  internals. Firing tests drive the vehicle behaviours directly
+  (`getVehicleBehaviour(tank.vehicleType).fire(game, tank, device, dt)`)
+  against a real `Game`, and geometry queries are asserted on the shared API
+  (`game.map.hasLineOfSight`, `game.map.canStand`).
 - **Vehicle behaviour tests** (`vehicles.test.js`) exercise each strategy in
   `js/vehicles/` in isolation against a minimal stub game (bullets,
-  particles, emit, allTanks, baseStructures, map, applyHitToTank,
-  onStructureDestroyed, damageTileAt) with real `Tank`/`GameMap` entities —
-  this keeps the firing/attack rules unit-testable without a full match. If a
-  behaviour needs a new Game seam, add it to the stub and to the real Game,
-  not around the stub.
+  particles, emit, allTanks, baseStructures, damageables, enemiesOf, map,
+  applyDamage, damageTileAt) with real `Tank`/`GameMap` entities — this keeps
+  the firing/attack rules unit-testable without a full match. If a behaviour
+  needs a new Game seam, add it to the stub and to the real Game, not around
+  the stub.
 - **Mode tests** (`modes.test.js`) exercise the Skirmish/Battle hooks in
   `js/modes.js` against a stub game (spawn, checkWin, onKill, respawn,
   labels, aiObjective, afterSeparation/afterBullets dispatch). Win-condition

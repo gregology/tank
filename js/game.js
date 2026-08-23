@@ -48,7 +48,7 @@ import { updateVehicles } from "./systems/update.js";
 import { checkWin } from "./systems/win.js";
 import { Tank } from "./tank.js";
 import { worldToScreen } from "./utils.js";
-import { getVehicleBehaviour, pickVehicleType } from "./vehicles/index.js";
+import { pickVehicleType } from "./vehicles/index.js";
 
 /* ================================================================== */
 
@@ -351,11 +351,6 @@ export class Game {
     /* ═══════════════════════════════════════════════════════ *
      *  SHARED helpers                                         *
      * ═══════════════════════════════════════════════════════ */
-
-    /** Per-frame firing/attack — dispatched to the vehicle's behaviour. */
-    _handleFiring(tank, device, dt = 0.016) {
-        getVehicleBehaviour(tank.vehicleType).fire(this, tank, device, dt);
-    }
 
     /**
      * The one damage-application seam: resolve a hit through the entity's own

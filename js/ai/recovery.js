@@ -97,7 +97,7 @@ export function tryShootWall(ai, me, map) {
  * (turret, or hull for fixed-gun vehicles), fire when aligned, and back
  * up.  Resets the stuck timer so the bot tries again fresh.
  */
-export function blastNearestWall(ai, me, map) {
+function blastNearestWall(ai, me, map) {
     const k = ACTIONS;
     let bestD = Infinity,
         bestA = me.turretWorld;
