@@ -16,46 +16,39 @@
  *   - Skirmish: one faction per distinct human team; if every human is on
  *               one team, a single bot faction is added as the opposition.
  *
+ * The two modes (score race vs base objective) diverge in spawn, win
+ * condition, scoring, and labels — that branching lives in the mode
+ * strategy (js/modes.js), not here.  Per-vehicle firing/attack rules
+ * live in the vehicle behaviours (js/vehicles/), dispatched from the
+ * `vehicleType`.  This file is the shared simulation loop.
+ *
  * Events: fire, hit, destroy, impact, destroy_tile, win,
  *         artillery_impact, drone_strike
  */
 
 import { AIController, pickRoleForVehicle } from "./ai.js";
-import { Bullet } from "./bullet.js";
 import { Camera } from "./camera.js";
-import { vehiclesSeparate } from "./collision.js";
-import {
-    ACTIONS,
-    BASE_STRUCTURES,
-    CONFIG,
-    GAME_TYPES,
-    PLAYER_COLORS,
-    SQUAD_MEMBERS,
-    TILES as T,
-    VEHICLES,
-} from "./config.js";
-import { Base, BaseHQ, BaseWall, BaseWatchTower } from "./entity.js";
+import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
+import { resolveDamage } from "./damage.js";
+import { GAME_EVENTS } from "./events.js";
 import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
+import { getMode } from "./modes.js";
 import { ParticleSystem } from "./particles.js";
-import { pickSquadTarget } from "./squad.js";
+import { updateCamera } from "./systems/camera.js";
+import { pushFromStructures as pushFromStructuresSystem, resolveCrushes, separatePairs } from "./systems/collision.js";
+import { emitDamageSmoke } from "./systems/effects.js";
+import { runFiring } from "./systems/firing.js";
+import { runMovement } from "./systems/movement.js";
+import { checkBulletHits, tickBullets } from "./systems/projectiles.js";
+import { handleRespawns } from "./systems/respawn.js";
+import { runThink } from "./systems/think.js";
+import { updateWatchTowers as updateWatchTowersSystem } from "./systems/towers.js";
+import { updateVehicles } from "./systems/update.js";
+import { checkWin } from "./systems/win.js";
 import { Tank } from "./tank.js";
-import { distance, worldToScreen } from "./utils.js";
-
-/* ── Vehicle type selection ─────────────────────────────── */
-
-/** Pick a random vehicle type from an allowed list using spawn weights. */
-function pickVehicleType(allowed) {
-    if (allowed.length === 1) return allowed[0];
-    const entries = allowed.map((t) => [t, VEHICLES[t]]);
-    const total = entries.reduce((s, [, v]) => s + v.spawnWeight, 0);
-    let r = Math.random() * total;
-    for (const [type, v] of entries) {
-        r -= v.spawnWeight;
-        if (r <= 0) return type;
-    }
-    return entries[entries.length - 1][0];
-}
+import { worldToScreen } from "./utils.js";
+import { pickVehicleType } from "./vehicles/index.js";
 
 /* ================================================================== */
 
@@ -66,6 +59,7 @@ export class Game {
     constructor(matchConfig = {}) {
         this.gameType = matchConfig.gameType ?? "skirmish";
         this.typeDef = GAME_TYPES[this.gameType] ?? GAME_TYPES.skirmish;
+        this.mode = getMode(this.gameType);
         this.settings = matchConfig.settings ?? {};
         this._humanPlan = matchConfig.humans ?? [];
 
@@ -74,6 +68,7 @@ export class Game {
         const mapH = this.settings.mapSize?.h;
         const density = this.settings.buildingDensity;
         this.map = new GameMap(mapW, mapH, density);
+        /** Particle system (world-space effects) — part of the world-model surface. */
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
         this.bullets = [];
@@ -83,10 +78,21 @@ export class Game {
         /** @type {Record<string,Function[]>} */
         this._listeners = {};
 
+        // Cross-cutting pathfinder invalidation: any terrain change invalidates
+        // every bot's cached A* route (was a direct `ai._pf` reach before).
+        this.on(GAME_EVENTS.TERRAIN_CHANGED, () => {
+            for (const { ai } of this._bots) ai.invalidatePath();
+        });
+
         this._init();
     }
 
     /* ── accessors ────────────────────────────────────────── */
+    // This is the world-model surface the mode strategies (js/modes.js)
+    // and vehicle behaviours (js/vehicles/) are written against.  They
+    // read these getters and call the public mutators below
+    // (`setBases`, `creditKill`, `nearestEnemy`) — never the `_`-prefixed
+    // fields, which are Game-internal.
 
     /** Every tank in the game. */
     get allTanks() {
@@ -100,6 +106,14 @@ export class Game {
     get baseStructures() {
         return this._allStructures;
     }
+    /** Every damageable entity (tanks + base structures) in one flat list. */
+    get damageables() {
+        return this._allTanks.concat(this._allStructures);
+    }
+    /** Alive enemy entities (tanks + structures) a team may shoot at. */
+    enemiesOf(team) {
+        return this.damageables.filter((e) => e.alive && e.team !== team);
+    }
     /** The first human tank (for single-viewport matches / HUD). */
     get humanTank() {
         return this._humanTanks[0];
@@ -108,13 +122,17 @@ export class Game {
     get humanTanks() {
         return this._humanTanks;
     }
+    /** All AI-controlled bots as `{ tank, role }` pairs (for the HUD/minimap). */
+    get bots() {
+        return this._bots.map(({ tank, ai }) => ({ tank, role: ai.role }));
+    }
     /** All cameras (one per human player). */
     get cameras() {
         return this._cameras;
     }
     /** Whether this game type builds towers/bases. */
     get hasBases() {
-        return this.typeDef.bases;
+        return this.mode.hasBases;
     }
     /** Factions: [{ id, color, darkColor, entities }]. */
     get factions() {
@@ -134,6 +152,11 @@ export class Game {
     on(event, fn) {
         if (!this._listeners[event]) this._listeners[event] = [];
         this._listeners[event].push(fn);
+    }
+    off(event, fn) {
+        const list = this._listeners[event];
+        if (!list) return;
+        this._listeners[event] = list.filter((f) => f !== fn);
     }
     emit(event, d) {
         for (const fn of this._listeners[event] ?? []) fn(d);
@@ -179,22 +202,10 @@ export class Game {
             entities: [],
         }));
         const factionById = new Map(factions.map((f) => [f.id, f]));
+        this._factions = factions;
 
-        // ── Base compounds (base game types only) ──
-        if (def.bases) {
-            const baseType = this.settings.baseType ?? "compound";
-            const [layout1, layout2] = this.map.buildBaseCompounds(baseType);
-            this._bases = [
-                this._buildBase(layout1, 1, factions[0].color, factions[0].darkColor),
-                this._buildBase(layout2, 2, factions[1].color, factions[1].darkColor),
-            ];
-            this._allStructures = [...this._bases[0].allStructures, ...this._bases[1].allStructures];
-            for (const s of this._allStructures) {
-                for (const pos of s.tilePositions) {
-                    this._structureMap.set(`${pos.gx},${pos.gy}`, s);
-                }
-            }
-        }
+        // ── Mode-specific construction (battle: base compounds) ──
+        this.mode.init(this);
 
         // ── Create tanks: humans (join order) then bots ──
         let nextId = 1;
@@ -220,7 +231,6 @@ export class Game {
             }
         }
 
-        this._factions = factions;
         this._allTanks = factions.flatMap((f) => f.entities);
         for (const f of factions) this._scores.set(f.id, 0);
 
@@ -230,13 +240,13 @@ export class Game {
                 if (this._humanTanks.includes(t)) continue;
                 const ai = new AIController(this.map);
                 ai.role = pickRoleForVehicle(t.vehicleType);
-                if (def.bases) ai.friendlyBase = this._bases.find((b) => b.team === f.id) ?? null;
-                this._bots.push({
+                const bot = {
                     ai,
                     tank: t,
                     enemies: this._allTanks.filter((e) => e.team !== t.team),
-                    enemyBase: def.bases ? (this._bases.find((b) => b.team !== f.id) ?? null) : null,
-                });
+                };
+                this.mode.setupBot(this, bot, f);
+                this._bots.push(bot);
             }
         }
 
@@ -244,39 +254,7 @@ export class Game {
     }
 
     _spawn() {
-        const def = this.typeDef;
-
-        if (def.bases) {
-            // ── Base spawn: inside each faction's compound ──
-            for (const f of this._factions) {
-                const base = this._bases.find((b) => b.team === f.id);
-                const enemyBase = this._bases.find((b) => b.team !== f.id);
-                if (!base) continue;
-                for (const t of f.entities) {
-                    const sp = this.map.getBaseSpawnPoint(base.center.x, base.center.y);
-                    t.respawnAt(sp.x, sp.y);
-                    t.alive = true;
-                    t.angle = enemyBase
-                        ? Math.atan2(enemyBase.y - base.y, enemyBase.x - base.x) + (Math.random() - 0.5) * 0.5
-                        : Math.random() * Math.PI * 2;
-                }
-            }
-        } else {
-            // ── Random spawn: spread everyone out, then face nearest enemy ──
-            let lastX = -1,
-                lastY = -1;
-            for (const t of this._allTanks) {
-                const sp = this.map.getSpawnPoint(lastX, lastY);
-                t.respawnAt(sp.x, sp.y);
-                t.alive = true;
-                lastX = sp.x;
-                lastY = sp.y;
-            }
-            for (const t of this._allTanks) {
-                const enemy = this._nearestEnemy(t);
-                if (enemy) t.angle = Math.atan2(enemy.y - t.y, enemy.x - t.x) + (Math.random() - 0.5) * 0.3;
-            }
-        }
+        this.mode.spawn(this);
 
         // Init cameras
         for (let i = 0; i < this._humanTanks.length; i++) {
@@ -286,7 +264,7 @@ export class Game {
     }
 
     /** Nearest alive tank in a different faction. */
-    _nearestEnemy(tank) {
+    nearestEnemy(tank) {
         let best = null;
         let bestD = Infinity;
         for (const e of this._allTanks) {
@@ -300,59 +278,35 @@ export class Game {
         return best;
     }
 
+    /** Credit one kill to a faction's score (skirmish scoring). */
+    creditKill(factionId) {
+        this._scores.set(factionId, (this._scores.get(factionId) ?? 0) + 1);
+    }
+
     /* ═══════════════════════════════════════════════════════ *
      *  UNIFIED UPDATE                                         *
      * ═══════════════════════════════════════════════════════ */
 
     _update(dt) {
-        const def = this.typeDef;
+        const bots = this._bots;
+        const humanDevices = this._humanDevices;
 
-        // ── AI think ──
-        for (const { ai, tank, enemies, enemyBase } of this._bots) {
-            if (!tank.alive) continue;
-            const obj = def.bases && enemyBase?.alive ? enemyBase : null;
-            // For non-base game types give AI the nearest enemy as objective
-            const target = obj ?? (enemies.find((e) => e.alive) || null);
-            const enemyStructures = enemyBase?.allStructures ?? [];
-            ai.think(dt, tank, enemies, this.map, target, enemyStructures);
-        }
-
-        // ── Movement — humans (only when alive) ──
-        for (let i = 0; i < this._humanTanks.length; i++) {
-            if (this._humanTanks[i].alive) {
-                this._humanTanks[i].update(dt, this._humanDevices[i], this.map);
-            }
-        }
-        // ── Movement — bots ──
-        for (const { ai, tank } of this._bots) {
-            if (tank.alive) tank.update(dt, ai, this.map);
-        }
-
-        // ── Squad member steering + dig-in timers ──
-        for (const t of this._allTanks) {
-            if (t.alive && t.vehicleType === "squad" && t.squad) t.squad.update(dt, this.map);
-        }
+        // A thin, ordered list of per-frame system calls.
+        runThink(this, bots, dt);
+        runMovement(this, bots, humanDevices, dt);
+        updateVehicles(this, dt);
 
         this._separatePairs(this._allTanks);
-        if (def.bases) this._pushFromStructures();
+        this.mode.afterSeparation(this);
 
         // ── Run-over: enemy ground vehicles crush exposed soldiers ──
         this._resolveCrushes();
 
-        // ── Firing — humans ──
-        for (let i = 0; i < this._humanTanks.length; i++) {
-            if (this._humanTanks[i].alive) {
-                this._handleFiring(this._humanTanks[i], this._humanDevices[i], dt);
-            }
-        }
-        // ── Firing — bots ──
-        for (const { ai, tank } of this._bots) {
-            if (tank.alive) this._handleFiring(tank, ai, dt);
-        }
+        runFiring(this, bots, humanDevices, dt);
 
         this._tickBullets(dt);
         this._checkBulletHits();
-        if (def.bases) this._updateWatchTowers(dt);
+        this.mode.afterBullets(this, dt);
         this.bullets = this.bullets.filter((b) => b.alive);
         this.particles.update(dt);
         this._emitDamageSmoke(dt);
@@ -372,694 +326,146 @@ export class Game {
     /* ── respawn logic ────────────────────────────────────── */
 
     _handleRespawns(dt) {
-        const def = this.typeDef;
-        for (const t of this._allTanks) {
-            if (t.alive) continue;
-            t.respawnTimer -= dt;
-            if (t.respawnTimer <= 0) {
-                if (def.bases) {
-                    // Spawn inside compound
-                    const base = this._bases.find((b) => b.team === t.team);
-                    const sp = base?.alive
-                        ? this.map.getBaseSpawnPoint(base.center.x, base.center.y)
-                        : this.map.getSpawnPoint();
-                    t.respawnAt(sp.x, sp.y);
-                }
-                // Non-base: position was already set when killed
-                t.alive = true;
-                t.flashTimer = 1;
-                // Re-randomise vehicle type on respawn
-                t.vehicleType = pickVehicleType(def.vehicles);
-                // Re-assign AI role
-                const bot = this._bots.find((b) => b.tank === t);
-                if (bot) {
-                    bot.ai.role = pickRoleForVehicle(t.vehicleType);
-                    bot.ai.resetLife();
-                }
-            }
-        }
+        handleRespawns(this, dt);
     }
 
     /* ── win condition ────────────────────────────────────── */
 
     _checkWin() {
-        if (this.typeDef.bases) {
-            // HQ destruction — the other faction wins.
-            for (const base of this._bases) {
-                if (!base.alive) {
-                    const winner = this._bases.find((b) => b !== base)?.team ?? (base.team === 1 ? 2 : 1);
-                    this.gameOver = true;
-                    this.winner = winner;
-                    this.emit("win", { winner });
-                    return;
-                }
-            }
-        } else {
-            // Score-based — first faction to WIN_SCORE.
-            for (const [factionId, score] of this._scores) {
-                if (score >= CONFIG.WIN_SCORE) {
-                    this.gameOver = true;
-                    this.winner = factionId;
-                    this.emit("win", { winner: factionId });
-                    return;
-                }
-            }
-        }
+        checkWin(this);
     }
 
     /** Short label for a faction (HUD scoreboard). */
     factionLabel(factionId) {
         const faction = this._factions.find((f) => f.id === factionId);
-        if (!faction) return "";
-        if (this.typeDef.bases) {
-            return faction.id === 1 ? "RED" : "BLUE";
-        }
-        const humans = this._humanTanks.filter((t) => t.team === faction.id);
-        if (humans.length === 1) return `P${this._humanTanks.indexOf(humans[0]) + 1}`;
-        if (humans.length === 0) return "BOT";
-        const col = PLAYER_COLORS.find((c) => c.color === faction.color);
-        return col?.label ?? "TEAM";
+        return faction ? this.mode.factionLabel(this, faction) : "";
     }
 
     /** Label for the winner on the game-over screen. */
     get winnerLabel() {
         if (!this.winner) return "";
         const faction = this._factions.find((f) => f.id === this.winner);
-        if (!faction) return "";
-        if (this.typeDef.bases) {
-            return faction.id === 1 ? "RED TEAM" : "BLUE TEAM";
-        }
-        // Skirmish: single-human team → player label; bot → "BOT"; a
-        // multi-human team → its colour label.
-        const humans = this._humanTanks.filter((t) => t.team === faction.id);
-        if (humans.length === 1) {
-            return `PLAYER ${this._humanTanks.indexOf(humans[0]) + 1}`;
-        }
-        if (humans.length === 0) return "BOT";
-        const col = PLAYER_COLORS.find((c) => c.color === faction.color);
-        return `${col?.label ?? "TEAM"} TEAM`;
+        return faction ? this.mode.winnerLabel(this, faction) : "";
     }
 
     /* ═══════════════════════════════════════════════════════ *
      *  SHARED helpers                                         *
      * ═══════════════════════════════════════════════════════ */
 
-    _handleFiring(tank, device, dt = 0.016) {
-        // Drones don't fire bullets — they detonate on contact
-        if (tank.vehicleType === "drone") {
-            this._handleDroneAttack(tank, device);
-            return;
-        }
-        // SPGs use hold-to-charge mechanic
-        if (tank.vehicleType === "spg") {
-            this._handleSPGFiring(tank, device, dt);
-            return;
-        }
-        // Squads auto-fire per member; FIRE toggles dig-in
-        if (tank.vehicleType === "squad") {
-            this._handleSquadFiring(tank, device, dt);
-            return;
-        }
-        if (device.isDown(ACTIONS.fire) && tank.canFire()) {
-            tank.fire();
-            const fireAngle = tank.turretWorld;
-            const vStats = VEHICLES[tank.vehicleType];
-            const b = new Bullet(
-                tank.x,
-                tank.y,
-                fireAngle,
-                tank.playerNumber,
-                tank.team,
-                vStats.bulletDamage,
-                vStats.bulletSpeed,
-            );
-            this.bullets.push(b);
-            const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            if (tank.vehicleType === "ifv") this.particles.emitIFVFlash(tipX, tipY, fireAngle);
-            else this.particles.emitMuzzleFlash(tipX, tipY, fireAngle);
-            this.emit("fire", { tank, bullet: b });
-        }
-    }
-
-    _handleSPGFiring(tank, device, dt) {
-        if (!tank.alive) return;
-
-        const fireHeld = device.isDown(ACTIONS.fire);
-        const vStats = VEHICLES.spg;
-
-        if (fireHeld && tank.fireCooldown <= 0) {
-            tank.isCharging = true;
-            tank.chargeTime += dt;
-            const maxCharge = (vStats.maxRange - vStats.minRange) / vStats.chargeRate;
-            if (tank.chargeTime > maxCharge) tank.chargeTime = maxCharge;
-        } else if (tank.isCharging && !fireHeld) {
-            const range = Math.min(vStats.minRange + tank.chargeTime * vStats.chargeRate, vStats.maxRange);
-            tank.isCharging = false;
-            tank.chargeTime = 0;
-            tank.fire();
-
-            const fireAngle = tank.turretWorld;
-            const b = new Bullet(
-                tank.x,
-                tank.y,
-                fireAngle,
-                tank.playerNumber,
-                tank.team,
-                vStats.bulletDamage,
-                vStats.bulletSpeed,
-                true,
-                range,
-            );
-            this.bullets.push(b);
-
-            const tipX = tank.x + Math.cos(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            const tipY = tank.y + Math.sin(fireAngle) * CONFIG.TANK_BARREL_LENGTH;
-            this.particles.emitSPGFlash(tipX, tipY, fireAngle);
-            this.emit("fire", { tank, bullet: b });
-        } else {
-            tank.isCharging = false;
-            tank.chargeTime = 0;
-        }
-    }
-
     /**
-     * Infantry squad firing: each alive member auto-targets and auto-fires
-     * from its own position.  FIRE drives the dig-in state machine
-     * (roaming → diggingIn → dugIn → roaming).
+     * The one damage-application seam: resolve a hit through the entity's own
+     * damage model, then apply the shared post-hit side-effects (particles,
+     * events, kill credit / structure clearing).  Tanks and structures go
+     * through the same path — the differences live in the entity's damage
+     * model and its `onDestroyed` hook, not in callers.
+     *
+     * @param {object} entity  the target (Tank or BaseStructure)
+     * @param {{x:number, y:number, team:number}} source  bullet/blast/crush origin
+     * @param {number} amount  raw incoming damage
+     * @returns {"destroyed"|"damaged"|"absorbed"}
      */
-    _handleSquadFiring(squad, device, dt) {
-        if (!squad.alive || !squad.squad) return;
-        const component = squad.squad;
-
-        // Dig-in toggle — humans have edge detection; bots manage dig-in in AI.
-        if (typeof device.wasPressed === "function" && device.wasPressed(ACTIONS.fire)) {
-            if (component.digIn.state === "roaming") component.startDigIn();
-            else if (component.digIn.state === "diggingIn") component.cancelDigIn();
-            else component.standUp();
-        }
-
-        // No firing while performing the dig-in transition.
-        if (!component.canFire) return;
-
-        // Pre-filtered candidates: alive, enemy-team tanks + structures.
-        const candidates = [
-            ...this._allTanks.filter((t) => t.alive && t.team !== squad.team),
-            ...this._allStructures.filter((s) => s.alive && s.team !== squad.team),
-        ];
-        const hasLOS = (x1, y1, x2, y2) => this._hasLineOfSight(x1, y1, x2, y2);
-
-        for (const m of component.aliveMembers) {
-            const weapon = SQUAD_MEMBERS[m.type];
-            if (!weapon) continue;
-
-            m.cooldown -= dt;
-            if (m.cooldown > 0) continue;
-
-            const target = pickSquadTarget(m, weapon, candidates, hasLOS);
-            if (!target) continue;
-
-            // Set the cooldown (dug-in squads fire 25% faster)
-            let cooldown = weapon.cooldown;
-            if (component.dugIn) cooldown *= 0.8;
-            m.cooldown = cooldown;
-
-            this._squadFireAt(squad, m, weapon, target);
-        }
-    }
-
-    /**
-     * Fire one member's weapon at a target.  Shotguns fire a pellet spread;
-     * everything else fires a single bullet.  The bullet originates from
-     * the member's position, not the squad centre.
-     */
-    _squadFireAt(squad, memberPos, weapon, target) {
-        const e = target.entity;
-        const angle = Math.atan2(e.y - memberPos.y, e.x - memberPos.x);
-        const dmg = target.isFallback ? (weapon.fallbackDamage ?? weapon.damage) : weapon.damage;
-        // Bullet lifetime = time to fly the member's range (+ margin),
-        // giving squad weapons a hard range limit.
-        const lifetime = weapon.bulletSpeed > 0 ? weapon.range / weapon.bulletSpeed + 0.15 : null;
-
-        const pellets = weapon.pellets ?? 1;
-        const spread = weapon.spread ?? 0;
-        for (let p = 0; p < pellets; p++) {
-            const a = pellets > 1 ? angle - spread / 2 + (spread * p) / (pellets - 1) : angle;
-            const b = new Bullet(
-                memberPos.x,
-                memberPos.y,
-                a,
-                squad.playerNumber,
-                squad.team,
-                dmg,
-                weapon.bulletSpeed,
-                false,
-                0,
-                lifetime,
-            );
-            this.bullets.push(b);
-        }
-
-        // Muzzle flash + event (the weapon tag drives the sound)
-        const tipX = memberPos.x + Math.cos(angle) * 0.3;
-        const tipY = memberPos.y + Math.sin(angle) * 0.3;
-        this.particles.emitIFVFlash(tipX, tipY, angle);
-        this.emit("fire", { tank: squad, bullet: this.bullets[this.bullets.length - 1], weapon: weapon.weapon });
-    }
-
-    /**
-     * Distance from an AoE source to a tank.  Squads use their nearest
-     * alive member; everything else uses the centre.
-     */
-    _entityDistance(source, tank) {
-        if (tank.vehicleType === "squad" && tank.squad) {
-            const d = tank.squad.nearestMemberDistance(source.x, source.y);
-            if (Number.isFinite(d)) return d;
-        }
-        return distance(source.x, source.y, tank.x, tank.y);
-    }
-
-    /** Radius used for AoE falloff: squads use their soldier radius. */
-    _entityRadius(tank) {
-        return tank.vehicleType === "squad" ? VEHICLES.squad.soldierRadius : tank.size;
-    }
-
-    _handleArtilleryImpact(b) {
-        const splashR = VEHICLES.spg.splashRadius;
-
-        for (const t of this.allTanks) {
-            if (!t.alive || b.team === t.team) continue;
-            const r = this._entityRadius(t);
-            const d = this._entityDistance(b, t);
-            if (d >= splashR + r) continue;
-
-            const effectiveDist = Math.max(0, d - r);
-            const dmg = b.damage * Math.max(0, 1 - effectiveDist / splashR);
-            if (dmg <= 0) continue;
-
-            this._applyHitToTank(b, t, dmg);
-        }
-
-        for (const s of this._allStructures) {
-            if (!s.alive || b.team === s.team) continue;
-            const d = distance(b.x, b.y, s.x, s.y);
-            if (d >= splashR + s.size) continue;
-
-            const edgeDist = Math.max(0, d - s.size);
-            const dmg = b.damage * Math.max(0, 1 - edgeDist / splashR);
-            if (dmg <= 0) continue;
-
-            if (s.applyDamage(dmg)) {
-                this._onStructureDestroyed(s);
-            } else {
-                this.particles.emitImpact(b.x, b.y);
-                this.emit("impact", {});
-            }
-        }
-
-        const gx = Math.floor(b.x),
-            gy = Math.floor(b.y);
-        if (this.map.damageTile(gx, gy, b.damage)) {
-            this.particles.emitExplosion(gx + 0.5, gy + 0.5);
-            this.emit("destroy_tile", { gx, gy });
-            this._invalidatePathfinders();
-        }
-
-        this.particles.emitArtilleryImpact(b.x, b.y);
-        this.emit("artillery_impact", { bullet: b });
-    }
-
-    _handleDroneAttack(drone, device) {
-        if (!device.isDown(ACTIONS.fire) || !drone.alive) return;
-
-        const vStats = VEHICLES.drone;
-        const blastR = vStats.blastRadius;
-        const maxDmg = vStats.blastDamage;
-
-        for (const t of this.allTanks) {
-            if (!t.alive || t.team === drone.team) continue;
-            const d = this._entityDistance(drone, t);
-            if (d >= blastR) continue;
-
-            const dmg = maxDmg * Math.max(0, 1 - d / blastR);
-            if (dmg <= 0) continue;
-
-            this._applyHitToTank(drone, t, dmg);
-        }
-
-        for (const s of this._allStructures) {
-            if (!s.alive || s.team === drone.team) continue;
-            const d = distance(drone.x, drone.y, s.x, s.y);
-            if (d >= blastR + s.size) continue;
-
-            const edgeDist = Math.max(0, d - s.size);
-            const dmg = maxDmg * Math.max(0, 1 - edgeDist / blastR);
-            if (dmg <= 0) continue;
-
-            if (s.applyDamage(dmg)) {
-                this._onStructureDestroyed(s);
-            } else {
-                this.particles.emitImpact(drone.x, drone.y);
-                this.emit("impact", {});
-            }
-        }
-
-        this.particles.emitDroneExplosion(drone.x, drone.y);
-        this.emit("drone_strike", { drone });
-        drone.kill();
-    }
-
-    /**
-     * Apply a hit to a tank and emit the appropriate particles/events.
-     * @param {{x:number, y:number, team:number}} source - bullet or explosion origin
-     * @param {Tank} tank - target tank
-     * @param {number} damage - damage amount
-     */
-    _applyHitToTank(source, tank, damage) {
-        let dmg = damage;
-
-        // Infantry squad mechanical cover / dig-in damage reduction.
-        if (tank.vehicleType === "squad" && tank.alive) {
-            const v = VEHICLES.squad;
-            let reduction = tank.dugIn ? v.digInReduction : 0;
-            if (this.map.hasIntactBuildingNear(tank.x, tank.y, v.coverRadius)) {
-                reduction = Math.max(reduction, v.coverReduction);
-            }
-            reduction = Math.min(reduction, v.maxDamageReduction);
-            if (reduction > 0) dmg = damage * (1 - reduction);
-        }
-
-        const zone = tank.getHitZone(source.x, source.y);
-        const result = tank.applyHit(zone, dmg);
+    applyDamage(entity, source, amount) {
+        // Zone is armour-model-specific (computed only where it exists); cover
+        // / dig-in reduction is a per-entity capability (1 for most entities).
+        const zone = entity.getHitZone ? entity.getHitZone(source.x, source.y) : null;
+        const dmg = amount * entity.incomingDamageMultiplier(this.map);
+        const result = resolveDamage(entity, zone, dmg);
 
         if (result === "destroyed") {
-            this.particles.emitExplosion(tank.x, tank.y);
-            this.emit("destroy", { tank });
-            this._onKill(source.team, tank);
+            this.destroyEntity(entity, source);
         } else if (result === "damaged") {
-            this.particles.emitImpact(source.x, source.y);
-            this.emit("hit", { tank, zone });
+            this.particles.emit("impact", source.x, source.y);
+            this.emit(GAME_EVENTS.HIT, { tank: entity, zone });
         } else {
-            this.particles.emitTinyImpact(source.x, source.y);
+            this.particles.emit("tinyImpact", source.x, source.y);
         }
+        return result;
     }
 
-    /**
-     * Called when an enemy tank is destroyed.
-     * In non-base modes: increment killer team score + immediate respawn.
-     * In base modes: timed respawn is handled by _handleRespawns().
-     */
-    _onKill(killerTeam, deadTank) {
-        if (!this.typeDef.bases) {
-            this._scores.set(killerTeam, (this._scores.get(killerTeam) ?? 0) + 1);
-            // Set respawn position immediately (tank stays dead for TANK_RESPAWN_TIME)
-            const sp = this.map.getSpawnPoint();
-            deadTank.respawnAt(sp.x, sp.y);
-        }
+    /** Emit the standard destruction side-effects for a killed entity. */
+    destroyEntity(entity, source) {
+        this.particles.emit("explosion", entity.x, entity.y);
+        this.emit(GAME_EVENTS.DESTROY, { entity });
+        entity.onDestroyed(this, source);
     }
 
     _tickBullets(dt) {
-        for (const b of this.bullets) {
-            const wasAlive = b.alive;
-            b.update(dt, this.map);
-            if (wasAlive && !b.alive) {
-                if (b.arcing && b.landed) {
-                    this._handleArtilleryImpact(b);
-                } else if (!b.arcing && this.map.blocksProjectile(b.x, b.y)) {
-                    this.particles.emitImpact(b.x, b.y);
-                    this.emit("impact", { bullet: b });
-                    const gx = Math.floor(b.x),
-                        gy = Math.floor(b.y);
-                    // Check for base structure at this tile
-                    const structure = this._getStructureAt(gx, gy);
-                    if (structure) {
-                        if (b.team !== structure.team) {
-                            if (structure.applyDamage(b.damage)) {
-                                this._onStructureDestroyed(structure);
-                            }
-                        }
-                    } else if (this.map.damageTile(gx, gy, b.damage)) {
-                        this.particles.emitExplosion(gx + 0.5, gy + 0.5);
-                        this.emit("destroy_tile", { gx, gy });
-                        this._invalidatePathfinders();
-                    }
-                }
-            }
-        }
+        tickBullets(this, dt);
     }
 
     _checkBulletHits() {
-        for (const b of this.bullets) {
-            if (!b.alive || b.arcing) continue;
-            for (const t of this.allTanks) {
-                if (!t.alive || b.team === t.team) continue;
-                // Squads use a distributed hitbox — the bullet must strike
-                // an individual soldier, not the squad centre.
-                const hit =
-                    t.vehicleType === "squad" && t.squad
-                        ? t.squad.bulletHit(b.x, b.y)
-                        : distance(b.x, b.y, t.x, t.y) < t.size;
-                if (hit) {
-                    b.alive = false;
-
-                    this._applyHitToTank(b, t, b.damage);
-                    break;
-                }
-            }
-        }
+        checkBulletHits(this);
     }
 
     /**
-     * Enemy ground vehicles run over exposed (non-dug-in) soldiers.
-     * Overlapping a soldier kills that specific member; killing the last
-     * member destroys the squad with kill credit to the vehicle.
+     * Ground vehicles run over exposed (non-dug-in) infantry.  See
+     * `js/systems/collision.js#resolveCrushes`.
      */
     _resolveCrushes() {
-        const ground = new Set(["tank", "ifv", "spg"]);
-        for (const squad of this._allTanks) {
-            if (!squad.alive || squad.vehicleType !== "squad" || !squad.squad) continue;
-            const component = squad.squad;
-
-            for (const v of this._allTanks) {
-                if (!v.alive || v.team === squad.team || !ground.has(v.vehicleType)) continue;
-
-                const idx = component.crushedMemberBy(v);
-                if (idx < 0) continue;
-
-                if (component.crushMember(idx)) {
-                    squad.kill();
-                    this.particles.emitExplosion(squad.x, squad.y);
-                    this.emit("destroy", { tank: squad });
-                    this._onKill(v.team, squad);
-                }
-            }
-        }
+        resolveCrushes(this);
     }
 
-    _pushFromStructures() {
-        for (const t of this._allTanks) {
-            if (!t.alive || t.vehicleType === "drone") continue;
-            for (const s of this._allStructures) {
-                if (!s.alive) continue;
-                // Push from each tile the structure occupies
-                for (const pos of s.tilePositions) {
-                    const sx = pos.gx + 0.5,
-                        sy = pos.gy + 0.5;
-                    const d = distance(t.x, t.y, sx, sy);
-                    const min = VEHICLES[t.vehicleType].size + 0.5;
-                    if (d < min && d > 0.001) {
-                        const nx = (t.x - sx) / d;
-                        const ny = (t.y - sy) / d;
-                        const newX = sx + nx * min;
-                        const newY = sy + ny * min;
-                        if (this._canStand(newX, newY)) {
-                            t.x = newX;
-                            t.y = newY;
-                        }
-                    }
-                }
-            }
-        }
+    pushFromStructures() {
+        pushFromStructuresSystem(this);
     }
 
     _emitDamageSmoke(dt) {
-        for (const t of this.allTanks) {
-            if (!t.alive || !t.damaged) continue;
-            t.smokeTimer -= dt;
-            if (t.smokeTimer <= 0) {
-                t.smokeTimer = 0.15 + Math.random() * 0.1;
-                this.particles.emitSmoke(t.x, t.y);
-            }
-        }
+        emitDamageSmoke(this, dt);
     }
 
     _separatePairs(tanks) {
-        const alive = tanks.filter((t) => t.alive);
-        for (let i = 0; i < alive.length; i++) {
-            for (let j = i + 1; j < alive.length; j++) {
-                const a = alive[i],
-                    b = alive[j];
-                if (!vehiclesSeparate(a, b)) continue;
-                const d = distance(a.x, a.y, b.x, b.y);
-                const min = VEHICLES[a.vehicleType].size + VEHICLES[b.vehicleType].size;
-                if (d < min && d > 0.001) {
-                    const o = (min - d) / 2;
-                    const nx = (b.x - a.x) / d,
-                        ny = (b.y - a.y) / d;
-                    const ax = a.x - nx * o,
-                        ay = a.y - ny * o;
-                    const bx = b.x + nx * o,
-                        by = b.y + ny * o;
-                    if (this._canStand(ax, ay, VEHICLES[a.vehicleType].size)) {
-                        a.x = ax;
-                        a.y = ay;
-                    }
-                    if (this._canStand(bx, by, VEHICLES[b.vehicleType].size)) {
-                        b.x = bx;
-                        b.y = by;
-                    }
-                }
-            }
-        }
-    }
-
-    _invalidatePathfinders() {
-        for (const { ai } of this._bots) ai._pf?.invalidate();
+        separatePairs(this, tanks);
     }
 
     /* ── Base compound helpers ─────────────────────────────── */
 
-    /** Create a Base compound from map layout data. */
-    _buildBase(layout, team, color, darkColor) {
-        const base = new Base(team, color, darkColor);
-        base.center = layout.center;
-        base.origin = { x: layout.ox, y: layout.oy };
-        base.entranceDir = layout.dir;
-        base.compoundSize = layout.size;
-
-        // HQ
-        const hq = new BaseHQ(team, color, darkColor);
-        hq.x = layout.hqCenter.x;
-        hq.y = layout.hqCenter.y;
-        hq.tilePositions = layout.hqTiles.map((t) => ({ gx: t.gx, gy: t.gy }));
-        base.hq = hq;
-
-        // Walls
-        for (const pos of layout.walls) {
-            const w = new BaseWall(team, color, darkColor);
-            w.x = pos.gx + 0.5;
-            w.y = pos.gy + 0.5;
-            w.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
-            base.walls.push(w);
-        }
-
-        // Watch towers
-        for (const pos of layout.towers) {
-            const t = new BaseWatchTower(team, color, darkColor);
-            t.x = pos.gx + 0.5;
-            t.y = pos.gy + 0.5;
-            t.tilePositions = [{ gx: pos.gx, gy: pos.gy }];
-            base.towers.push(t);
-        }
-
-        return base;
-    }
-
-    /** Look up the structure entity occupying tile (gx, gy). */
-    _getStructureAt(gx, gy) {
-        return this._structureMap.get(`${gx},${gy}`) ?? null;
-    }
-
-    /** Handle a structure being destroyed: clear tiles, particles, events. */
-    _onStructureDestroyed(structure) {
-        for (const pos of structure.tilePositions) {
-            this.map.setTile(pos.gx, pos.gy, T.SAND);
-            this._structureMap.delete(`${pos.gx},${pos.gy}`);
-        }
-        this.particles.emitExplosion(structure.x, structure.y);
-        this.emit("destroy", { structure });
-        this._invalidatePathfinders();
-    }
-
-    /** Update watch tower firing (auto-targeting enemies in range). */
-    _updateWatchTowers(dt) {
-        for (const base of this._bases) {
-            const enemyTeam = this._allTanks.filter((t) => t.team !== base.team);
-            for (const tower of base.towers) {
-                if (!tower.alive) continue;
-                tower.fireCooldown -= dt;
-                if (tower.fireCooldown > 0) continue;
-
-                // Find best target in range
-                const cfg = BASE_STRUCTURES.baseTower;
-                const priorities = cfg.targetPriority;
-                let best = null,
-                    bestScore = -1;
-                for (const e of enemyTeam) {
-                    if (!e.alive) continue;
-                    const w = priorities[e.targetType] ?? 0;
-                    if (w <= 0) continue;
-                    const d = distance(tower.x, tower.y, e.x, e.y);
-                    if (d > cfg.fireRange) continue;
-                    if (!this._hasLineOfSight(tower.x, tower.y, e.x, e.y)) continue;
-                    const score = w / Math.max(d, 0.5);
-                    if (score > bestScore) {
-                        best = e;
-                        bestScore = score;
-                    }
-                }
-                if (!best) continue;
-
-                // Fire
-                const angle = Math.atan2(best.y - tower.y, best.x - tower.x);
-                tower.turretAngle = angle;
-                tower.fireCooldown = cfg.bulletCooldown;
-                const b = new Bullet(tower.x, tower.y, angle, 0, tower.team, cfg.bulletDamage, cfg.bulletSpeed);
-                this.bullets.push(b);
-                const tipX = tower.x + Math.cos(angle) * 0.3;
-                const tipY = tower.y + Math.sin(angle) * 0.3;
-                this.particles.emitIFVFlash(tipX, tipY, angle);
-                this.emit("fire", { tower, bullet: b });
+    /** Register the mode's base compounds and their structures (battle init). */
+    setBases(bases) {
+        this._bases = bases;
+        this._allStructures = bases.flatMap((b) => b.allStructures);
+        this._structureMap = new Map();
+        for (const s of this._allStructures) {
+            for (const pos of s.tilePositions) {
+                this._structureMap.set(`${pos.gx},${pos.gy}`, s);
             }
         }
     }
 
-    _canStand(x, y, vehicleSize = VEHICLES.tank.size) {
-        const s = vehicleSize * 0.85;
-        return (
-            this.map.isPassable(x - s, y - s) &&
-            this.map.isPassable(x + s, y - s) &&
-            this.map.isPassable(x - s, y + s) &&
-            this.map.isPassable(x + s, y + s)
-        );
+    /** Look up the structure entity occupying tile (gx, gy). */
+    structureAt(gx, gy) {
+        return this._structureMap.get(`${gx},${gy}`) ?? null;
     }
 
-    /** Check if a straight line between two points is clear of projectile-blocking terrain.
-     *  Skips the shooter's own tile so structures (e.g. watch towers) don't block themselves. */
-    _hasLineOfSight(x1, y1, x2, y2) {
-        const dx = x2 - x1,
-            dy = y2 - y1;
-        const d = Math.hypot(dx, dy);
-        const n = Math.ceil(d * 3);
-        const originGx = Math.floor(x1),
-            originGy = Math.floor(y1);
-        for (let i = 1; i < n; i++) {
-            const t = i / n;
-            const sx = x1 + dx * t,
-                sy = y1 + dy * t;
-            if (Math.floor(sx) === originGx && Math.floor(sy) === originGy) continue;
-            if (this.map.blocksProjectile(sx, sy)) return false;
-        }
-        return true;
+    /** The full bot handle (`{ ai, tank, enemies }`) for a tank, or null. */
+    getBot(tank) {
+        return this._bots.find((b) => b.tank === tank) ?? null;
     }
-    _updateCamera(cam, tank, dt) {
-        if (tank.alive) {
-            const s = worldToScreen(tank.x, tank.y);
-            const la = VEHICLES[tank.vehicleType]?.cameraLookAhead ?? CONFIG.CAMERA_LOOK_AHEAD;
-            const aim = tank.turretWorld;
-            const dx = Math.cos(aim) * la;
-            const dy = Math.sin(aim) * la;
-            cam.follow(s.x + (dx - dy) * (CONFIG.TILE_WIDTH / 2), s.y + (dx + dy) * (CONFIG.TILE_HEIGHT / 2), dt);
+
+    /** Handle a structure being destroyed: clear tiles, particles, events. */
+    onStructureDestroyed(structure) {
+        for (const pos of structure.tilePositions) {
+            this.map.setTile(pos.gx, pos.gy, T.SAND);
+            this._structureMap.delete(`${pos.gx},${pos.gy}`);
         }
+        this.particles.emit("explosion", structure.x, structure.y);
+        this.emit(GAME_EVENTS.DESTROY, { entity: structure });
+        this.emit(GAME_EVENTS.TERRAIN_CHANGED, { structure });
+    }
+
+    /** Apply damage to a destructible tile; emits the destroy_tile event on break. */
+    damageTileAt(gx, gy, damage) {
+        if (!this.map.damageTile(gx, gy, damage)) return;
+        this.particles.emit("explosion", gx + 0.5, gy + 0.5);
+        this.emit(GAME_EVENTS.DESTROY_TILE, { gx, gy });
+        this.emit(GAME_EVENTS.TERRAIN_CHANGED, { gx, gy });
+    }
+
+    /** Update watch tower firing (auto-targeting enemies in range). */
+    updateWatchTowers(dt) {
+        updateWatchTowersSystem(this, dt);
+    }
+
+    _updateCamera(cam, tank, dt) {
+        updateCamera(cam, tank, dt);
     }
 }

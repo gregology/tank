@@ -1,0 +1,35 @@
+/**
+ * Base structure definitions.
+ *
+ * Parallel to VEHICLES — every gameplay value that varies between
+ * structure types lives here.  targetPriority only appears on
+ * structures that can shoot (baseTower).
+ */
+export const BASE_STRUCTURES = {
+    baseWall: {
+        hp: 3,
+        size: 0.5,
+        visHeight: 10,
+        category: "wall",
+    },
+    baseTower: {
+        hp: 5,
+        size: 0.5,
+        visHeight: 20,
+        isShooter: true,
+        fireRange: 15,
+        bulletSpeed: 13.0,
+        bulletDamage: 0.1,
+        bulletCooldown: 0.15,
+        fireSound: "ifv",
+        targetPriority: { spg: 3, tank: 3, drone: 10, ifv: 3, squad: 5 },
+        category: "tower",
+    },
+    baseHQ: {
+        hp: 20,
+        size: 0.5,
+        visHeight: 14,
+        category: "hq",
+        isObjective: true,
+    },
+};

@@ -7,16 +7,16 @@
  * Hierarchy:
  *   GameEntity
  *     ├── Tank  (vehicle — tank, IFV, drone, SPG)      ← tank.js
- *     └── BaseStructure
- *         ├── BaseWall        1×1 fortification wall
- *         ├── BaseHQ          1×2 command tent
- *         └── BaseWatchTower  1×1 armed guard tower
+ *     └── BaseStructure (baseWall / baseTower / baseHQ, data-driven
+ *                        from BASE_STRUCTURES)          ← this file
  *
  * Base is a compound container (not an entity itself) that holds
  * one team's HQ, walls, and watch towers.
  */
 
 import { BASE_STRUCTURES } from "./config.js";
+import { resolveDamage } from "./damage.js";
+import { distance } from "./utils.js";
 
 /* ═══════════════════════════════════════════════════════════ *
  *  GameEntity — root of the hierarchy                         *
@@ -58,6 +58,36 @@ export class GameEntity {
     get size() {
         return 0.45;
     }
+    /** Distance from a world point to the entity's hitbox centre. */
+    distanceToPoint(x, y) {
+        return distance(x, y, this.x, this.y);
+    }
+    /** True if a world point is inside the entity's hitbox. */
+    hitTest(x, y) {
+        return distance(x, y, this.x, this.y) < this.size;
+    }
+    /** Radius used for AoE falloff (a vehicle/structure's collision size). */
+    get hitRadius() {
+        return this.size;
+    }
+    get flies() {
+        return false;
+    }
+    get softTarget() {
+        return false;
+    }
+    get crushable() {
+        return false;
+    }
+    get canCrush() {
+        return false;
+    }
+    /** Incoming damage multiplier after cover/dig-in (1 = no reduction). */
+    incomingDamageMultiplier(_map) {
+        return 1;
+    }
+    /** Post-destruction side-effect hook (kill credit, tile clearing, …). */
+    onDestroyed(_game, _source) {}
 }
 
 /* ═══════════════════════════════════════════════════════════ *
@@ -71,6 +101,10 @@ export class BaseStructure extends GameEntity {
         this.hp = cfg.hp;
         this.maxHp = cfg.hp;
         this.tilePositions = [];
+        if (cfg.isShooter) {
+            this.fireCooldown = 0;
+            this.turretAngle = 0;
+        }
     }
 
     get isStructure() {
@@ -79,48 +113,36 @@ export class BaseStructure extends GameEntity {
     get collidable() {
         return true;
     }
+    get isShooter() {
+        return BASE_STRUCTURES[this.entityType].isShooter ?? false;
+    }
     get size() {
         return BASE_STRUCTURES[this.entityType].size;
+    }
+    /** Structure category ("wall" / "tower" / "hq"), from the data table. */
+    get category() {
+        return BASE_STRUCTURES[this.entityType].category;
+    }
+    /** Whether this structure is the base's objective (its "living part"). */
+    get isObjective() {
+        return BASE_STRUCTURES[this.entityType].isObjective ?? false;
     }
     get damageFraction() {
         return this.maxHp > 0 ? this.hp / this.maxHp : 0;
     }
 
+    /** Which damage model resolves hits (a plain HP pool). */
+    get damageModel() {
+        return "hp";
+    }
+
     applyDamage(amount) {
-        if (!this.alive) return false;
-        this.hp -= amount;
-        if (this.hp <= 0) {
-            this.hp = 0;
-            this.alive = false;
-            return true;
-        }
-        return false;
-    }
-}
-
-/* ── Concrete types ───────────────────────────────────────── */
-
-export class BaseWall extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseWall", team, color, darkColor);
-    }
-}
-
-export class BaseHQ extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseHQ", team, color, darkColor);
-    }
-}
-
-export class BaseWatchTower extends BaseStructure {
-    constructor(team, color, darkColor) {
-        super("baseTower", team, color, darkColor);
-        this.fireCooldown = 0;
-        this.turretAngle = 0;
+        return resolveDamage(this, null, amount);
     }
 
-    get isShooter() {
-        return true;
+    /** A destroyed structure clears its tiles and re-emits terrain_changed. */
+    onDestroyed(game) {
+        game.onStructureDestroyed(this);
     }
 }
 
@@ -133,19 +155,31 @@ export class Base {
         this.team = team;
         this.color = color;
         this.darkColor = darkColor;
-        this.hq = null;
-        this.walls = [];
-        this.towers = [];
+        /** Every structure in the compound (walls, towers, HQ) in one list. */
+        this.structures = [];
         this.center = { x: 0, y: 0 };
         this.origin = { x: 0, y: 0 };
         this.entranceDir = "E";
         this.compoundSize = 10;
     }
 
+    /** Structures of a given category (see BASE_STRUCTURES[].category). */
+    structuresOf(category) {
+        return this.structures.filter((s) => s.category === category);
+    }
+
+    /** The objective structure (the base's "living part"); null if none. */
+    get hq() {
+        return this.structures.find((s) => s.isObjective) ?? null;
+    }
+    get walls() {
+        return this.structuresOf("wall");
+    }
+    get towers() {
+        return this.structuresOf("tower");
+    }
     get allStructures() {
-        const out = [...this.walls, ...this.towers];
-        if (this.hq) out.push(this.hq);
-        return out;
+        return this.structures;
     }
 
     get alive() {

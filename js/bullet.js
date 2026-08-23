@@ -10,6 +10,7 @@
  */
 
 import { CONFIG, VEHICLES } from "./config.js";
+import { getProjectileBehaviour } from "./projectiles/index.js";
 
 export class Bullet {
     /**
@@ -25,6 +26,9 @@ export class Bullet {
      * @param {number}  [lifetime]      explicit lifetime in seconds (defaults
      *                                  to CONFIG.BULLET_LIFETIME; squad weapons
      *                                  use it to enforce their range)
+     * @param {string}  [kind]          projectile behaviour key; defaults to
+     *                                  "shell" for arcing shots, else "direct"
+     * @param {boolean} [tracer]        draw as a small tracer (IFV/small-arms)
      */
     constructor(
         x,
@@ -37,6 +41,8 @@ export class Bullet {
         arcing = false,
         targetDistance = 0,
         lifetime = null,
+        kind = null,
+        tracer = false,
     ) {
         const offset = CONFIG.TANK_BARREL_LENGTH + 0.08;
         this.x = x + Math.cos(angle) * offset;
@@ -51,49 +57,24 @@ export class Bullet {
         // Arcing shell support (SPG)
         this.arcing = arcing;
         this.targetDistance = targetDistance;
+        // Projectile kind dispatches the movement/impact lifecycle
+        // (js/projectiles/).  "direct" bullets stop on terrain; "shell" is
+        // the arcing artillery shell that splashes on landing.  A caller may
+        // pass a `kind` explicitly to add a new projectile behaviour.
+        this.kind = kind ?? (arcing ? "shell" : "direct");
+        this.tracer = tracer;
 
         // Arcing shells need enough lifetime to reach their target;
         // normal bullets use the global constant (or an explicit value).
         this.lifetime = lifetime ?? (arcing && speed > 0 ? targetDistance / speed + 1.0 : CONFIG.BULLET_LIFETIME);
         this.distanceTraveled = 0;
         this.landed = false; // true when shell reaches target distance
+        this.hitTerrain = false; // true when a direct bullet is stopped by terrain
     }
 
     update(dt, map) {
         if (!this.alive) return;
-
-        const dx = Math.cos(this.angle) * this.speed * dt;
-        const dy = Math.sin(this.angle) * this.speed * dt;
-        this.x += dx;
-        this.y += dy;
-        this.lifetime -= dt;
-
-        if (this.arcing) {
-            // Arcing shells fly over terrain — only die by distance or map edge
-            this.distanceTraveled += Math.sqrt(dx * dx + dy * dy);
-            if (this.distanceTraveled >= this.targetDistance) {
-                this.alive = false;
-                this.landed = true;
-                return;
-            }
-            if (this.x < -1 || this.x > map.width + 1 || this.y < -1 || this.y > map.height + 1) {
-                this.alive = false;
-                return;
-            }
-        } else {
-            // Normal bullet: destroyed by solid obstacles
-            if (map.blocksProjectile(this.x, this.y)) {
-                this.alive = false;
-                return;
-            }
-            if (this.x < -1 || this.x > map.width + 1 || this.y < -1 || this.y > map.height + 1) {
-                this.alive = false;
-                return;
-            }
-        }
-
-        // Timeout
-        if (this.lifetime <= 0) this.alive = false;
+        getProjectileBehaviour(this.kind).update(this, dt, map);
     }
 
     /** Progress through the arc (0 = just fired, 1 = landing). */

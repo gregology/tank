@@ -16,24 +16,6 @@ export function worldToScreen(wx, wy) {
     };
 }
 
-export function screenToWorld(sx, sy) {
-    return {
-        x: (sx / HALF_TW + sy / HALF_TH) / 2,
-        y: (sy / HALF_TH - sx / HALF_TW) / 2,
-    };
-}
-
-/**
- * Convert a world-space direction vector to screen-space.
- * Useful for barrels, bullet trails, etc.
- */
-export function worldDirToScreen(dx, dy) {
-    return {
-        x: (dx - dy) * HALF_TW,
-        y: (dx + dy) * HALF_TH,
-    };
-}
-
 /* ── General math ─────────────────────────────────────────── */
 
 export function clamp(v, lo, hi) {
@@ -54,10 +36,36 @@ export function normalizeAngle(a) {
     return a;
 }
 
+/** Wrap an angle to [-PI, PI]. */
+function normalizeAngleSigned(a) {
+    let r = a % (Math.PI * 2);
+    if (r > Math.PI) r -= Math.PI * 2;
+    if (r < -Math.PI) r += Math.PI * 2;
+    return r;
+}
+
+/** Shortest signed angle from `a` to `b`, wrapped to [-PI, PI]. */
+export function angleDiff(a, b) {
+    return normalizeAngleSigned(b - a);
+}
+
 export function randomInt(lo, hi) {
     return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }
 
 export function randomFloat(lo, hi) {
     return Math.random() * (hi - lo) + lo;
+}
+
+/* ── Chargeable-weapon range ───────────────────────────────── */
+
+/** Current charged range of a hold-to-charge weapon (clamped to max). */
+export function chargeRange(minRange, maxRange, chargeRate, chargeTime) {
+    return Math.min(minRange + chargeTime * chargeRate, maxRange);
+}
+
+/** Charge progress (0..1) toward the weapon's maximum range. */
+export function chargeFraction(minRange, maxRange, chargeRate, chargeTime) {
+    const maxCharge = (maxRange - minRange) / chargeRate;
+    return Math.min(1, chargeTime / maxCharge);
 }

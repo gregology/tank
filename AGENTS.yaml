@@ -21,36 +21,43 @@ context:
         2. Update map.js: setTile (HP init switch), isPassable, blocksProjectile,
            isSolid, tileHeight
         3. Add generation logic in map.js (e.g. _stampVillage or _baseTile)
-        4. Add rendering in renderer.js: _drawTile switch, minimap switch, PALETTE
+        4. Add rendering in js/render/tiles.js (drawTile switch),
+           js/render/minimap.js (TILE_COLORS), and js/render/canvas-utils.js
+           (PALETTE) as needed
         5. Update test/helpers.js if the tile appears in test maps
-    match: ["js/config.js", "js/map.js", "js/renderer.js"]
+    match: ["js/config.js", "js/config/*", "js/map.js", "js/renderer.js", "js/render/*"]
     on: create
     when: before
 
   - content: |
       To add a new entity type (power-ups, mines, etc.):
         1. Create a new class (see bullet.js or tank.js as templates)
-        2. Add instances to game.js — update in update(), add to the
-           renderer's entity list in _renderViewport
-        3. Render in renderer.js — add a new kind constant and drawing method
+        2. Add instances to game.js — update in update(), add to
+           collectDepthItems in js/render/viewport.js (entity bucket)
+        3. Draw it: add a kind to collectDepthItems, a case in
+           drawDepthBuckets (js/render/viewport.js), and the draw function
+           in the right js/render/ module
     match: ["js/**"]
     on: create
     when: before
 
   - content: |
       To add a new game mode:
-        1. Add a new entry to menu.modes in menu.js
-        2. Handle the mode string in Game constructor (game.js) — add
-           _init and _update methods following the duel/team pattern
-        3. Wire up input sources and camera in main.js and renderer.js
-    match: ["js/menu.js", "js/game.js", "js/main.js", "js/renderer.js"]
+        1. Add a GAME_TYPES entry in js/config/options.js (win, teamSet,
+           bases, vehicles, options)
+        2. Add a mode strategy object in js/modes.js with the hooks the
+           mode differs on (init, spawn, checkWin, onKill, labels) and
+           register it in MODES
+    match: ["js/config/*", "js/modes.js", "js/game.js", "js/main.js"]
     on: create
     when: before
 
   - content: |
-      The game has three modes: pvp (split screen), pvb (human vs AI, full
-      screen), and team (5v5 with towers, full screen).  Any new feature
-      must work in all three modes or be explicitly scoped to one.
+      The game has two modes: skirmish (score race to 10, no bases, tanks
+      only, any number of players up to 4) and battle (RED vs BLUE, base
+      compounds with HQ/walls/watch towers, all five vehicle types,
+      bot-filled teams).  Any new feature must work in both modes or be
+      explicitly scoped to one.
     match: ["js/game.js", "js/renderer.js", "js/main.js"]
     on: [edit, create]
     when: before
@@ -61,8 +68,9 @@ context:
       tiles and entities together.  Elevated tiles use depth gx+gy+1 so
       their side walls correctly occlude entities behind them.  Never put
       flat tiles into the depth-sorted pass — it causes flickering when
-      tanks cross tile boundaries.
-    match: ["js/renderer.js"]
+      tanks cross tile boundaries.  The contract lives in js/render/viewport.js
+      (renderViewport + collectDepthItems).
+    match: ["js/renderer.js", "js/render/*"]
     on: [edit, create]
     when: before
 
@@ -74,7 +82,7 @@ context:
       Navigation and combat are separated — bots always navigate toward
       their objective (tower) and fire at enemies they pass, rather than
       chasing enemies and abandoning the objective.
-    match: ["js/ai.js"]
+    match: ["js/ai.js", "js/ai/*"]
     on: [edit, create]
     when: before
 

@@ -1,0 +1,147 @@
+/**
+ * Squad behaviour — an infantry squad that auto-fires per member.
+ *
+ * Each alive member targets and fires independently from its own
+ * position (see pickSquadTarget); FIRE drives the dig-in state machine
+ * (roaming → diggingIn → dugIn → roaming) for humans, and the AI
+ * decides to dig in when enemies are close and building cover exists.
+ *
+ * The per-frame component update (dig-in timer + formation steering)
+ * is driven through the `update` hook; squad members never aim with
+ * the turret (no-op `aim`) and never fire arcing shells.
+ */
+
+import { ACTIONS, SQUAD_MEMBERS, VEHICLES } from "../config.js";
+import { GAME_EVENTS } from "../events.js";
+import { flashMuzzle, spawnBullet } from "../shoot.js";
+import { pickSquadTarget, Squad } from "../squad.js";
+import { animateTread, drive, rotateHull, rotateTurret } from "./tank.js";
+
+/** Fire one member's weapon at a target.  Shotguns fire a pellet spread. */
+function fireMemberAt(game, squad, memberPos, weapon, target) {
+    const e = target.entity;
+    const angle = Math.atan2(e.y - memberPos.y, e.x - memberPos.x);
+    const dmg = target.isFallback ? (weapon.fallbackDamage ?? weapon.damage) : weapon.damage;
+    // Bullet lifetime = time to fly the member's range (+ margin),
+    // giving squad weapons a hard range limit.
+    const lifetime = weapon.bulletSpeed > 0 ? weapon.range / weapon.bulletSpeed + 0.15 : null;
+
+    const pellets = weapon.pellets ?? 1;
+    const spread = weapon.spread ?? 0;
+    for (let p = 0; p < pellets; p++) {
+        const a = pellets > 1 ? angle - spread / 2 + (spread * p) / (pellets - 1) : angle;
+        spawnBullet(game, {
+            x: memberPos.x,
+            y: memberPos.y,
+            angle: a,
+            owner: squad.playerNumber,
+            team: squad.team,
+            damage: dmg,
+            speed: weapon.bulletSpeed,
+            lifetime,
+            tracer: weapon.tracer ?? true,
+        });
+    }
+
+    // Muzzle flash + event (the weapon's sound key drives the audio)
+    flashMuzzle(
+        game,
+        weapon.muzzleFlash ?? "ifvFlash",
+        memberPos.x + Math.cos(angle) * 0.3,
+        memberPos.y + Math.sin(angle) * 0.3,
+        angle,
+    );
+    game.emit(GAME_EVENTS.FIRE, { source: squad, bullet: game.bullets[game.bullets.length - 1], sound: weapon.sound });
+}
+
+export const squad = {
+    init(tank) {
+        const component = new Squad(tank);
+        tank.components.set("squad", component);
+        tank.components.set("body", component); // a squad's hitbox is its member positions
+    },
+
+    fire(game, squad, device, dt) {
+        if (!squad.alive || !squad.squad) return;
+        const component = squad.squad;
+
+        // Dig-in toggle — humans have edge detection; bots manage dig-in in AI.
+        if (typeof device.wasPressed === "function" && device.wasPressed(ACTIONS.fire)) {
+            if (component.digIn.state === "roaming") component.startDigIn();
+            else if (component.digIn.state === "diggingIn") component.cancelDigIn();
+            else component.standUp();
+        }
+
+        // No firing while performing the dig-in transition.
+        if (!component.canFire) return;
+
+        // Candidates come from the one enemy-entities surface (alive, enemy team).
+        const candidates = game.enemiesOf(squad.team);
+        const hasLOS = (x1, y1, x2, y2) => game.map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin: true });
+
+        for (const m of component.aliveMembers) {
+            const weapon = SQUAD_MEMBERS[m.type];
+            if (!weapon) continue;
+
+            m.cooldown -= dt;
+            if (m.cooldown > 0) continue;
+
+            const target = pickSquadTarget(m, weapon, candidates, hasLOS);
+            if (!target) continue;
+
+            // Set the cooldown (dug-in squads fire 25% faster)
+            let cooldown = weapon.cooldown;
+            if (component.dugIn) cooldown *= 0.8;
+            m.cooldown = cooldown;
+
+            fireMemberAt(game, squad, m, weapon, target);
+        }
+    },
+
+    /** Infantry movement: movement keys cancel dig-in; immobile while digging in / dug in. */
+    move(tank, device, dt, map) {
+        const component = tank.squad;
+        if (component?.digIn.state === "diggingIn") {
+            if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
+                component.cancelDigIn();
+            }
+        }
+        const oldX = tank.x,
+            oldY = tank.y;
+        const rotating = rotateHull(tank, device, dt);
+        rotateTurret(tank, device, dt);
+        drive(tank, device, dt, map, !component || component.canMove);
+        animateTread(tank, dt, oldX, oldY, rotating);
+    },
+
+    update(game, tank, dt) {
+        if (tank.squad) tank.squad.update(dt, game.map);
+    },
+
+    aim(_ai, _me, _target, _map) {},
+
+    aiThink(ai, _dt, me, enemies, map, _objective) {
+        // Dig in when enemies are close AND building cover exists; otherwise
+        // stay mobile.
+        const component = me.squad;
+        if (component) {
+            const v = VEHICLES.squad;
+            const nearEnemy = enemies.some((e) => e.alive && Math.hypot(e.x - me.x, e.y - me.y) < v.coverRadius + 5);
+            const inCover = map.hasIntactBuildingNear(me.x, me.y, v.coverRadius);
+            if (nearEnemy && inCover) {
+                if (component.digIn.state === "roaming") component.startDigIn();
+            } else if (component.digIn.state !== "roaming") {
+                component.standUp();
+            }
+        }
+
+        if (component.digIn.state !== "roaming") {
+            // Digging in / dug in: hold position (auto-fire is handled by
+            // the game) and clear stuck state so standing still doesn't
+            // trigger the "blow through a wall" escape behaviour.
+            ai.holdPosition();
+            return true;
+        }
+        return false;
+    },
+};

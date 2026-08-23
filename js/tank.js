@@ -1,9 +1,12 @@
 /**
- * Tank entity – handles movement, rotation, firing cooldown, and respawn.
+ * Tank entity – a generic vehicle shell: identity, armour, timers, and
+ * the shared movement/aiming *data* (angle, turret offset, position).
  *
- * Movement model:  W/↑ = drive forward in the direction the tank faces,
- * S/↓ = reverse (slower), A/← and D/→ = rotate hull in place.
- * Q/E and ,/. = rotate turret relative to the hull (slower than hull).
+ * Movement and firing are delegated to the vehicle behaviour strategy
+ * (js/vehicles/) via `getVehicleBehaviour(this.vehicleType)` — `update()`
+ * ticks the generic timers then calls the behaviour's `move` hook, and
+ * `game.js` dispatches firing to the behaviour's `fire` hook.  The entity
+ * itself never branches on vehicle type.
  *
  * turretAngle is an OFFSET from the hull angle.  0 = turret faces
  * the same direction as the hull.  The world-space turret direction
@@ -27,14 +30,15 @@
  *   - 'drone' — FPV kamikaze, 0.25 HP (one tower shot kills), no subsystems
  *   - 'spg'   — hold-to-charge artillery, 5 HP, subsystems at 2 HP
  *   - 'squad' — 5-man infantry squad, one HP per member, auto-fires
- *               (see Game._handleSquadFiring); members drop as it takes
+ *               (see js/vehicles/squad.js); members drop as it takes
  *               damage and it can dig in / use building cover
  */
 
-import { ACTIONS, CONFIG, VEHICLES } from "./config.js";
+import { CONFIG, VEHICLES } from "./config.js";
+import { resolveDamage } from "./damage.js";
 import { GameEntity } from "./entity.js";
-import { Squad } from "./squad.js";
-import { normalizeAngle } from "./utils.js";
+import { distance } from "./utils.js";
+import { getVehicleBehaviour } from "./vehicles/index.js";
 
 /* ── Hit zone constants ───────────────────────────────────── */
 
@@ -45,13 +49,24 @@ export const HIT_ZONE = {
     REAR: "rear",
 };
 
-/* ── Subsystem key → Tank property mapping ────────────────── */
-
-const SUBSYSTEM_PROPS = {
-    turret: "turretDisabled",
-    leftTrack: "leftTrackDisabled",
-    rightTrack: "rightTrackDisabled",
-};
+/** Single-point body: the default hitbox/hp surface for a non-squad vehicle. */
+function singleBody(tank) {
+    return {
+        distanceToPoint(x, y) {
+            return distance(x, y, tank.x, tank.y);
+        },
+        get hitRadius() {
+            return tank.size;
+        },
+        hitTest(x, y) {
+            return distance(x, y, tank.x, tank.y) < tank.size;
+        },
+        get hpFraction() {
+            const armour = VEHICLES[tank.vehicleType].armour;
+            return Math.max(0, 1 - tank.damageAccum / armour.hp);
+        },
+    };
+}
 
 export class Tank extends GameEntity {
     constructor(playerNumber, color, darkColor) {
@@ -62,7 +77,8 @@ export class Tank extends GameEntity {
         this.angle = 0; // hull angle (radians – 0 = east in world space)
         this.turretAngle = 0; // turret offset from hull (0 = aligned with hull)
 
-        // Vehicle type
+        // Vehicle type — the setter clears per-vehicle components and lets
+        // the behaviour's `init` hook create them (squad, SPG charge).
         this.vehicleType = "tank"; // 'tank', 'ifv', 'drone', 'spg', 'squad'
 
         // Gameplay
@@ -73,16 +89,8 @@ export class Tank extends GameEntity {
         // Subsystem damage (set by the data-driven applyHit)
         this.damaged = false; // true after subsystem threshold crossed
         this.damageAccum = 0; // accumulated damage (unified HP pool)
-        this.turretDisabled = false; // front hit: can't rotate turret
-        this.leftTrackDisabled = false; // left-side hit: can't drive straight
-        this.rightTrackDisabled = false; // right-side hit: can't drive straight
-
-        // SPG charge state
-        this.chargeTime = 0; // seconds fire button has been held
-        this.isCharging = false; // true while holding fire to charge range
-
-        // Squad component (lazily created when vehicleType === 'squad')
-        this._squad = null;
+        /** Knocked-out subsystems ("turret" / "leftTrack" / "rightTrack"). */
+        this.disabledSubsystems = new Set();
 
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
@@ -91,9 +99,67 @@ export class Tank extends GameEntity {
         this.smokeTimer = 0; // damage smoke emitter cooldown
     }
 
+    /* ── vehicle type + per-vehicle components ───────────── */
+
+    /** Vehicle type key (tank / ifv / drone / spg / squad). */
+    get vehicleType() {
+        return this._vehicleType;
+    }
+
+    /**
+     * Assign the vehicle type.  The setter drops any per-vehicle components
+     * from the previous type and calls the new behaviour's `init` hook to
+     * create the ones it needs (squad component, SPG charge) — the entity
+     * never branches on type.
+     */
+    set vehicleType(type) {
+        this._vehicleType = type;
+        this._initVehicleComponents();
+    }
+
+    /** A named per-vehicle component (null when this vehicle has none). */
+    component(name) {
+        return this.components.get(name) ?? null;
+    }
+
+    /** SPG hold-to-charge state (owned by the spg behaviour); null otherwise. */
+    get charge() {
+        return this.component("charge");
+    }
+
+    /** The physical body (single-point, or the squad when one exists). */
+    get body() {
+        return this.components.get("body");
+    }
+
+    /** Recreate this vehicle's components at its current position. */
+    _initVehicleComponents() {
+        this.components = new Map();
+        this.components.set("body", singleBody(this));
+        getVehicleBehaviour(this._vehicleType).init?.(this);
+    }
+
     /** World-space angle the turret is pointing. */
     get turretWorld() {
         return this.angle + this.turretAngle;
+    }
+
+    /** True if a subsystem has been knocked out (see VEHICLES[].armour.subsystems). */
+    subsystemDisabled(name) {
+        return this.disabledSubsystems.has(name);
+    }
+
+    /** Front hit disabled the turret (can't rotate it). */
+    get turretDisabled() {
+        return this.subsystemDisabled("turret");
+    }
+    /** Left-side hit disabled the left track (can't drive straight). */
+    get leftTrackDisabled() {
+        return this.subsystemDisabled("leftTrack");
+    }
+    /** Right-side hit disabled the right track (can't drive straight). */
+    get rightTrackDisabled() {
+        return this.subsystemDisabled("rightTrack");
     }
 
     /** True if any track is disabled (can only pivot). */
@@ -101,14 +167,9 @@ export class Tank extends GameEntity {
         return this.leftTrackDisabled || this.rightTrackDisabled;
     }
 
-    /** True if the gun fires only forward (IFV, drone, squad, or disabled turret). */
+    /** True if the gun fires only forward (fixed-turret vehicles, or a disabled turret). */
     get fixedGun() {
-        return (
-            this.vehicleType === "ifv" ||
-            this.vehicleType === "drone" ||
-            this.vehicleType === "squad" ||
-            this.turretDisabled
-        );
+        return this.turretDisabled || VEHICLES[this.vehicleType].turret === "fixed";
     }
 
     /** Collision radius — varies by vehicle type. */
@@ -118,24 +179,16 @@ export class Tank extends GameEntity {
 
     /**
      * The squad component (soldiers, dig-in state machine, damage) for
-     * squad vehicles; null otherwise.  Lazily created on first access.
+     * infantry vehicles; null otherwise.  Created and owned by the squad
+     * behaviour's `init` hook — the entity only stores it.
      */
     get squad() {
-        if (this.vehicleType !== "squad") return null;
-        if (!this._squad) this._squad = new Squad(this);
-        return this._squad;
+        return this.component("squad");
     }
 
-    /** Whether the squad is fully dug in (proxy into the component). */
-    get dugIn() {
-        return this.squad?.dugIn ?? false;
-    }
-
-    /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed). */
+    /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed) — delegated to the body. */
     get hpFraction() {
-        if (this.vehicleType === "squad" && this.squad) return this.squad.hpFraction;
-        const armour = VEHICLES[this.vehicleType].armour;
-        return Math.max(0, 1 - this.damageAccum / armour.hp);
+        return this.body.hpFraction;
     }
 
     /** Number of squad members still alive (0 for non-squad vehicles). */
@@ -163,11 +216,77 @@ export class Tank extends GameEntity {
         return true;
     }
     get isShooter() {
-        return this.vehicleType !== "drone";
+        return VEHICLES[this.vehicleType].firesBullets !== false;
+    }
+
+    /* ── interaction capabilities (data-driven flags) ── */
+
+    /** Air units fly over terrain and other units. */
+    get flies() {
+        return VEHICLES[this.vehicleType].flies;
+    }
+    /** Infantry is soft against enemy vehicles (run-over), but solid to friendlies. */
+    get softTarget() {
+        return VEHICLES[this.vehicleType].soft;
+    }
+    /** Exposed soldiers can be run over (dug-in squads are protected). */
+    get crushable() {
+        return VEHICLES[this.vehicleType].crushable && (this.squad?.isCrushable ?? false);
+    }
+    /** Ground vehicles crush exposed infantry. */
+    get canCrush() {
+        return VEHICLES[this.vehicleType].canCrush;
+    }
+    /** Chargeable vehicles hold fire to charge a ranged (arcing) shot. */
+    get chargeable() {
+        return VEHICLES[this.vehicleType].chargeRate != null;
+    }
+    /** Incoming damage multiplier after cover/dig-in (1 = no reduction). */
+    incomingDamageMultiplier(map) {
+        if (!this.alive || !this.squad) return 1;
+        return this.squad.damageMultiplier(map);
+    }
+
+    /** Which damage model resolves hits (armour vs squad members). */
+    get damageModel() {
+        return VEHICLES[this.vehicleType].armour.damageModel ?? "armour";
+    }
+
+    /* ── body delegation (single-point by default, multi-member for squads) ── */
+
+    /** Distance from a world point to the vehicle's hitbox (delegated to the body). */
+    distanceToPoint(x, y) {
+        return this.body.distanceToPoint(x, y);
+    }
+
+    /** Radius used for AoE falloff (delegated to the body). */
+    get hitRadius() {
+        return this.body.hitRadius;
+    }
+
+    /** True if a point is inside the vehicle's hitbox (delegated to the body). */
+    hitTest(x, y) {
+        return this.body.hitTest(x, y);
+    }
+
+    /** Index of the first crushable soldier under `vehicle`, or -1. */
+    crushedMemberBy(vehicle) {
+        return this.squad?.crushedMemberBy(vehicle) ?? -1;
+    }
+
+    /** Crush one soldier; returns true if the squad was destroyed. */
+    crushMember(index) {
+        return this.squad ? this.squad.crushMember(index) : false;
     }
 
     /* ── per-frame update ─────────────────────────────────── */
 
+    /**
+     * Tick the generic entity timers, then delegate movement to the
+     * vehicle behaviour (js/vehicles/).  Each behaviour's `move` hook owns
+     * how the vehicle rotates, aims the turret, and drives — the entity
+     * no longer branches on vehicle type here.
+     */
     update(dt, device, map) {
         // Tick timers even when dead (respawn countdown)
         if (!this.alive) {
@@ -183,94 +302,7 @@ export class Tank extends GameEntity {
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
         if (this.recoilTimer > 0) this.recoilTimer -= dt;
 
-        const oldX = this.x,
-            oldY = this.y;
-        const isIFV = this.vehicleType === "ifv";
-        const isDrone = this.vehicleType === "drone";
-
-        // ── Hull rotation
-        // If a track is disabled, can only pivot in the direction
-        // of the working track (left track out → can only turn right,
-        // right track out → can only turn left).
-        // Drones have no tracks — always free to rotate.
-        const canRotateLeft = isDrone || !this.rightTrackDisabled;
-        const canRotateRight = isDrone || !this.leftTrackDisabled;
-
-        const rotSpeed = VEHICLES[this.vehicleType].rotationSpeed;
-
-        // Turn/turret amounts are analog (0–1) when the device provides
-        // them (gamepad stick/triggers) and binary otherwise (keyboard,
-        // AI).  Falls back to isDown() for devices without analog().
-        const amt = (action) =>
-            typeof device.analog === "function" ? device.analog(action) : device.isDown(action) ? 1 : 0;
-        const turnL = amt(ACTIONS.left);
-        const turnR = amt(ACTIONS.right);
-
-        const rotating = (turnL > 0 && canRotateLeft) || (turnR > 0 && canRotateRight);
-        if (turnL > 0 && canRotateLeft) this.angle -= rotSpeed * turnL * dt;
-        if (turnR > 0 && canRotateRight) this.angle += rotSpeed * turnR * dt;
-        this.angle = normalizeAngle(this.angle);
-
-        // ── Turret rotation (relative to hull, slower)
-        // IFV/Drone/Squad: no turret — fixed forward (always 0)
-        // Disabled by front hit on tanks
-        if (isIFV || isDrone || this.vehicleType === "squad") {
-            this.turretAngle = 0;
-        } else if (!this.turretDisabled) {
-            const turretSpd = VEHICLES[this.vehicleType].turretSpeed;
-            const turrL = amt(ACTIONS.turretLeft);
-            const turrR = amt(ACTIONS.turretRight);
-            if (turrL > 0) this.turretAngle -= turretSpd * turrL * dt;
-            if (turrR > 0) this.turretAngle += turretSpd * turrR * dt;
-            this.turretAngle = normalizeAngle(this.turretAngle);
-        }
-
-        // ── Forward / reverse
-        // Disabled if any track is damaged (can only pivot).
-        // Drones always fly freely.
-        // SPGs cannot drive while charging (deployed).
-        // Squads are immobile while digging in / dug in; pressing a movement
-        // key during the dig-in transition cancels it (back to roaming).
-        let move = 0;
-        if (this.vehicleType === "squad" && this.squad && this.squad.digIn.state === "diggingIn") {
-            if (device.isDown(ACTIONS.forward) || device.isDown(ACTIONS.backward)) {
-                this.squad.cancelDigIn();
-            }
-        }
-        if (isDrone || !this.trackDamaged) {
-            const squadLocked = this.vehicleType === "squad" && this.squad && !this.squad.canMove;
-            if (this.isCharging || squadLocked) {
-                // SPG deployed / squad digging in or dug in — no movement
-            } else {
-                if (device.isDown(ACTIONS.forward)) move = 1;
-                if (device.isDown(ACTIONS.backward)) move = -CONFIG.TANK_REVERSE_FACTOR;
-            }
-        }
-
-        if (move !== 0) {
-            const baseSpeed = VEHICLES[this.vehicleType].speed;
-            const speed = baseSpeed * move;
-            const nx = this.x + Math.cos(this.angle) * speed * dt;
-            const ny = this.y + Math.sin(this.angle) * speed * dt;
-
-            if (isDrone) {
-                // Drones fly over all terrain — only check map bounds
-                if (this._canFly(nx, this.y, map)) this.x = nx;
-                if (this._canFly(this.x, ny, map)) this.y = ny;
-            } else {
-                // Slide along obstacles – try each axis independently
-                if (this._canOccupy(nx, this.y, map)) this.x = nx;
-                if (this._canOccupy(this.x, ny, map)) this.y = ny;
-            }
-        }
-
-        // ── Tread animation (scrolls when moving or rotating in place)
-        const dx = this.x - oldX,
-            dy = this.y - oldY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 0.0001 || rotating) {
-            this.treadPhase = (this.treadPhase + Math.max(dist * 6, rotating ? dt * 2.5 : 0)) % 1;
-        }
+        getVehicleBehaviour(this.vehicleType).move(this, device, dt, map);
     }
 
     /* ── firing ───────────────────────────────────────────── */
@@ -319,69 +351,7 @@ export class Tank extends GameEntity {
      *                     'absorbed'  — damage counted but no state change yet
      */
     applyHit(zone, damage = 1.0) {
-        // Squads use their explicit member damage model (see Squad).
-        if (this.vehicleType === "squad" && this.squad) {
-            const result = this.squad.applyDamage(damage);
-            if (result === "destroyed") this.kill();
-            return result;
-        }
-
-        const armour = VEHICLES[this.vehicleType].armour;
-
-        // ── Rear instant kill (full-damage hit, e.g. ammo rack detonation)
-        if (armour.rearInstantKill && zone === HIT_ZONE.REAR && damage >= 1.0) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Already past subsystem phase + full-damage hit → kill
-        if (this.damaged && armour.subsystemThreshold != null && damage >= 1.0) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Accumulate damage
-        this.damageAccum += damage;
-
-        // ── Destruction: total damage exceeds HP
-        if (this.damageAccum >= armour.hp) {
-            this.kill();
-            return "destroyed";
-        }
-
-        // ── Subsystem trigger (first time accumulated damage crosses threshold)
-        if (armour.subsystemThreshold != null && !this.damaged && this.damageAccum >= armour.subsystemThreshold) {
-            // Rear zone at threshold → kill (accumulated small-arms to rear)
-            if (armour.rearInstantKill && zone === HIT_ZONE.REAR) {
-                this.kill();
-                return "destroyed";
-            }
-
-            this.damaged = true;
-            this._applySubsystem(armour, zone);
-            return "damaged";
-        }
-
-        return "absorbed";
-    }
-
-    /**
-     * Activate the subsystem effect for the given hit zone.
-     * Reads the armour.subsystems map to decide what to disable.
-     */
-    _applySubsystem(armour, zone) {
-        const key = armour.subsystems[zone];
-        if (!key) return; // zone has no subsystem mapping — damage only
-
-        const prop = SUBSYSTEM_PROPS[key];
-        if (prop) {
-            this[prop] = true;
-        }
-
-        // Side-effect: lock turret forward when turret is disabled
-        if (key === "turret") {
-            this.turretAngle = 0;
-        }
+        return resolveDamage(this, zone, damage);
     }
 
     /* ── death / respawn ──────────────────────────────────── */
@@ -389,8 +359,11 @@ export class Tank extends GameEntity {
     kill() {
         this.alive = false;
         this.respawnTimer = CONFIG.TANK_RESPAWN_TIME;
-        this.chargeTime = 0;
-        this.isCharging = false;
+    }
+
+    /** A destroyed tank credits the kill to the source's faction. */
+    onDestroyed(game, source) {
+        game.mode.onKill(game, source.team, this);
     }
 
     respawnAt(x, y) {
@@ -399,36 +372,13 @@ export class Tank extends GameEntity {
         this.angle = Math.random() * Math.PI * 2;
         this.turretAngle = 0; // turret starts aligned with hull
 
-        // Clear charge state
-        this.chargeTime = 0;
-        this.isCharging = false;
-
-        // Discard the squad component — a fresh one is created lazily on
-        // next access (which also resets members, dig-in, and cooldowns).
-        this._squad = null;
-
         // Clear all damage
         this.damaged = false;
         this.damageAccum = 0;
-        this.turretDisabled = false;
-        this.leftTrackDisabled = false;
-        this.rightTrackDisabled = false;
-    }
+        this.disabledSubsystems.clear();
 
-    /* ── collision helper ─────────────────────────────────── */
-
-    _canOccupy(wx, wy, map) {
-        const s = VEHICLES[this.vehicleType].size * 0.85;
-        return (
-            map.isPassable(wx - s, wy - s) &&
-            map.isPassable(wx + s, wy - s) &&
-            map.isPassable(wx - s, wy + s) &&
-            map.isPassable(wx + s, wy + s)
-        );
-    }
-
-    /** Drones fly over everything — only check map bounds. */
-    _canFly(wx, wy, map) {
-        return wx > 0.5 && wx < map.width - 0.5 && wy > 0.5 && wy < map.height - 0.5;
+        // Recreate per-vehicle components (squad members, SPG charge) at
+        // the new spawn position — the behaviour owns their state.
+        this._initVehicleComponents();
     }
 }

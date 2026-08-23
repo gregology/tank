@@ -129,6 +129,9 @@ describe("Destructible terrain", () => {
 });
 
 describe("Base compounds", () => {
+    const countBy = (layout, type) => layout.structures.filter((s) => s.type === type).length;
+    const hqTiles = (layout) => layout.structures.find((s) => s.type === "baseHQ").tiles.length;
+
     it("places compounds on opposite sides of the island", () => {
         const map = new GameMap();
         const [l1, l2] = map.buildBaseCompounds();
@@ -173,26 +176,29 @@ describe("Base compounds", () => {
     it("small compound (64x64) has 2 watch towers", () => {
         const map = new GameMap(64, 64);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 2, "should have 2 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
-        assert.ok(l1.walls.length > 20, `should have many walls, got ${l1.walls.length}`);
+        assert.equal(countBy(l1, "baseTower"), 2, "should have 2 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
+        assert.ok(countBy(l1, "baseWall") > 20, `should have many walls, got ${countBy(l1, "baseWall")}`);
     });
 
     it("medium compound (128x128) has 4 corner towers", () => {
         const map = new GameMap(128, 128);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 4, "should have 4 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(countBy(l1, "baseTower"), 4, "should have 4 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
         assert.equal(l1.size, 14, "compound size should be 14");
     });
 
     it("large compound (192x192) has 6 towers and is circular", () => {
         const map = new GameMap(192, 192);
         const [l1] = map.buildBaseCompounds();
-        assert.equal(l1.towers.length, 6, "should have 6 watch tower positions");
-        assert.equal(l1.hqTiles.length, 2, "HQ should occupy 2 tiles");
+        assert.equal(countBy(l1, "baseTower"), 6, "should have 6 watch tower positions");
+        assert.equal(hqTiles(l1), 2, "HQ should occupy 2 tiles");
         assert.equal(l1.size, 21, "compound size should be 21 (diameter of r=10 circle)");
-        assert.ok(l1.walls.length > 30, `circular compound should have many walls, got ${l1.walls.length}`);
+        assert.ok(
+            countBy(l1, "baseWall") > 30,
+            `circular compound should have many walls, got ${countBy(l1, "baseWall")}`,
+        );
     });
 
     it("base spawn points are fully passable", () => {
@@ -200,7 +206,7 @@ describe("Base compounds", () => {
         const [l1] = map.buildBaseCompounds();
         const s = VEHICLES.tank.size * 0.85;
         for (let i = 0; i < 20; i++) {
-            const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+            const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
             assert.ok(
                 map.isPassable(sp.x - s, sp.y - s) &&
                     map.isPassable(sp.x + s, sp.y - s) &&
@@ -217,7 +223,7 @@ describe("Base compounds", () => {
             const map = new GameMap(sz, sz);
             const [l1] = map.buildBaseCompounds();
             for (let i = 0; i < 10; i++) {
-                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y);
+                const sp = map.getBaseSpawnPoint(l1.center.x, l1.center.y, l1.half);
                 assert.ok(
                     map.isPassable(sp.x - s, sp.y - s) &&
                         map.isPassable(sp.x + s, sp.y - s) &&
@@ -227,5 +233,60 @@ describe("Base compounds", () => {
                 );
             }
         }
+    });
+});
+
+describe("Consolidated geometry queries", () => {
+    it("canStand checks the four corners of the vehicle box", () => {
+        const map = new GameMap();
+        for (let y = 4; y <= 8; y++) for (let x = 4; x <= 8; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.canStand(5.5, 5.5), true);
+        // A blocking tile at one corner (6,6) flips the box at (5.7, 5.7):
+        // tank corners (size*0.85 ≈ 0.38) reach tile (6,6).
+        map.setTile(6, 6, T.HILL);
+        assert.equal(map.canStand(5.7, 5.7), false);
+    });
+
+    it("canStand respects the vehicle size argument", () => {
+        const map = new GameMap();
+        for (let y = 4; y <= 7; y++) for (let x = 4; x <= 8; x++) map.setTile(x, y, T.GRASS);
+        map.setTile(7, 5, T.HILL);
+        // At (6.7, 5.5) a small vehicle's corners (size*0.85 = 0.085) stay in
+        // tile (6,5), but a tank's corners (0.38) reach the hill at (7,5).
+        assert.equal(map.canStand(6.7, 5.5, 0.1), true, "small vehicle clears the hill");
+        assert.equal(map.canStand(6.7, 5.5, VEHICLES.tank.size), false, "tank reaches the hill corner");
+    });
+
+    it("hasLineOfSight is clear across open ground and blocked by a hill", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.hasLineOfSight(2.5, 5.5, 15.5, 5.5), true);
+        map.setTile(8, 5, T.HILL);
+        assert.equal(map.hasLineOfSight(2.5, 5.5, 15.5, 5.5), false);
+    });
+
+    it("hasLineOfSight skipOrigin lets a shooter on a blocking tile see out", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        // A watch tower sits on a BASE_STRUCTURE tile; without skipping the
+        // origin tile it would block its own view.
+        map.setTile(5, 5, T.BASE_STRUCTURE);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 15.5, 5.5, { skipOrigin: true }), true);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 15.5, 5.5), false, "origin tile blocks by default");
+    });
+
+    it("hasWalkableLine is clear across passable ground and blocked by obstacles", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), true);
+        map.setTile(8, 5, T.HILL);
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), false);
+    });
+
+    it("hasWalkableLine requires the endpoint tile to be passable", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        map.setTile(15, 5, T.HILL); // the destination tile itself
+        assert.equal(map.hasWalkableLine(2.5, 5.5, 15.5, 5.5), false);
     });
 });

@@ -3,6 +3,11 @@
  *
  * Particles live in **world space** so they scroll correctly with the
  * camera; the renderer projects them to screen space.
+ *
+ * Effects are data-driven: `EFFECTS` maps an effect key to a list of
+ * "bursts" (count, direction mode, colour, speed/life/size ranges), and the
+ * single `emit(effect, x, y, angle)` reads that table.  A new visual effect
+ * is one table row, not a new hand-rolled loop.
  */
 
 import { CONFIG } from "./config.js";
@@ -37,6 +42,165 @@ export class Particle {
     }
 }
 
+/* ── Effect data ──────────────────────────────────────────── */
+
+/**
+ * Resolve a burst's colour: a fixed palette pick, a grey ramp, or a
+ * brown "dirt" ramp.
+ */
+function resolveColor(color) {
+    if (color.type === "grey") {
+        const g = randomInt(color.lo, color.hi);
+        return `rgb(${g},${g},${g})`;
+    }
+    if (color.type === "dirt") {
+        const g = randomInt(color.lo, color.hi);
+        return `rgb(${g + color.rOff},${g},${g - color.bOff})`;
+    }
+    return color.colors[randomInt(0, color.colors.length - 1)];
+}
+
+/**
+ * Effect key → bursts.  Each burst: `count` particles, a `mode` ("radial",
+ * "directional", or "drift"), a `color`, and `speed` / `life` / `size`
+ * ranges.  "directional" bursts also take a `spread` (radians).
+ */
+const EFFECTS = {
+    explosion: [
+        {
+            count: 28,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#ff2200", "#ff6600", "#ffaa00", "#ffee66", "#ffffff"] },
+            speed: [1.0, 4.5],
+            life: [0.3, 1.0],
+            size: [2, 6],
+        },
+        {
+            count: 10,
+            mode: "radial",
+            color: { type: "grey", lo: 30, hi: 70 },
+            speed: [0.4, 2.0],
+            life: [0.6, 1.5],
+            size: [3, 7],
+        },
+    ],
+    muzzleFlash: [
+        {
+            count: 6,
+            mode: "directional",
+            spread: 0.35,
+            color: { type: "fixed", colors: ["#ffcc00", "#ffffff", "#ff8800"] },
+            speed: [2, 5],
+            life: [0.08, 0.25],
+            size: [1, 3],
+        },
+    ],
+    ifvFlash: [
+        {
+            count: 3,
+            mode: "directional",
+            spread: 0.25,
+            color: { type: "fixed", colors: ["#88ff44", "#ccff88", "#ffffff"] },
+            speed: [1.5, 3.5],
+            life: [0.05, 0.12],
+            size: [1, 2],
+        },
+    ],
+    impact: [
+        {
+            count: 8,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#aaaaaa", "#ffcc00", "#ff8800"] },
+            speed: [1, 3],
+            life: [0.15, 0.4],
+            size: [1, 3],
+        },
+    ],
+    tinyImpact: [
+        {
+            count: 3,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#88cc44", "#aaddaa", "#ccff88"] },
+            speed: [0.5, 1.5],
+            life: [0.08, 0.2],
+            size: [1, 2],
+        },
+    ],
+    droneExplosion: [
+        {
+            count: 18,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#ff4400", "#ff8800", "#ffcc00", "#ffffff"] },
+            speed: [1.5, 5.0],
+            life: [0.2, 0.6],
+            size: [1, 4],
+        },
+        {
+            count: 6,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#222"] },
+            speed: [0.3, 1.5],
+            life: [0.5, 1.2],
+            size: [2, 5],
+        },
+    ],
+    spgFlash: [
+        {
+            count: 12,
+            mode: "directional",
+            spread: 0.5,
+            color: { type: "fixed", colors: ["#ffaa00", "#ffdd44", "#ffffff", "#ff6600"] },
+            speed: [2, 6],
+            life: [0.1, 0.4],
+            size: [2, 5],
+        },
+        {
+            count: 6,
+            mode: "radial",
+            color: { type: "grey", lo: 50, hi: 90 },
+            speed: [0.5, 2.0],
+            life: [0.3, 0.8],
+            size: [3, 6],
+        },
+    ],
+    artilleryImpact: [
+        {
+            count: 22,
+            mode: "radial",
+            color: { type: "fixed", colors: ["#ff3300", "#ff7700", "#ffbb00", "#ffee66", "#ffffff"] },
+            speed: [1.5, 5.0],
+            life: [0.3, 0.9],
+            size: [2, 6],
+        },
+        {
+            count: 8,
+            mode: "radial",
+            color: { type: "dirt", lo: 60, hi: 100, rOff: 20, bOff: 20 },
+            speed: [0.8, 3.0],
+            life: [0.4, 1.0],
+            size: [2, 5],
+        },
+        {
+            count: 8,
+            mode: "radial",
+            color: { type: "grey", lo: 25, hi: 55 },
+            speed: [0.3, 1.5],
+            life: [0.6, 1.5],
+            size: [3, 7],
+        },
+    ],
+    smoke: [
+        {
+            count: 1,
+            mode: "drift",
+            color: { type: "grey", lo: 35, hi: 75 },
+            speed: [-0.3, 0.3],
+            life: [0.4, 0.9],
+            size: [2, 5],
+        },
+    ],
+};
+
 /* ── System that manages many particles ───────────────────── */
 
 export class ParticleSystem {
@@ -54,230 +218,38 @@ export class ParticleSystem {
         }
     }
 
-    /* ── emitters ─────────────────────────────────────────── */
-
-    /** Big fiery explosion when a tank is destroyed. */
-    emitExplosion(x, y) {
-        const fireColors = ["#ff2200", "#ff6600", "#ffaa00", "#ffee66", "#ffffff"];
-        for (let i = 0; i < 28; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(1.0, 4.5);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                fireColors[randomInt(0, fireColors.length - 1)],
-                randomFloat(0.3, 1.0),
-                randomFloat(2, 6),
-            );
-        }
-        // smoke
-        for (let i = 0; i < 10; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.4, 2.0);
-            const g = randomInt(30, 70);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                `rgb(${g},${g},${g})`,
-                randomFloat(0.6, 1.5),
-                randomFloat(3, 7),
-            );
+    /** Emit a named effect at (x, y); `angle` is for directional bursts. */
+    emit(effect, x, y, angle = 0) {
+        for (const burst of EFFECTS[effect] ?? []) {
+            for (let i = 0; i < burst.count; i++) {
+                this._spawnBurst(x, y, angle, burst);
+            }
         }
     }
 
-    /** Small flash at the barrel tip when firing. */
-    emitMuzzleFlash(x, y, angle) {
-        const colors = ["#ffcc00", "#ffffff", "#ff8800"];
-        for (let i = 0; i < 6; i++) {
-            const spread = randomFloat(-0.35, 0.35);
-            const s = randomFloat(2, 5);
-            this._add(
-                x,
-                y,
-                Math.cos(angle + spread) * s,
-                Math.sin(angle + spread) * s,
-                colors[randomInt(0, 2)],
-                randomFloat(0.08, 0.25),
-                randomFloat(1, 3),
-            );
-        }
-    }
+    _spawnBurst(x, y, angle, burst) {
+        const color = resolveColor(burst.color);
+        const life = randomFloat(burst.life[0], burst.life[1]);
+        const size = randomFloat(burst.size[0], burst.size[1]);
 
-    /** Small green flash for IFV autocannon. */
-    emitIFVFlash(x, y, angle) {
-        const colors = ["#88ff44", "#ccff88", "#ffffff"];
-        for (let i = 0; i < 3; i++) {
-            const spread = randomFloat(-0.25, 0.25);
-            const s = randomFloat(1.5, 3.5);
-            this._add(
-                x,
-                y,
-                Math.cos(angle + spread) * s,
-                Math.sin(angle + spread) * s,
-                colors[randomInt(0, 2)],
-                randomFloat(0.05, 0.12),
-                randomFloat(1, 2),
-            );
+        let vx;
+        let vy;
+        if (burst.mode === "directional") {
+            const a = angle + randomFloat(-burst.spread, burst.spread);
+            const s = randomFloat(burst.speed[0], burst.speed[1]);
+            vx = Math.cos(a) * s;
+            vy = Math.sin(a) * s;
+        } else if (burst.mode === "drift") {
+            vx = randomFloat(burst.speed[0], burst.speed[1]);
+            vy = randomFloat(burst.speed[0], burst.speed[1]);
+        } else {
+            const a = randomFloat(0, Math.PI * 2);
+            const s = randomFloat(burst.speed[0], burst.speed[1]);
+            vx = Math.cos(a) * s;
+            vy = Math.sin(a) * s;
         }
-    }
 
-    /** Spark when a bullet hits terrain. */
-    emitImpact(x, y) {
-        const colors = ["#aaaaaa", "#ffcc00", "#ff8800"];
-        for (let i = 0; i < 8; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(1, 3);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                colors[randomInt(0, 2)],
-                randomFloat(0.15, 0.4),
-                randomFloat(1, 3),
-            );
-        }
-    }
-
-    /** Tiny spark for absorbed partial damage (IFV bullets). */
-    emitTinyImpact(x, y) {
-        const colors = ["#88cc44", "#aaddaa", "#ccff88"];
-        for (let i = 0; i < 3; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.5, 1.5);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                colors[randomInt(0, 2)],
-                randomFloat(0.08, 0.2),
-                randomFloat(1, 2),
-            );
-        }
-    }
-
-    /** Drone detonation — sharp directional blast with sparks. */
-    emitDroneExplosion(x, y) {
-        const fireColors = ["#ff4400", "#ff8800", "#ffcc00", "#ffffff"];
-        for (let i = 0; i < 18; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(1.5, 5.0);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                fireColors[randomInt(0, fireColors.length - 1)],
-                randomFloat(0.2, 0.6),
-                randomFloat(1, 4),
-            );
-        }
-        // Dark smoke from electronics
-        for (let i = 0; i < 6; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.3, 1.5);
-            this._add(x, y, Math.cos(a) * s, Math.sin(a) * s, "#222", randomFloat(0.5, 1.2), randomFloat(2, 5));
-        }
-    }
-
-    /** Big artillery muzzle flash (SPG firing). */
-    emitSPGFlash(x, y, angle) {
-        const colors = ["#ffaa00", "#ffdd44", "#ffffff", "#ff6600"];
-        for (let i = 0; i < 12; i++) {
-            const spread = randomFloat(-0.5, 0.5);
-            const s = randomFloat(2, 6);
-            this._add(
-                x,
-                y,
-                Math.cos(angle + spread) * s,
-                Math.sin(angle + spread) * s,
-                colors[randomInt(0, colors.length - 1)],
-                randomFloat(0.1, 0.4),
-                randomFloat(2, 5),
-            );
-        }
-        // Smoke ring
-        for (let i = 0; i < 6; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.5, 2.0);
-            const g = randomInt(50, 90);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                `rgb(${g},${g},${g})`,
-                randomFloat(0.3, 0.8),
-                randomFloat(3, 6),
-            );
-        }
-    }
-
-    /** Artillery shell landing explosion (larger than normal). */
-    emitArtilleryImpact(x, y) {
-        const fireColors = ["#ff3300", "#ff7700", "#ffbb00", "#ffee66", "#ffffff"];
-        for (let i = 0; i < 22; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(1.5, 5.0);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                fireColors[randomInt(0, fireColors.length - 1)],
-                randomFloat(0.3, 0.9),
-                randomFloat(2, 6),
-            );
-        }
-        // Dirt/debris
-        for (let i = 0; i < 8; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.8, 3.0);
-            const g = randomInt(60, 100);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                `rgb(${g + 20},${g},${g - 20})`,
-                randomFloat(0.4, 1.0),
-                randomFloat(2, 5),
-            );
-        }
-        // Dark smoke
-        for (let i = 0; i < 8; i++) {
-            const a = randomFloat(0, Math.PI * 2);
-            const s = randomFloat(0.3, 1.5);
-            const g = randomInt(25, 55);
-            this._add(
-                x,
-                y,
-                Math.cos(a) * s,
-                Math.sin(a) * s,
-                `rgb(${g},${g},${g})`,
-                randomFloat(0.6, 1.5),
-                randomFloat(3, 7),
-            );
-        }
-    }
-
-    /** Continuous smoke puff from a damaged tank. */
-    emitSmoke(x, y) {
-        const g = randomInt(35, 75);
-        this._add(
-            x,
-            y,
-            randomFloat(-0.3, 0.3),
-            randomFloat(-0.3, 0.3),
-            `rgb(${g},${g},${g})`,
-            randomFloat(0.4, 0.9),
-            randomFloat(2, 5),
-        );
+        this._add(x, y, vx, vy, color, life, size);
     }
 
     /* ── internal ─────────────────────────────────────────── */

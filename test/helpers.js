@@ -5,7 +5,7 @@
 import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
-import { Base, BaseHQ, BaseWall, BaseWatchTower, GameEntity } from "../js/entity.js";
+import { Base, BaseStructure, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
@@ -16,9 +16,7 @@ export {
     AI_ROLES,
     BASE_STRUCTURES,
     Base,
-    BaseHQ,
-    BaseWall,
-    BaseWatchTower,
+    BaseStructure,
     Bullet,
     CONFIG,
     GameEntity,
@@ -52,9 +50,7 @@ export function seededRng(seed) {
 export function randomMap() {
     const map = new GameMap();
     const layouts = map.buildBaseCompounds();
-    // Backward-compat: "towers" returns passable spawn points near compound centres
-    const towers = layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y));
-    return { map, layouts, towers };
+    return { map, layouts };
 }
 
 /**
@@ -106,6 +102,55 @@ export function zigzag(startY, spacing, count, x1, x2, gapSide = "alternate") {
         }
     }
     return obs;
+}
+
+/* ── Fake input devices ───────────────────────────────────── */
+
+/**
+ * A configurable InputDevice for driving human-controlled tanks/menus.
+ * `held` actions report as isDown/analog; `pressed` actions report as
+ * wasPressed (one-frame edge).  Both are Sets of ACTIONS keys.
+ */
+export function fakeDevice({ held = [], pressed = [] } = {}) {
+    const heldSet = new Set(held);
+    const pressedSet = new Set(pressed);
+    return {
+        isDown: (a) => heldSet.has(a),
+        analog: (a) => (heldSet.has(a) ? 1 : 0),
+        wasPressed: (a) => pressedSet.has(a),
+    };
+}
+
+/* ── Recording canvas context ─────────────────────────────── */
+
+/**
+ * Minimal recording 2D context for render smoke tests.
+ *
+ * Every method call is a no-op recorded into `calls`; property sets
+ * store the value (so reads after writes behave).  Use it to assert
+ * "drawing happened and did not throw", not pixel output.
+ */
+export function fakeCtx() {
+    const calls = [];
+    const ctx = new Proxy(
+        {},
+        {
+            get(target, prop) {
+                if (typeof prop === "symbol") return undefined;
+                if (prop in target) return target[prop];
+                const record = () => {
+                    calls.push(prop);
+                };
+                target[prop] = record;
+                return record;
+            },
+            set(target, prop, value) {
+                target[prop] = value;
+                return true;
+            },
+        },
+    );
+    return { ctx, calls };
 }
 
 /* ── Bot simulation ───────────────────────────────────────── */
@@ -216,15 +261,7 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
         bots.push(b);
     }
 
-    const canStand = (x, y) => {
-        const s = VEHICLES.tank.size * 0.85;
-        return (
-            map.isPassable(x - s, y - s) &&
-            map.isPassable(x + s, y - s) &&
-            map.isPassable(x - s, y + s) &&
-            map.isPassable(x + s, y + s)
-        );
-    };
+    const canStand = (x, y) => map.canStand(x, y);
 
     for (let f = 0; f < frames; f++) {
         const allTanks = bots.map((b) => b.tank);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { bestTarget } from "../js/ai/targeting.js";
 import {
     ACTIONS,
     createBot,
@@ -15,6 +16,11 @@ import {
     wallU,
     wallV,
 } from "./helpers.js";
+
+/** Passable spawn points near each compound centre (battle maps). */
+function baseSpawns(map, layouts) {
+    return layouts.map((l) => map.getBaseSpawnPoint(l.center.x, l.center.y, l.half));
+}
 
 /* ── Helper: run a navigation scenario across N fixed seeds ── *
  *                                                                *
@@ -127,10 +133,8 @@ describe("AI Navigation – cross-map (random terrain)", () => {
     it("reaches the opposite tower on 10 random maps", () => {
         let failures = 0;
         for (let i = 0; i < 10; i++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const rng = seededRng(i + 100);
             const bot = createBot(tp1.x, tp1.y, 0, map, rng);
             const result = simulateNavigation(bot, { x: tp2.x, y: tp2.y }, map, {
@@ -207,10 +211,8 @@ describe("AI Team mode – 5v5 objective push", () => {
         let totalStuck = 0,
             totalBots = 0;
         for (let trial = 0; trial < 10; trial++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const results = simulateTeam(map, tp1, tp2, tp2, tp1, { seconds: 60, botsPerTeam: 5 });
             const startDist = Math.hypot(tp2.x - tp1.x, tp2.y - tp1.y);
             for (const r of results) {
@@ -224,10 +226,8 @@ describe("AI Team mode – 5v5 objective push", () => {
 
     it("bots are never pushed into impassable terrain", () => {
         for (let trial = 0; trial < 5; trial++) {
-            const {
-                map,
-                towers: [tp1, tp2],
-            } = randomMap();
+            const { map, layouts } = randomMap();
+            const [tp1, tp2] = baseSpawns(map, layouts);
             const _results = simulateTeam(map, tp1, tp2, tp2, tp1, { seconds: 15, botsPerTeam: 5 });
         }
         assert.ok(true);
@@ -238,7 +238,7 @@ describe("AI Team mode – 5v5 objective push", () => {
  *  Target priority – weighted target selection                  *
  * ════════════════════════════════════════════════════════════ */
 
-describe("AI Target priority – _bestTarget scoring", () => {
+describe("AI Target priority – bestTarget scoring", () => {
     it("tank prefers SPG over IFV at equal distance", () => {
         const map = new GameMap();
         const rng = seededRng(42);
@@ -259,10 +259,8 @@ describe("AI Target priority – _bestTarget scoring", () => {
         ifv.x = 25;
         ifv.y = 32.01; // nearly same distance
 
-        // Run one think to populate the AI state
-        bot.ai.think(0.016, bot.tank, [spg, ifv], map, null);
         // The AI should pick SPG (weight 10) over IFV (weight 2)
-        const result = bot.ai._bestTarget(bot.tank, [spg, ifv]);
+        const result = bestTarget(bot.ai, bot.tank, [spg, ifv]);
         assert.ok(result, "should find a target");
         assert.equal(result.target.vehicleType, "spg", "tank should prefer SPG over IFV at same distance");
     });
@@ -280,7 +278,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         drone.x = 21;
         drone.y = 32; // very close
 
-        const result = bot.ai._bestTarget(bot.tank, [drone]);
+        const result = bestTarget(bot.ai, bot.tank, [drone]);
         assert.equal(result, null, "tank should never target a drone (priority 0)");
     });
 
@@ -304,7 +302,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         tank.x = 25;
         tank.y = 32; // closer
 
-        const result = bot.ai._bestTarget(bot.tank, [drone, tank]);
+        const result = bestTarget(bot.ai, bot.tank, [drone, tank]);
         assert.ok(result, "should find a target");
         // drone: 10/8=1.25, tank: 2/5=0.4 → drone wins
         assert.equal(result.target.vehicleType, "drone", "IFV should prefer drone even when tank is closer");
@@ -337,7 +335,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         ifv.x = 24;
         ifv.y = 32;
 
-        const result = bot.ai._bestTarget(bot.tank, [tank, drone, ifv]);
+        const result = bestTarget(bot.ai, bot.tank, [tank, drone, ifv]);
         assert.equal(result, null, "SPG should ignore tanks, drones, and IFVs");
     });
 
@@ -354,7 +352,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         enemySpg.x = 25;
         enemySpg.y = 32;
 
-        const result = bot.ai._bestTarget(bot.tank, [enemySpg]);
+        const result = bestTarget(bot.ai, bot.tank, [enemySpg]);
         assert.ok(result, "SPG should target another SPG");
         assert.equal(result.target.vehicleType, "spg");
     });
@@ -380,7 +378,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         closeIfv.y = 32; // distance 0.5
 
         // spg score: 10/30=0.33, ifv score: 2/0.5=4.0 → IFV wins
-        const result = bot.ai._bestTarget(bot.tank, [farSpg, closeIfv]);
+        const result = bestTarget(bot.ai, bot.tank, [farSpg, closeIfv]);
         assert.ok(result, "should find a target");
         assert.equal(
             result.target.vehicleType,
@@ -402,7 +400,7 @@ describe("AI Target priority – _bestTarget scoring", () => {
         dead.x = 21;
         dead.y = 32;
 
-        const result = bot.ai._bestTarget(bot.tank, [dead]);
+        const result = bestTarget(bot.ai, bot.tank, [dead]);
         assert.equal(result, null, "should not target dead enemies");
     });
 });
