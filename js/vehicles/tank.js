@@ -129,7 +129,7 @@ function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
     const bestEnemy = bestTarget(ai, me, enemies);
     let target = null;
 
-    if (bestEnemy && bestEnemy.dist < 15) {
+    if (bestEnemy && bestEnemy.dist < CONFIG.IMMOBILISED_ENGAGE_RANGE) {
         target = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
     } else if (objective) {
         const d = Math.hypot(objective.x - me.x, objective.y - me.y);

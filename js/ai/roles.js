@@ -79,7 +79,7 @@ export const ROLE_STRATEGIES = {
 
             // Engage nearby enemies (don't detour to chase — just shoot)
             const bestEnemy = bestTarget(ai, me, enemies);
-            if (bestEnemy && bestEnemy.dist < 10) {
+            if (bestEnemy && bestEnemy.dist < CONFIG.CAVALRY_ENGAGE_RANGE) {
                 fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             }
 
@@ -211,8 +211,10 @@ export const ROLE_STRATEGIES = {
                 if (ai.roleState.patrolTimer == null) ai.roleState.patrolTimer = 0;
                 ai.roleState.patrolTimer -= dt;
                 if (ai.roleState.patrolTimer <= 0) {
-                    ai.roleState.patrolAngle += 0.8 + ai.rng() * 1.0;
-                    ai.roleState.patrolTimer = 3.0 + ai.rng() * 2.0;
+                    ai.roleState.patrolAngle +=
+                        CONFIG.DEFENDER_PATROL_TURN + ai.rng() * CONFIG.DEFENDER_PATROL_TURN_SPREAD;
+                    ai.roleState.patrolTimer =
+                        CONFIG.DEFENDER_PATROL_INTERVAL + ai.rng() * CONFIG.DEFENDER_PATROL_INTERVAL_SPREAD;
                 }
                 const r = CONFIG.DEFENDER_PATROL_RADIUS;
                 navGoal = {
@@ -222,7 +224,7 @@ export const ROLE_STRATEGIES = {
 
                 // Fire at any enemy within personal range
                 const bestEnemy = bestTarget(ai, me, enemies);
-                if (bestEnemy && bestEnemy.dist < 10) {
+                if (bestEnemy && bestEnemy.dist < CONFIG.DEFENDER_PERSONAL_RANGE) {
                     fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
                 }
             }
@@ -266,7 +268,7 @@ export const ROLE_STRATEGIES = {
 
             // Only engage enemies that are very close (self-defence)
             const bestEnemy = bestTarget(ai, me, enemies);
-            if (bestEnemy && bestEnemy.dist < 6) {
+            if (bestEnemy && bestEnemy.dist < CONFIG.SCOUT_ENGAGE_RANGE) {
                 fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
             }
 
@@ -291,9 +293,9 @@ const DEFAULT_ROLE = {
             }
         }
 
-        if (bestEnemy && bestEnemy.dist < 10) {
+        if (bestEnemy && bestEnemy.dist < CONFIG.DEFAULT_ENGAGE_RANGE) {
             fireTarget = { x: bestEnemy.target.x, y: bestEnemy.target.y, dist: bestEnemy.dist };
-            if (!objective && bestEnemy.dist < 8) {
+            if (!objective && bestEnemy.dist < CONFIG.DEFAULT_CHASE_RANGE) {
                 navGoal = { x: bestEnemy.target.x, y: bestEnemy.target.y };
             }
         }
