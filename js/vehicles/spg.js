@@ -28,7 +28,7 @@ export class Charge {
 
 export const spg = {
     init(tank) {
-        tank._charge = new Charge();
+        tank.components.set("charge", new Charge());
     },
 
     fire(game, tank, device, dt) {

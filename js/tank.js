@@ -117,16 +117,25 @@ export class Tank extends GameEntity {
         this._initVehicleComponents();
     }
 
+    /** A named per-vehicle component (null when this vehicle has none). */
+    component(name) {
+        return this.components.get(name) ?? null;
+    }
+
     /** SPG hold-to-charge state (owned by the spg behaviour); null otherwise. */
     get charge() {
-        return this._charge;
+        return this.component("charge");
+    }
+
+    /** The physical body (single-point, or the squad when one exists). */
+    get body() {
+        return this.components.get("body");
     }
 
     /** Recreate this vehicle's components at its current position. */
     _initVehicleComponents() {
-        this._charge = null;
-        this._squad = null;
-        this._body = singleBody(this);
+        this.components = new Map();
+        this.components.set("body", singleBody(this));
         getVehicleBehaviour(this._vehicleType).init?.(this);
     }
 
@@ -174,12 +183,12 @@ export class Tank extends GameEntity {
      * behaviour's `init` hook — the entity only stores it.
      */
     get squad() {
-        return this._squad;
+        return this.component("squad");
     }
 
     /** Fraction of HP remaining (1.0 = full, 0.0 = destroyed) — delegated to the body. */
     get hpFraction() {
-        return this._body.hpFraction;
+        return this.body.hpFraction;
     }
 
     /** Number of squad members still alive (0 for non-squad vehicles). */
@@ -247,17 +256,17 @@ export class Tank extends GameEntity {
 
     /** Distance from a world point to the vehicle's hitbox (delegated to the body). */
     distanceToPoint(x, y) {
-        return this._body.distanceToPoint(x, y);
+        return this.body.distanceToPoint(x, y);
     }
 
     /** Radius used for AoE falloff (delegated to the body). */
     get hitRadius() {
-        return this._body.hitRadius;
+        return this.body.hitRadius;
     }
 
     /** True if a point is inside the vehicle's hitbox (delegated to the body). */
     hitTest(x, y) {
-        return this._body.hitTest(x, y);
+        return this.body.hitTest(x, y);
     }
 
     /** Index of the first crushable soldier under `vehicle`, or -1. */
