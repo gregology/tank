@@ -6,11 +6,18 @@
  * so they are drawn as skewed parallelograms rather than rectangles.
  */
 
-import { TILES as T } from "../config.js";
+import { TILES as T, TILE_PROPS } from "../config.js";
 import { createDrawHelpers } from "../draw-helpers.js";
 import { lerpPt, PALETTE, scaleRgb } from "./canvas-utils.js";
 import { drawDamageOverlay } from "./damage.js";
 import { TH, TW } from "./projection.js";
+
+/** Per-building-size draw data: palette + roof profile. */
+const BUILDING_STYLES = {
+    [T.BLDG_SMALL]: { palette: PALETTE.bldgSmall, roof: "gable", roofRise: 7 },
+    [T.BLDG_MEDIUM]: { palette: PALETTE.bldgMedium, roof: "gable", roofRise: 9 },
+    [T.BLDG_LARGE]: { palette: PALETTE.bldgLarge, roof: "flat" },
+};
 
 /**
  * Draw an isometric building with realistic detail:
@@ -23,10 +30,9 @@ import { TH, TW } from "./projection.js";
  */
 export function drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time) {
     const { fill } = createDrawHelpers(ctx);
-    const pal =
-        tile === T.BLDG_SMALL ? PALETTE.bldgSmall : tile === T.BLDG_MEDIUM ? PALETTE.bldgMedium : PALETTE.bldgLarge;
-
-    const fullH = tile === T.BLDG_SMALL ? 14 : tile === T.BLDG_MEDIUM ? 22 : 32;
+    const style = BUILDING_STYLES[tile];
+    const pal = style.palette;
+    const fullH = TILE_PROPS[tile].height;
     const h = Math.max(2, Math.round(fullH * frac));
     const v = ((gx * 7 + gy * 13) % 3) - 1;
     const dmg = 1 - frac;
@@ -98,11 +104,11 @@ export function drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time) {
         ctx.moveTo(b3[0], b3[1]);
         ctx.lineTo(b4[0], b4[1]);
         ctx.stroke();
-    } else if (tile === T.BLDG_LARGE) {
+    } else if (style.roof === "flat") {
         drawFlatRoof(ctx, N, E, S, Wp, tr, rf, soot);
     } else {
         const roofDark = scaleRgb(rf, (1 - dmg * 0.25) * 0.8);
-        drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr);
+        drawGableRoof(ctx, N, E, S, Wp, style.roofRise, roofC, roofDark, tr);
     }
 
     /* ── 4. Windows and doors (intact buildings only) ── */
@@ -144,9 +150,9 @@ export function drawBuilding(ctx, sx, sy, tile, frac, gx, gy, time) {
  * includes tile rows, eave overhang with shadow, and a small 3-D
  * chimney on the lit slope.
  */
-function drawGableRoof(ctx, N, E, S, Wp, tile, roofC, roofDark, tr) {
+function drawGableRoof(ctx, N, E, S, Wp, roofRise, roofC, roofDark, tr) {
     const { fill } = createDrawHelpers(ctx);
-    const rh = tile === T.BLDG_SMALL ? 7 : 9; // peak rise above wall top
+    const rh = roofRise; // peak rise above wall top
     const ov = 2.5; // eave overhang (px)
 
     const peak = [N[0], N[1] - rh]; // raised back corner
