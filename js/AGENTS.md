@@ -42,9 +42,10 @@ module under `js/render/`:
   drones at +2, items pushed tiles → tanks → structures → bullets →
   particles within a bucket.
 - `tiles.js` / `buildings.js` / `structures.js` — terrain (data-driven from
-  `TILE_VISUALS`), destructible buildings, and base compounds (`structures.js`
-  is a thin barrel over `structures/`: one sprite per type + a shared
-  `drawIsoBlock`, dispatched by the `STRUCTURE_SPRITES` registry).
+  `TILE_VISUALS`), destructible buildings (data-driven from the `BUILDING_STYLES`
+  palette + roof-profile table), and base compounds (`structures.js` is a thin
+  barrel over `structures/`: one sprite per type + a shared `drawIsoBlock`,
+  dispatched by the `STRUCTURE_SPRITES` registry).
 - `vehicles/` — the five vehicle sprites, one module each, plus `drawVehicle`
   via a `SPRITES` registry (`index.js`). `js/menu/background.js` imports
   `drawVehicle` from the `vehicles.js` barrel for previews (no prototype hack).
@@ -205,9 +206,12 @@ vehicle (`tank.js`, `ifv.js`, `drone.js`, `spg.js`, `squad.js`, plus a shared
 `aoe.js` for the `applyBlast` primitive). The hooks:
 
 - `init(tank)` — create this vehicle's per-instance components (the squad
-  behaviour creates `Squad`, the SPG behaviour creates a `Charge` component;
-  others no-op).  Called by the `Tank.vehicleType` setter and on respawn, so
-  per-vehicle *state* lives in components, never as fields on `Tank`.
+  behaviour sets a `Squad`, the SPG behaviour sets a `Charge` component;
+  others no-op).  Components live in a generic `tank.components` map and are
+  reached via `tank.component(name)` (and the `squad`/`charge`/`body`
+  conveniences), so a new component is `components.set(name, …)` + a getter —
+  never a new field on `Tank`.  Called by the `Tank.vehicleType` setter and on
+  respawn, so per-vehicle *state* lives in components, never as fields on `Tank`.
 - `fire(game, tank, device, dt)` — per-frame firing/attack (drone detonation,
   SPG charge, squad auto-fire, direct fire), built on `spawnBullet` /
   `flashMuzzle` (`js/shoot.js`).
@@ -215,8 +219,9 @@ vehicle (`tank.js`, `ifv.js`, `drone.js`, `spg.js`, `squad.js`, plus a shared
   `Tank.update()` ticks the generic timers then delegates here, so the entity
   never branches on vehicle type.
 - `update(game, tank, dt)` — per-frame component updates (squad steering).
-- `aim(ai, me, target, map)` — the AI's turret-aim strategy (tank turret-aim,
-  IFV opportunistic, SPG hold-to-charge).
+- `aim(ai, me, { target, dist }, map)` — the AI's turret-aim strategy (tank
+  turret-aim, IFV opportunistic, SPG hold-to-charge), receiving the canonical
+  `{ target, dist }` fire-target shape (`target` has x/y, `dist` is precomputed).
 - `aiThink(ai, dt, me, enemies, map, objective)` — AI think-level dispatch.
   The behaviour *contains* the logic here and returns `true` when it consumed
   the whole think: `drone.js` flies the kamikaze, `squad.js` manages dig-in,
@@ -254,7 +259,9 @@ object — never more `if (typeDef.bases)` sprinkles.**
 (tile data + tile-property queries, data-driven from `TILE_PROPS`),
 `queries.js` (the spatial geometry below), `generation.js` (procedural
 terrain, reading the per-biome `MAP_STYLES` table), `compounds.js` (base
-layout + spawn helpers). One implementation per geometric question; nothing
+layout + spawn helpers; the per-tier compound shapes are dispatched by the
+`COMPOUND_STAMPERS` registry, with the square tiers sharing one
+`stampSquareCompound`). One implementation per geometric question; nothing
 re-implements them:
 
 - `map.canStand(wx, wy, size)` — the four-corner passability box (movement,
@@ -325,7 +332,9 @@ plain `{ update(menu, input, audio), render(menu, ctx, canvas) }` object
 that reads/writes the menu as context — the same strategy-context pattern
 the modes use with `Game`. Shared drawing (`background.js`: grid, cursor
 bar, vehicle preview) and vehicle info pages + declarative stat bars
-(`vehicle-info.js`) stay independent of any screen. The pure lobby state
+(`vehicle-info.js`, whose `vehicleStats(type)` summary derives from `VEHICLES`
+via `displayArmour` / `displayDmg` / `displayRoF`) stay independent of any
+screen. The pure lobby state
 (`lobby.js`) is untouched by rendering. **A new screen = one strategy
 object + a `_screens` entry.**
 
