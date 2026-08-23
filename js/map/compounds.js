@@ -16,6 +16,18 @@ import { canStand } from "./queries.js";
 const COMPOUND_HALF = { small: 5, medium: 7, large: 10 };
 
 /**
+ * Compound-shape stampers, keyed by tier.  Each returns the layout data
+ * (`structures`, centre, entrance, half) for one compound.  The square tiers
+ * share one `stampSquareCompound`; the large tier is circular and stays its
+ * own hand-rolled shape.
+ */
+const COMPOUND_STAMPERS = {
+    small: stampCompoundSmall,
+    medium: stampCompoundMedium,
+    large: stampCompoundLarge,
+};
+
+/**
  * Build two base compounds on opposite sides of the island.
  *
  * Compound size scales with the map:
@@ -58,7 +70,7 @@ export function buildBaseCompounds(grid, baseType) {
     const dir2 = angleToCardinal(angle2);
 
     // Stamp compounds onto the map (size scales with map)
-    const stamp = { small: stampCompoundSmall, medium: stampCompoundMedium, large: stampCompoundLarge }[tier];
+    const stamp = COMPOUND_STAMPERS[tier];
     const layout1 = stamp(grid, Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
     const layout2 = stamp(grid, Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
 
@@ -116,8 +128,24 @@ function angleToCardinal(angle) {
 
 /* -- Small compound (64x64): 10x10 square, 2 entrance towers -- */
 
-function stampCompoundSmall(grid, cx, cy, dir, baseType) {
-    const half = COMPOUND_HALF.small;
+/**
+ * Index along the entrance edge (N/S use dx, E/W use dy), or -1 when
+ * (dx, dy) is not on that edge.  Shared by the square-compound stampers.
+ */
+function entranceEdgePos(dir, dx, dy, size) {
+    if (dir === "N" && dy === 0) return dx;
+    if (dir === "S" && dy === size - 1) return dx;
+    if (dir === "W" && dx === 0) return dy;
+    if (dir === "E" && dx === size - 1) return dy;
+    return -1;
+}
+
+/**
+ * Stamp a square compound: sand interior, a classified perimeter
+ * (walls/towers/gaps via `classifyPerimeter`), then the HQ tiles.  The two
+ * square tiers differ only in `half` and how the perimeter is classified.
+ */
+function stampSquareCompound(grid, cx, cy, dir, baseType, half, classifyPerimeter) {
     const SIZE = half * 2;
     const ox = cx - half,
         oy = cy - half;
@@ -127,23 +155,24 @@ function stampCompoundSmall(grid, cx, cy, dir, baseType) {
     const walls = [],
         towers = [];
 
-    if (!hqOnly) {
-        const entranceRole = (dx, dy) => {
-            let edgePos = -1;
-            if (dir === "N" && dy === 0) edgePos = dx;
-            else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
-            else if (dir === "W" && dx === 0) edgePos = dy;
-            else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
-            else return "wall";
-            if (edgePos === 4 || edgePos === 5) return "gap";
-            if (edgePos === 3 || edgePos === 6) return "tower";
-            return "wall";
-        };
-        placePerimeter(grid, ox, oy, SIZE, entranceRole, walls, towers);
-    }
+    if (!hqOnly) placePerimeter(grid, ox, oy, SIZE, classifyPerimeter, walls, towers);
 
     const hqTilesArr = hqTiles(ox, oy, half, dir);
     return finishLayout(grid, ox, oy, half, SIZE, walls, towers, hqTilesArr, dir);
+}
+
+/* -- Small compound (64x64): 10x10 square, 2 entrance towers -- */
+
+function stampCompoundSmall(grid, cx, cy, dir, baseType) {
+    const half = COMPOUND_HALF.small;
+    const SIZE = half * 2;
+    return stampSquareCompound(grid, cx, cy, dir, baseType, half, (dx, dy) => {
+        const edgePos = entranceEdgePos(dir, dx, dy, SIZE);
+        if (edgePos < 0) return "wall";
+        if (edgePos === 4 || edgePos === 5) return "gap";
+        if (edgePos === 3 || edgePos === 6) return "tower";
+        return "wall";
+    });
 }
 
 /* -- Medium compound (128x128): 14x14 square, 4 corner towers -- */
@@ -151,37 +180,15 @@ function stampCompoundSmall(grid, cx, cy, dir, baseType) {
 function stampCompoundMedium(grid, cx, cy, dir, baseType) {
     const half = COMPOUND_HALF.medium;
     const SIZE = half * 2;
-    const ox = cx - half,
-        oy = cy - half;
-    const hqOnly = baseType === "hq_only";
-
-    fillSand(grid, ox, oy, SIZE);
-    const walls = [],
-        towers = [];
-
-    if (!hqOnly) {
-        // Corner positions for 4 towers
-        const corners = new Set(["0,0", `${SIZE - 1},0`, `0,${SIZE - 1}`, `${SIZE - 1},${SIZE - 1}`]);
-
-        const entranceRole = (dx, dy) => {
-            // Check if this is a corner tower first
-            if (corners.has(`${dx},${dy}`)) return "tower";
-            let edgePos = -1;
-            if (dir === "N" && dy === 0) edgePos = dx;
-            else if (dir === "S" && dy === SIZE - 1) edgePos = dx;
-            else if (dir === "W" && dx === 0) edgePos = dy;
-            else if (dir === "E" && dx === SIZE - 1) edgePos = dy;
-            else return "wall";
-            // Entrance gap: middle 2 tiles
-            const mid = SIZE / 2;
-            if (edgePos === mid - 1 || edgePos === mid) return "gap";
-            return "wall";
-        };
-        placePerimeter(grid, ox, oy, SIZE, entranceRole, walls, towers);
-    }
-
-    const hqTilesArr = hqTiles(ox, oy, half, dir);
-    return finishLayout(grid, ox, oy, half, SIZE, walls, towers, hqTilesArr, dir);
+    const corners = new Set(["0,0", `${SIZE - 1},0`, `0,${SIZE - 1}`, `${SIZE - 1},${SIZE - 1}`]);
+    return stampSquareCompound(grid, cx, cy, dir, baseType, half, (dx, dy) => {
+        if (corners.has(`${dx},${dy}`)) return "tower";
+        const edgePos = entranceEdgePos(dir, dx, dy, SIZE);
+        if (edgePos < 0) return "wall";
+        const mid = SIZE / 2;
+        if (edgePos === mid - 1 || edgePos === mid) return "gap";
+        return "wall";
+    });
 }
 
 /* -- Large compound (192x192): circular r=10, 6 towers -- */
