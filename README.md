@@ -81,7 +81,7 @@ Keyboard and gamepads can be used at the same time (e.g. one player on the keybo
 - In **Skirmish**, the first player or team to **10 kills** wins.
 - In **Battle**, each team has a **base compound** (HQ, walls, and watch towers) at their side. Destroy the enemy **HQ** to win (it takes 20 hits); watch towers fire at enemies, and walls block movement. Tanks respawn inside their team's compound.
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
-- Each viewport has a **minimap** in the corner showing the full island, all players, base structures, and role letters.
+- Each viewport has a **minimap** in the corner showing the full island, all players, and base structures.
 
 ## Development
 
@@ -104,7 +104,7 @@ npx lefthook install
 | `npm run graph:validate` | Check architectural boundaries |
 | `npm run mutation` | Mutation testing (slow, run periodically) |
 
-Individual test suites: `npm run test:ai`, `test:pathfinder`, `test:map`, `test:game`, `test:roles`.
+Individual test suites: `npm run test:ai`, `test:pathfinder`, `test:map`, `test:game`.
 
 Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
@@ -134,20 +134,27 @@ IFV bullets deal 25% damage — four hits equal one tank hit. This creates an as
 
 **Squads** are five-man infantry fireteams that fight on their own. Members auto-target and auto-fire independently: the RPG engages vehicles and base structures, the shotgun is a dedicated counter to drones, and rifles/machine-guns engage enemy squads. The squad loses members one by one as it takes damage, and pressing **fire** makes it dig in for reduced incoming damage; buildings provide cover.
 
-## AI Bot Roles
+## Swarm AI
 
-In **Battle**, each AI bot is randomly assigned a **role** at spawn and respawn. Roles determine navigation strategy and combat priorities:
+AI bots have no assigned roles. Instead, each team shares a set of **pheromone signal fields** — tile overlays inspired by colony insects — and every bot re-decides its goal each frame from the signals around it:
 
-| Role | Symbol | Behaviour |
-|------|--------|-----------|
-| **Cavalry** | C | Aggressive rush straight to the enemy base. Engages anything in its path. First to arrive but often first to die. |
-| **Sniper** | S | Finds a firing position at range from the enemy base and bombards it from a distance. Avoids close combat (self-defence only). |
-| **Defender** | D | Patrols near the friendly base and intercepts incoming enemies. Switches to cavalry if the base falls. |
-| **Scout** | F | Takes a wide flanking route to reach the enemy base from an unexpected angle. Engages enemies only in close range. |
+| Signal | Laid by | Effect |
+|--------|---------|--------|
+| **Recruitment** | Every vehicle (tanks and human players most strongly) | Nearby vehicles fall into **convoys** behind the strongest emitter — tanks spearhead, squads and drones hold the flanks. |
+| **Trail** | Vehicles heading to a known objective | Marks the route; shorter journeys lay stronger trails, so the swarm converges on the best corridor over time. |
+| **Alarm** | A vehicle while it is under attack | Close teammates **rally to the fight**. The signal dies with the victim — no one rallies to a corpse. |
+| **Food** | A discovered enemy objective | A beacon that attracts the swarm until the objective is destroyed. |
 
-Role letters appear on the minimap next to allied bot dots, and an allied roster is shown in the bottom-left of the HUD.
+With no signal to follow, bots **explore** weak-signal ground away from home, so the team spreads out and finds the enemy base (objectives must be *discovered* by line of sight before anyone can attack them). Because vehicles react to the situation rather than obeying an assignment, combined-arms behaviour — convoys, flanking escorts, rallies — emerges on its own.
 
-The mix of roles creates more dynamic and unpredictable battles instead of two blobs colliding in the middle of the map. Each respawn re-rolls the role, so team composition shifts throughout the match.
+## Tuning the swarm
+
+All pheromone behaviour is data (`VEHICLES[].signals` and the `SIGNAL_*` / `CONVOY_*` / `EXPLORE_*` constants in `js/config/constants.js`), and there are three tools for tuning it:
+
+- **Sandbox** — open `sandbox.html` (served like the game: `python3 -m http.server 8000`, then visit `/sandbox.html`). It runs an all-bot battle with a full-map view, per-channel pheromone heatmaps, live sliders for every tuning parameter, and a metrics panel (time to first contact, discovery, exploration %, clustering, convoy coherence).
+- **Headless simulator** — `npm run sim -- --runs 5` prints match metrics as JSON. Override any parameter with `--set`, e.g. `npm run sim -- --set CONFIG.EXPLORE_VENTURE_WEIGHT=0.2 --set VEHICLES.tank.signals.recruit=1.4 --runs 5`. Matches are deterministic per `--seed`.
+- **Optimizer** — `npm run optimize -- --configs 30 --repeats 5` random-searches the tuning space against the defaults as a baseline. Goals are weighted with `--weights`, e.g. `--weights engage=1,discovery=1,declusterMean=0.5` (default `engage=1,discovery=1`). Registered metrics: `engage`, `discovery`, `explore`, `exploreRate`, `decluster`, `declusterMean`, `cohesion`, `kills`, `attrition`, `damage`, `duration` (see `tools/goals.js`). Matches fan out over worker threads (`--threads N`, default all cores; `--threads 1` is the bit-identical sequential reference), and time-of-first-event goals (`engage`, `discovery`) stop each match as soon as it settles — a 30×5 sweep takes seconds, not minutes.
+- **Implementing tuned values** — add `--implement` to the optimizer: it re-verifies the winner on fresh seeds (`--verify N`, default 8) and, only if it still beats the baseline, writes it to `js/config/tuning.js`. That generated file is merged over the config defaults at load (`js/config/overrides.js` does the merge, strictly — an unknown key fails loudly), so tuned values apply everywhere: the game, the sandbox, the sims, and the tests. Hand-edits to `tuning.js` work too, but the next `--implement` overwrites them.
 
 ## Technical Notes
 

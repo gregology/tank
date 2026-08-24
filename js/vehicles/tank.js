@@ -11,9 +11,10 @@
  *                                     drive) — the entity delegates here
  *   update(game, tank, dt)            per-frame component update
  *   aim(ai, me, target, map)          AI turret-aim strategy
- *   aiThink(ai, dt, me, enemies, map, objective)
- *                                     AI think-level dispatch; returns true
- *                                     when it consumed the whole think
+ *   aiThink(ai, dt, me, ctx)          AI think-level dispatch; ctx is
+ *                                     { enemies, map, objective, swarm };
+ *                                     returns true when it consumed the
+ *                                     whole think
  *
  * The shared movement primitives (`rotateHull`, `rotateTurret`, `drive`,
  * `animateTread`) are exported so other behaviours (drone flies, SPG
@@ -214,7 +215,7 @@ export const tank = {
         ai.tryShootWall(me, map);
     },
 
-    aiThink(ai, dt, me, enemies, map, objective) {
+    aiThink(ai, dt, me, { enemies, map, objective }) {
         if (!me.trackDamaged) return false;
         thinkImmobilised(ai, dt, me, enemies, map, objective);
         return true;

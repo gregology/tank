@@ -7,8 +7,8 @@
  * to the AI's drone flight loop.
  */
 
+import { chooseGoalAndTarget } from "../ai/arbitration.js";
 import { patrol } from "../ai/navigation.js";
-import { chooseGoalAndTarget } from "../ai/roles.js";
 import { targetPriorityOf } from "../ai/targeting.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
@@ -45,8 +45,9 @@ export const drone = {
 
     aim(_ai, _me, _target, _map) {},
 
-    aiThink(ai, dt, me, enemies, map, objective) {
-        const { navGoal, fireTarget } = chooseGoalAndTarget(ai, dt, me, enemies, map, objective);
+    aiThink(ai, dt, me, ctx) {
+        const { enemies, objective } = ctx;
+        const { navGoal, fireTarget } = chooseGoalAndTarget(ai, dt, me, ctx);
 
         // If we have a fire target nearby, prioritise diving at it.
         let target = navGoal;

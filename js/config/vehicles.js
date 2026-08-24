@@ -5,10 +5,23 @@
  * The game reads VEHICLES[tank.vehicleType] at runtime — adding a new
  * vehicle is just a new entry in this table.
  *
- * roleWeights:    per-vehicle role distribution for team mode AI.
- *                 Higher weight = more likely.  0 = never assigned.
- *                 Drones are always cavalry; IFVs lean toward scout.
- *                 SPGs lean toward sniper (long-range indirect fire).
+ * signals:        pheromone behaviour (js/ai/signals.js +
+ *                 js/ai/arbitration.js) — there are no assigned roles;
+ *                 a vehicle's identity is how it emits and responds:
+ *                   recruit  recruitment emission strength — how strongly
+ *                            it attracts followers (tanks spearhead;
+ *                            squads/drones barely emit)
+ *                   trail    how strongly it marks its route to a known
+ *                            objective (shorter journeys lay stronger
+ *                            trails, so good routes win over time)
+ *                   flank    true for vehicles that hold a perpendicular
+ *                            offset when convoying instead of queueing
+ *                            behind the leader (squad, drone)
+ *                   follow   per-channel response weights gating the
+ *                            arbitration layers (recruit = convoy
+ *                            following, alarm = rallying, food =
+ *                            objective beacons, trail = route following);
+ *                            0 = ignore that layer
  *
  * targetPriority: per-vehicle preference for engaging different target
  *                 types.  Higher = more desirable.  0 = never engage.
@@ -51,7 +64,21 @@
  *                 "muzzle", or "ifv" for the autocannon flash.
  *   fireSound    sound key used by audio.js when this vehicle fires:
  *                 "tank" (default), "ifv", or "spg".
+ *
+ * signals:        see the table header above.
+ *
+ * personalSpace:  radius (world-units) within which friendly vehicles
+ *                 repel this one — boids-style separation steering
+ *                 (js/ai/separation.js).  0 = unaffected.  Only fliers
+ *                 and infantry need it: ground vehicles are already
+ *                 spaced by the convoy queue and contact separation.
+ *
+ * Optimizer-tuned values land in js/config/tuning.js and are applied
+ * over these defaults (see below the table).
  */
+import { applyOverrides } from "./overrides.js";
+import { TUNING_OVERRIDES } from "./tuning.js";
+
 export const VEHICLES = {
     tank: {
         flies: false,
@@ -65,6 +92,7 @@ export const VEHICLES = {
         rotationSpeed: 3.5,
         turretSpeed: 2.0,
         size: 0.45,
+        personalSpace: 0,
         bulletSpeed: 9.0,
         bulletDamage: 3.0,
         bulletCooldown: 0.45,
@@ -73,7 +101,7 @@ export const VEHICLES = {
         displayRoF: "Med",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 3, sniper: 2, defender: 1, scout: 1 },
+        signals: { recruit: 1.0, trail: 1.0, follow: { recruit: 0.3, alarm: 0.8, food: 1.0, trail: 1.0 } },
         targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, squad: 8, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -102,6 +130,7 @@ export const VEHICLES = {
         rotationSpeed: 4.0,
         turretSpeed: 0,
         size: 0.45,
+        personalSpace: 0,
         bulletSpeed: 13.0,
         bulletDamage: 0.25,
         bulletCooldown: 0.15,
@@ -109,7 +138,7 @@ export const VEHICLES = {
         displayRoF: "Fast",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 2, sniper: 2, defender: 1, scout: 5 },
+        signals: { recruit: 0.8, trail: 1.0, follow: { recruit: 1.0, alarm: 0.8, food: 0.8, trail: 1.0 } },
         targetPriority: { tank: 2, drone: 10, ifv: 3, squad: 8, baseWall: 3, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -135,6 +164,7 @@ export const VEHICLES = {
         rotationSpeed: 5.0,
         turretSpeed: 0,
         size: 0.1,
+        personalSpace: 1.5,
         bulletSpeed: 0,
         bulletDamage: 0,
         bulletCooldown: 0,
@@ -144,7 +174,12 @@ export const VEHICLES = {
         displayRoF: "N/A",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
+        signals: {
+            recruit: 0.3,
+            trail: 0.6,
+            flank: true,
+            follow: { recruit: 0.8, alarm: 1.0, food: 1.0, trail: 0.4 },
+        },
         targetPriority: { spg: 10, drone: 0, ifv: 2, squad: 7, baseWall: 0, baseTower: 0, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -167,6 +202,7 @@ export const VEHICLES = {
         rotationSpeed: 2.0,
         turretSpeed: 1.0,
         size: 0.5,
+        personalSpace: 0,
         bulletSpeed: 7.0,
         bulletDamage: 3.0,
         bulletCooldown: 3.0,
@@ -179,7 +215,7 @@ export const VEHICLES = {
         displayRoF: "Slow",
         spawnWeight: 3,
         cameraLookAhead: 10.0,
-        roleWeights: { cavalry: 0, sniper: 5, defender: 0, scout: 0 },
+        signals: { recruit: 0.5, trail: 1.0, follow: { recruit: 0.4, alarm: 0.5, food: 0.7, trail: 0.8 } },
         targetPriority: { tank: 0, drone: 0, ifv: 0, squad: 3, baseWall: 0, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -206,6 +242,7 @@ export const VEHICLES = {
         rotationSpeed: 4.0,
         turretSpeed: 0,
         size: 0.4,
+        personalSpace: 1.2,
         // Squad members fire their own weapons (see SQUAD_MEMBERS); the
         // menu stat bars read the explicit display fields below instead.
         displayDamage: 1.0,
@@ -214,8 +251,13 @@ export const VEHICLES = {
         displayRoF: "Auto",
         spawnWeight: 3,
         cameraLookAhead: 2.0,
-        // Squads are never defenders — they advance/flank under cover.
-        roleWeights: { cavalry: 3, sniper: 0, defender: 0, scout: 3 },
+        // Squads advance and flank under cover — never convoy leads.
+        signals: {
+            recruit: 0.4,
+            trail: 0.8,
+            flank: true,
+            follow: { recruit: 1.0, alarm: 0.9, food: 0.8, trail: 0.8 },
+        },
         targetPriority: { spg: 8, tank: 6, squad: 6, baseWall: 8, baseTower: 8, baseHQ: 8 },
         // Cover/dig-in damage model (see Squad.damageMultiplier):
         //  coverReduction  — incoming damage multiplier while adjacent to
@@ -246,6 +288,8 @@ export const VEHICLES = {
         },
     },
 };
+
+applyOverrides(VEHICLES, TUNING_OVERRIDES.VEHICLES);
 
 /**
  * Infantry squad member definitions.

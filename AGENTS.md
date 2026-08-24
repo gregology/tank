@@ -25,7 +25,7 @@ a component — over one more `if (type === "x")` branch.
 
 - The project already leans data-driven: `VEHICLES`, `BASE_STRUCTURES`,
   `SQUAD_MEMBERS`, `GAME_TYPES`, `GAME_OPTIONS` in `js/config.js` are tables,
-  not code. A new vehicle / role / mode / option should usually be a **new
+  not code. A new vehicle / mode / option should usually be a **new
   entry in a table** or a **new object behind an existing interface**, not a
   new `switch` arm.
 - Before locking a shape, ask: *"How would I add an N+1th of this?"* If the
@@ -102,9 +102,9 @@ config.js    the data "leaf": barrel over js/config/ — every constant and
              data table lives in the js/config/ package
 game.js      match simulation: tanks, bullets, bases, event bus — the shared
              loop; mode + vehicle behaviour + per-frame systems are delegated
-systems/     per-frame simulation systems (think, movement, update, firing,
-             projectiles, collision, towers, respawn, effects, camera, win),
-             called from Game._update
+systems/     per-frame simulation systems (discovery, think, movement, update,
+             firing, projectiles, collision, signals, towers, respawn,
+             effects, camera, win), called from Game._update
 modes.js     game-mode strategy: Skirmish vs Battle hooks (spawn, win, scoring)
 vehicles/    per-vehicle behaviour strategies (fire/move/update/aim/aiThink),
              one module per vehicle, dispatched from vehicleType
@@ -112,8 +112,9 @@ shoot.js     firing seam: spawnBullet + flashMuzzle (one construct-push-flash)
 entity.js    entity hierarchy (GameEntity → Tank / BaseStructure)
 tank.js      vehicle entity + data-driven damage model + hitbox capabilities
 ai.js        bot brain: thin controller over the js/ai/ package
-ai/          AI package: roles (ROLE_STRATEGIES), targeting (pickTarget),
-             navigation (path/A*/steering), recovery (stuck/evade/blast),
+ai/          AI package: arbitration (reactive swarm layers), targeting
+             (pickTarget), signals (pheromone fields), navigation
+             (path/A*/steering), recovery (stuck/evade/blast),
              aiming (turret steering)
 pathfinder.js  A* + wall-cost overlay
 map.js       thin facade over js/map/: tile data + queries, spatial geometry,
@@ -204,9 +205,15 @@ around them. (Details live in `js/AGENTS.md`.)
   composition like this over subclass explosion; the entity's interaction
   capabilities (`flies` / `softTarget` / `crushable` / `canCrush`) express
   "what kind of thing is this" without type checks.
-- **AI role strategies** (`js/ai/roles.js`) — each bot role (cavalry /
-  sniper / defender / scout) is a plain strategy object with a
-  `goal(ai, ctx)` hook, dispatched from `ai.role`; the AI helper modules
+- **Swarm arbitration** (`js/ai/arbitration.js`) — there are no assigned
+  bot roles. Every think re-decides the bot's goal from reactive,
+  colony-insect-inspired layers (rally to alarm pheromones, convoy behind
+  stronger recruitment emitters, follow objective beacons and trails,
+  explore weak-signal ground), gated per vehicle by the `signals` table
+  in `VEHICLES`. The pheromone fields themselves are per-faction
+  tile-grid overlays (`js/ai/signals.js`) deposited by a per-frame system
+  (`js/systems/signals.js`); faction objective knowledge is discovered by
+  line of sight (`js/systems/discovery.js`). The AI helper modules
   (`js/ai/targeting.js`, `navigation.js`, `recovery.js`, `aiming.js`) are
   the seams for target selection, path steering, stuck recovery, and
   turret aiming. `AIController` is the orchestration glue only.
@@ -242,7 +249,7 @@ All five refactor rounds are done (`docs/refactor_opportunities.md`,
   (`pickTarget` + `targetPriorityOf` over one `damageables`/`enemiesOf`
   surface), sound synthesis (`SOUNDS` + `play`), particle effects (`EFFECTS` +
   `emit`), the event vocabulary (`GAME_EVENTS` + `game.off`), the render
-  registries (`DEPTH_DRAWERS` / `DRAW_KINDS` / `ROLE_PRESENTATION` /
+  registries (`DEPTH_DRAWERS` / `DRAW_KINDS` /
   `healthColor` / `drawHealthBar`), and the game-mode axis (`GAME_TYPE_ORDER`
   + `teamSet` + `mode.hud`). A new vehicle, tile, biome, structure, unit kind,
   projectile, turret, sound, effect, subsystem, or mode is a table entry /

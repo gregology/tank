@@ -86,6 +86,10 @@ export class Tank extends GameEntity {
         this.fireCooldown = 0;
         this.respawnTimer = 0;
 
+        // Swarm signalling (read by js/systems/signals.js)
+        this.underAttackTimer = 0; // >0 while broadcasting alarm pheromone
+        this.distanceTravelled = 0; // journey length — shorter routes lay stronger trails
+
         // Subsystem damage (set by the data-driven applyHit)
         this.damaged = false; // true after subsystem threshold crossed
         this.damageAccum = 0; // accumulated damage (unified HP pool)
@@ -302,7 +306,10 @@ export class Tank extends GameEntity {
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
         if (this.recoilTimer > 0) this.recoilTimer -= dt;
 
+        const oldX = this.x,
+            oldY = this.y;
         getVehicleBehaviour(this.vehicleType).move(this, device, dt, map);
+        this.distanceTravelled += Math.hypot(this.x - oldX, this.y - oldY);
     }
 
     /* ── firing ───────────────────────────────────────────── */
@@ -376,6 +383,10 @@ export class Tank extends GameEntity {
         this.damaged = false;
         this.damageAccum = 0;
         this.disabledSubsystems.clear();
+
+        // A fresh life starts a fresh journey (and no ongoing alarm)
+        this.underAttackTimer = 0;
+        this.distanceTravelled = 0;
 
         // Recreate per-vehicle components (squad members, SPG charge) at
         // the new spawn position — the behaviour owns their state.

@@ -4,7 +4,7 @@
  * a border tinted with the local player's team colour.
  */
 
-import { ROLE_PRESENTATION, TILE_VISUALS, VEHICLES } from "../config.js";
+import { TILE_VISUALS, VEHICLES } from "../config.js";
 
 /** Marker draw functions, keyed by `VEHICLES[type].minimapShape`. */
 const MARKERS = {
@@ -61,23 +61,13 @@ export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
         }
     }
 
-    // Tank dots (shape varies by vehicle type) + role letters in team mode
+    // Tank markers (shape varies by vehicle type)
     for (const t of game.allTanks) {
         if (!t.alive) continue;
         ctx.fillStyle = t.color;
         const dx = mmX + t.x * px;
         const dy = mmY + t.y * px;
         (MARKERS[VEHICLES[t.vehicleType]?.minimapShape] ?? MARKERS.square)(ctx, dx, dy);
-
-        // Show role letter for allied bots in team mode.
-        const role = game.bots?.find((b) => b.tank === t)?.role;
-        if (role) {
-            const letter = ROLE_PRESENTATION[role]?.letter ?? "?";
-            ctx.font = "bold 7px monospace";
-            ctx.fillStyle = "#fff";
-            ctx.textAlign = "center";
-            ctx.fillText(letter, dx, dy - 3);
-        }
     }
 
     // Base compound markers

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank Battle – Swarm Sandbox</title>
+    <style>
+        body { margin: 0; display: flex; background: #111; color: #ccc; font: 12px "Courier New", monospace; }
+        #view { flex: 1; }
+        #panel { width: 320px; height: 100vh; overflow-y: auto; background: #1a1a1a; padding: 10px; box-sizing: border-box; }
+        #panel h2 { color: #eee; font-size: 13px; margin: 12px 0 6px; border-bottom: 1px solid #333; }
+        #panel h2:first-child { margin-top: 0; }
+        .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+        .row label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .row input[type="range"] { width: 110px; }
+        .row .val { width: 48px; text-align: right; color: #8f8; }
+        button, select { background: #2a2a2a; color: #ccc; border: 1px solid #444; font: inherit; padding: 3px 8px; cursor: pointer; }
+        button:hover { background: #3a3a3a; }
+        .btns { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+        #metrics { white-space: pre; color: #8cf; }
+        .chk { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <canvas id="view"></canvas>
+    <div id="panel">
+        <h2>Playback</h2>
+        <div class="btns">
+            <button id="play">⏸ pause</button>
+            <button id="step">step</button>
+            <select id="speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+                <option value="8">8×</option>
+            </select>
+        </div>
+        <div class="row">
+            <label>seed</label>
+            <input id="seed" type="number" value="1" style="width:70px">
+            <button id="restart">restart</button>
+            <button id="newmap">new map</button>
+        </div>
+        <h2>Pheromone channels</h2>
+        <div id="channels"></div>
+        <h2>Metrics</h2>
+        <div id="metrics">—</div>
+        <h2>Parameters <button id="defaults" style="float:right">reset defaults</button></h2>
+        <div id="params"></div>
+    </div>
+    <script type="module" src="tools/sandbox.js"></script>
+</body>
+</html>

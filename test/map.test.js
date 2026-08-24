@@ -275,6 +275,22 @@ describe("Consolidated geometry queries", () => {
         assert.equal(map.hasLineOfSight(5.5, 5.5, 15.5, 5.5), false, "origin tile blocks by default");
     });
 
+    it("hasLineOfSight skipTarget lets a viewer see a structure on a blocking tile", () => {
+        const map = new GameMap();
+        for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);
+        // Without skipping the target tile, the final interior samples land
+        // on the structure's own blocking tile and it can never be "seen".
+        map.setTile(12, 5, T.BASE_STRUCTURE);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 12.5, 5.5, { skipTarget: true }), true);
+        assert.equal(map.hasLineOfSight(5.5, 5.5, 12.5, 5.5), false, "target tile blocks by default");
+        map.setTile(9, 5, T.HILL);
+        assert.equal(
+            map.hasLineOfSight(5.5, 5.5, 12.5, 5.5, { skipTarget: true }),
+            false,
+            "interior blockers still block",
+        );
+    });
+
     it("hasWalkableLine is clear across passable ground and blocked by obstacles", () => {
         const map = new GameMap();
         for (let y = 5; y <= 7; y++) for (let x = 2; x <= 16; x++) map.setTile(x, y, T.GRASS);

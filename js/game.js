@@ -23,10 +23,11 @@
  * `vehicleType`.  This file is the shared simulation loop.
  *
  * Events: fire, hit, destroy, impact, destroy_tile, win,
- *         artillery_impact, drone_strike
+ *         artillery_impact, drone_strike, objective_discovered
  */
 
-import { AIController, pickRoleForVehicle } from "./ai.js";
+import { SignalFields } from "./ai/signals.js";
+import { AIController } from "./ai.js";
 import { Camera } from "./camera.js";
 import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
 import { resolveDamage } from "./damage.js";
@@ -37,11 +38,13 @@ import { getMode } from "./modes.js";
 import { ParticleSystem } from "./particles.js";
 import { updateCamera } from "./systems/camera.js";
 import { pushFromStructures as pushFromStructuresSystem, resolveCrushes, separatePairs } from "./systems/collision.js";
+import { runDiscovery } from "./systems/discovery.js";
 import { emitDamageSmoke } from "./systems/effects.js";
 import { runFiring } from "./systems/firing.js";
 import { runMovement } from "./systems/movement.js";
 import { checkBulletHits, tickBullets } from "./systems/projectiles.js";
 import { handleRespawns } from "./systems/respawn.js";
+import { runSignals } from "./systems/signals.js";
 import { runThink } from "./systems/think.js";
 import { updateWatchTowers as updateWatchTowersSystem } from "./systems/towers.js";
 import { updateVehicles } from "./systems/update.js";
@@ -84,6 +87,12 @@ export class Game {
             for (const { ai } of this._bots) ai.invalidatePath();
         });
 
+        // A hit vehicle broadcasts the alarm pheromone for a while (the
+        // signal system deposits it at the victim's position each frame).
+        this.on(GAME_EVENTS.HIT, ({ tank }) => {
+            if (tank.isVehicle) tank.underAttackTimer = CONFIG.SIGNAL_ALARM_TIME;
+        });
+
         this._init();
     }
 
@@ -122,9 +131,9 @@ export class Game {
     get humanTanks() {
         return this._humanTanks;
     }
-    /** All AI-controlled bots as `{ tank, role }` pairs (for the HUD/minimap). */
+    /** All AI-controlled bot tanks (for the HUD/minimap). */
     get bots() {
-        return this._bots.map(({ tank, ai }) => ({ tank, role: ai.role }));
+        return this._bots.map(({ tank }) => ({ tank }));
     }
     /** All cameras (one per human player). */
     get cameras() {
@@ -134,7 +143,7 @@ export class Game {
     get hasBases() {
         return this.mode.hasBases;
     }
-    /** Factions: [{ id, color, darkColor, entities }]. */
+    /** Factions: [{ id, color, darkColor, entities, knownObjectives, signals }]. */
     get factions() {
         return this._factions;
     }
@@ -200,6 +209,8 @@ export class Game {
         const factions = planFactions(this.gameType, this._humanPlan, this.settings).map((f) => ({
             ...f,
             entities: [],
+            knownObjectives: new Set(),
+            signals: new SignalFields(this.map.width, this.map.height),
         }));
         const factionById = new Map(factions.map((f) => [f.id, f]));
         this._factions = factions;
@@ -239,13 +250,11 @@ export class Game {
             for (const t of f.entities) {
                 if (this._humanTanks.includes(t)) continue;
                 const ai = new AIController(this.map);
-                ai.role = pickRoleForVehicle(t.vehicleType);
                 const bot = {
                     ai,
                     tank: t,
                     enemies: this._allTanks.filter((e) => e.team !== t.team),
                 };
-                this.mode.setupBot(this, bot, f);
                 this._bots.push(bot);
             }
         }
@@ -292,6 +301,7 @@ export class Game {
         const humanDevices = this._humanDevices;
 
         // A thin, ordered list of per-frame system calls.
+        runDiscovery(this);
         runThink(this, bots, dt);
         runMovement(this, bots, humanDevices, dt);
         updateVehicles(this, dt);
@@ -301,6 +311,8 @@ export class Game {
 
         // ── Run-over: enemy ground vehicles crush exposed soldiers ──
         this._resolveCrushes();
+
+        runSignals(this, dt);
 
         runFiring(this, bots, humanDevices, dt);
 

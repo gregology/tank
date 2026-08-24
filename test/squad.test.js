@@ -29,8 +29,9 @@ describe("Infantry squad – config", () => {
         assert.ok(v.coverRadius > 0);
     });
 
-    it("squads never roll the defender role", () => {
-        assert.equal(VEHICLES.squad.roleWeights.defender, 0);
+    it("squads are convoy flankers, never leaders", () => {
+        assert.equal(VEHICLES.squad.signals.flank, true);
+        assert.ok(VEHICLES.squad.signals.recruit < VEHICLES.tank.signals.recruit, "squads must not spearhead");
     });
 
     it("defines all four member types", () => {

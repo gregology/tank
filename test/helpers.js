@@ -2,7 +2,7 @@
  * Shared test utilities: map builders, bot simulation, assertions.
  */
 
-import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
+import { AIController } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
 import { Base, BaseStructure, GameEntity } from "../js/entity.js";
@@ -10,10 +10,10 @@ import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
 import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
+import { getParam, setParam } from "../tools/params.js";
 
 export {
     ACTIONS,
-    AI_ROLES,
     BASE_STRUCTURES,
     Base,
     BaseStructure,
@@ -22,7 +22,6 @@ export {
     GameEntity,
     GameMap,
     Pathfinder,
-    pickRoleForVehicle,
     T,
     Tank,
     VEHICLES,
@@ -42,6 +41,33 @@ export function seededRng(seed) {
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+}
+
+/* ── Explicit scenario config ─────────────────────────────── */
+
+/**
+ * Run `fn` with temporary CONFIG/VEHICLES overrides, restored after.
+ *
+ * The suite runs against whatever js/config/tuning.js contains — a good
+ * default, because tuned values that break behaviour SHOULD fail tests.
+ * But a scenario whose *stage* depends on a specific value (an emit
+ * relationship, a personal-space radius) must declare it here rather
+ * than inherit it from live tuning.  Invariant tests should instead
+ * derive their geometry from live config and stay value-agnostic.
+ *
+ * @param {[string, number][]} patches  [["CONFIG.X", v], ["VEHICLES.tank.y", v]]
+ */
+export function withParams(patches, fn) {
+    const originals = patches.map(([path, value]) => {
+        const original = getParam(path);
+        setParam(path, value);
+        return [path, original];
+    });
+    try {
+        return fn();
+    } finally {
+        for (const [path, original] of originals) setParam(path, original);
+    }
 }
 
 /* ── Map builders ─────────────────────────────────────────── */

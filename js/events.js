@@ -13,6 +13,7 @@
  *   artillery_impact { bullet }
  *   drone_strike     { drone }
  *   terrain_changed  { gx, gy } | { structure }
+ *   objective_discovered  { faction, objective }
  */
 export const GAME_EVENTS = Object.freeze({
     FIRE: "fire",
@@ -24,4 +25,5 @@ export const GAME_EVENTS = Object.freeze({
     ARTILLERY_IMPACT: "artillery_impact",
     DRONE_STRIKE: "drone_strike",
     TERRAIN_CHANGED: "terrain_changed",
+    OBJECTIVE_DISCOVERED: "objective_discovered",
 });

@@ -96,7 +96,7 @@ export const spg = {
         }
     },
 
-    aiThink(_ai, _dt, _me, _enemies, _map, _objective) {
+    aiThink() {
         return false;
     },
 };

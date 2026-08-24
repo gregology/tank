@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { steerTurretTo, updateWobble } from "../js/ai/aiming.js";
+import { chooseGoalAndTarget } from "../js/ai/arbitration.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "../js/ai/navigation.js";
-import { computeFlankPoint, findBestPosition } from "../js/ai/positioning.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "../js/ai/recovery.js";
-import { AI_ROLES, chooseGoalAndTarget } from "../js/ai/roles.js";
+import { SignalFields } from "../js/ai/signals.js";
 import { targetPriorityOf } from "../js/ai/targeting.js";
-import { ACTIONS } from "../js/config.js";
-import { createBot, customMap, seededRng, Tank, wallH } from "./helpers.js";
+import { ACTIONS, CONFIG } from "../js/config.js";
+import { createBot, customMap, seededRng, Tank, wallH, withParams } from "./helpers.js";
 
 /*
- * Direct unit tests for the js/ai/ package (roles, targeting,
+ * Direct unit tests for the js/ai/ package (arbitration, targeting,
  * navigation, recovery, aiming).  The controller-level suites
- * (ai.test.js, roles.test.js) exercise the same code end-to-end
+ * (ai.test.js, arbitration.test.js) exercise the same code end-to-end
  * through `AIController.think`; these pin the module seams themselves.
  */
 
@@ -200,102 +200,271 @@ describe("AI modules – aiming", () => {
     });
 });
 
-describe("AI modules – role dispatch", () => {
-    it("no role and no objective → no goal, no target", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), null);
-        assert.equal(navGoal, null);
-        assert.equal(fireTarget, null);
-    });
+describe("AI modules – swarm arbitration", () => {
+    const think = (bot, ctx) => chooseGoalAndTarget(bot.ai, 0.016, bot.tank, ctx);
 
-    it("no role → charge at the objective", () => {
+    it("navigates straight to the objective when no signals exist", () => {
         const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
+        const { navGoal, fireTarget } = think(bot, {
+            enemies: [],
+            map: customMap([]),
+            objective: { x: 30, y: 30, alive: true },
         });
         assert.deepEqual(navGoal, { x: 30, y: 30 });
         assert.equal(fireTarget, null, "objective beyond fire range");
     });
 
-    it("role strategy dispatch uses ai.role", () => {
+    it("fires at the objective inside OBJECTIVE_ENGAGE_RANGE", () => {
         const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.CAVALRY;
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
+        const { fireTarget } = think(bot, {
+            enemies: [],
+            map: customMap([]),
+            objective: { x: 20, y: 10, alive: true },
         });
-        assert.deepEqual(navGoal, { x: 30, y: 30 });
+        assert.ok(fireTarget, "objective in range should be engaged");
     });
 
-    it("defender patrols a ring around the friendly tower", () => {
+    it("always explores when there is no objective (never idles)", () => {
         const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: true };
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.ok(navGoal, "defender should always have a patrol goal");
-        const dist = Math.hypot(navGoal.x - 10, navGoal.y - 10);
-        assert.ok(Math.abs(dist - 10) < 0.01, `patrol goal should sit on the patrol ring, got ${dist}`);
+        const { navGoal } = think(bot, { enemies: [], map: customMap([]), objective: null });
+        assert.ok(navGoal, "a bot without an objective must keep moving");
     });
 
-    it("defender intercepts a threat near the friendly tower", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: true };
-        const enemy = new Tank(9, "#33d", "#239");
-        enemy.team = 2;
-        enemy.alive = true;
-        enemy.x = 14;
-        enemy.y = 10;
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [enemy], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.deepEqual(navGoal, { x: 14, y: 10 }, "defender should intercept the threat");
-        assert.ok(fireTarget, "defender should fire at the intercepted threat");
+    it("rallies to the strongest alarm deposit before pursuing the objective", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        const signals = new SignalFields(map.width, map.height);
+        signals.deposit("alarm", 14.5, 10.5, 5);
+        const swarm = { signals, friendlies: [bot.tank], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 40, alive: true }, swarm });
+        assert.deepEqual(navGoal, { x: 14.5, y: 10.5 });
     });
 
-    it("defender falls back to cavalry when its tower is dead", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: false };
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
+    it("a weaker emitter falls in behind a stronger one (convoy)", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "ifv"; // recruit 0.8 < tank's 1.0
+        const leader = new Tank(9, "#c33", "#822");
+        leader.team = 1;
+        leader.alive = true;
+        leader.x = 15;
+        leader.y = 10;
+        leader.angle = 0; // facing east
+        const swarm = { signals: new SignalFields(map.width, map.height), friendlies: [bot.tank, leader], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        assert.ok(navGoal.x < 15, `station should sit behind the leader, got x=${navGoal.x}`);
+    });
+
+    it("a flank vehicle holds a perpendicular offset from its leader", () => {
+        const map = customMap([]);
+        const bot = createBot(12, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "squad";
+        const leader = new Tank(9, "#c33", "#822");
+        leader.team = 1;
+        leader.alive = true;
+        leader.x = 15;
+        leader.y = 10;
+        leader.angle = 0;
+        const swarm = { signals: new SignalFields(map.width, map.height), friendlies: [bot.tank, leader], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        const lateral = Math.abs(navGoal.y - 10);
+        assert.ok(
+            Math.abs(lateral - CONFIG.CONVOY_FLANK_OFFSET) < 0.01,
+            `flank offset should be perpendicular, got ${lateral}`,
+        );
+    });
+
+    it("equal emitters do not follow each other", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        const peer = new Tank(9, "#c33", "#822");
+        peer.team = 1;
+        peer.alive = true;
+        peer.x = 14;
+        peer.y = 10;
+        const swarm = { signals: new SignalFields(map.width, map.height), friendlies: [bot.tank, peer], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        assert.deepEqual(navGoal, { x: 40, y: 10 }, "two tanks both lead — no one follows");
+    });
+
+    it("convoys only form behind a purposeful leader (no idle base blobs)", () => {
+        const map = customMap([]);
+        const mk = (seed) => {
+            const bot = createBot(10, 10, 0, map, seededRng(seed));
+            bot.tank.vehicleType = "ifv";
+            const leader = new Tank(9, "#c33", "#822");
+            leader.team = 1;
+            leader.alive = true;
+            leader.x = 15;
+            leader.y = 10;
+            leader.angle = 0;
+            const swarm = {
+                signals: new SignalFields(map.width, map.height),
+                friendlies: [bot.tank, leader],
+                humans: [],
+            };
+            return { bot, swarm };
+        };
+        const withPurpose = mk(1);
+        const purposeful = think(withPurpose.bot, {
+            enemies: [],
+            map,
+            objective: { x: 40, y: 10, alive: true },
+            swarm: withPurpose.swarm,
         });
-        assert.deepEqual(navGoal, { x: 30, y: 30 }, "dead tower → cavalry rush");
+        assert.ok(purposeful.navGoal.x < 15, "with a known objective the follower joins the push");
+
+        const idle = mk(1);
+        const purposeless = think(idle.bot, { enemies: [], map, objective: null, swarm: idle.swarm });
+        assert.ok(
+            Math.abs(purposeless.navGoal.x - purposeful.navGoal.x) > 0.5 ||
+                Math.abs(purposeless.navGoal.y - purposeful.navGoal.y) > 0.5,
+            "without a purpose the bot explores instead of queueing",
+        );
+    });
+
+    it("convoy-joining is suppressed in a crowded area", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "ifv";
+        const leader = new Tank(9, "#c33", "#822");
+        leader.team = 1;
+        leader.alive = true;
+        leader.x = 15;
+        leader.y = 10;
+        leader.angle = 0;
+        const signals = new SignalFields(map.width, map.height);
+        signals.deposit("recruit", 10.5, 10.5, CONFIG.CONVOY_CROWD_LIMIT + 1);
+        const swarm = { signals, friendlies: [bot.tank, leader], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        assert.deepEqual(navGoal, { x: 40, y: 10 }, "crowded bot heads for the objective itself");
+    });
+
+    it("exploration ventures away from the home anchor", () => {
+        // Scenario config: the invariant only holds with a meaningful
+        // venture weight, which tuning may take near zero — set it.
+        withParams([["CONFIG.EXPLORE_VENTURE_WEIGHT", 0.2]], () => {
+            const map = customMap([]);
+            const meanDistanceFromHome = (home) => {
+                const bot = createBot(30, 30, 0, map, seededRng(11));
+                const swarm = {
+                    signals: new SignalFields(map.width, map.height),
+                    friendlies: [bot.tank],
+                    humans: [],
+                    home,
+                };
+                let total = 0;
+                for (let i = 0; i < 60; i++) {
+                    bot.ai.state.exploreTimer = 0; // force a fresh pick
+                    const { navGoal } = think(bot, { enemies: [], map, objective: null, swarm });
+                    total += Math.hypot(navGoal.x - 30, navGoal.y - 30);
+                }
+                return total / 60;
+            };
+            const anchored = meanDistanceFromHome({ x: 30, y: 30 });
+            const free = meanDistanceFromHome(null);
+            assert.ok(
+                anchored > free + 1,
+                `home anchor should push exploration outward (anchored ${anchored.toFixed(1)} vs free ${free.toFixed(1)})`,
+            );
+        });
+    });
+
+    it("prefers a strong trail tile that makes progress toward the objective", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        const signals = new SignalFields(map.width, map.height);
+        signals.depositMax("trail", 14.5, 10.5, 2); // ahead (progress)
+        signals.depositMax("trail", 6.5, 10.5, 5); // behind (stronger, but no progress)
+        const swarm = { signals, friendlies: [bot.tank], humans: [] };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        assert.deepEqual(navGoal, { x: 14.5, y: 10.5 }, "backward signal must not pull the bot home");
+    });
+
+    it("artillery holds position once the objective is inside its range", () => {
+        const map = customMap([]);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "spg";
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 20, y: 10, alive: true } });
+        assert.deepEqual(navGoal, { x: 10, y: 10 }, "SPG should stop and shell");
     });
 });
 
-describe("AI modules – position scoring", () => {
-    it("findBestPosition returns a candidate at the ideal range", () => {
-        const map = customMap([]);
-        const pos = findBestPosition(
-            { x: 10, y: 10 },
-            { x: 30, y: 30 },
-            map,
-            { cover: 0, flank: 5, range: 0, los: 0 },
-            10,
-        );
-        assert.ok(pos, "should find a position");
-        const dist = Math.hypot(pos.x - 30, pos.y - 30);
-        assert.ok(dist >= 8 && dist <= 12, `candidate should sit near the ideal range, got ${dist.toFixed(1)}`);
+describe("AI modules – separation steering", () => {
+    const think = (bot, ctx) => chooseGoalAndTarget(bot.ai, 0.016, bot.tank, ctx);
+
+    const convoy = (map, bots) => {
+        const leader = new Tank(9, "#c33", "#822");
+        leader.team = 1;
+        leader.alive = true;
+        leader.x = 15;
+        leader.y = 10;
+        leader.angle = 0;
+        return {
+            leader,
+            swarm: {
+                signals: new SignalFields(map.width, map.height),
+                friendlies: [leader, ...bots.map((b) => b.tank)],
+                humans: [],
+            },
+        };
+    };
+
+    it("two same-side flankers get pushed to different stations", () => {
+        // Scenario config: the separation radius is optimizer-tunable —
+        // declare it rather than inherit it.
+        withParams([["VEHICLES.drone.personalSpace", 1.5]], () => {
+            const map = customMap([]);
+            const droneA = createBot(13.4, 11.6, 0, map, seededRng(1));
+            const droneB = createBot(13.6, 11.4, 0, map, seededRng(2));
+            for (const d of [droneA, droneB]) {
+                d.tank.vehicleType = "drone";
+                d.ai.state.convoySide = 1; // force the shared station
+            }
+            const { swarm } = convoy(map, [droneA, droneB]);
+            const ctx = { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm };
+            const goalA = think(droneA, ctx).navGoal;
+            const goalB = think(droneB, ctx).navGoal;
+            const apart = Math.hypot(goalA.x - goalB.x, goalA.y - goalB.y);
+            assert.ok(apart > 1.5, `stacked flankers should be pushed apart (goals ${apart.toFixed(2)} apart)`);
+        });
     });
 
-    it("computeFlankPoint forms a ring around the midpoint", () => {
+    it("vehicles with personalSpace 0 are unaffected", () => {
         const map = customMap([]);
-        const pos = computeFlankPoint({ x: 10, y: 10 }, { x: 30, y: 30 }, map);
-        assert.ok(pos, "should find a flank point");
-        const midDist = Math.hypot(pos.x - 20, pos.y - 20);
-        assert.ok(midDist >= 8 && midDist <= 14, `flank point should ring the midpoint, got ${midDist.toFixed(1)}`);
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        const peer = new Tank(9, "#c33", "#822");
+        peer.team = 1;
+        peer.alive = true;
+        peer.x = 10.3;
+        peer.y = 10;
+        const swarm = {
+            signals: new SignalFields(map.width, map.height),
+            friendlies: [bot.tank, peer],
+            humans: [],
+        };
+        const { navGoal } = think(bot, { enemies: [], map, objective: { x: 40, y: 10, alive: true }, swarm });
+        assert.deepEqual(navGoal, { x: 40, y: 10 }, "tanks keep their queue/contact spacing only");
+    });
+
+    it("a ground vehicle is never repelled onto impassable ground", () => {
+        // Value-agnostic: the hill block covers every tile a repulsion
+        // offset could reach for any plausible personalSpace (≤ ~3), so
+        // the invariant holds no matter how the radius is tuned.
+        const map = customMap(wallH(10, 37, 40));
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "squad";
+        const peer = createBot(10.7, 10, 0, map, seededRng(2)); // another squad: equal
+        peer.tank.vehicleType = "squad"; // emit, so no convoy leadership —
+        // it sits east, pushing the bot's goal west into the hills
+        const swarm = {
+            signals: new SignalFields(map.width, map.height),
+            friendlies: [bot.tank, peer.tank],
+            humans: [],
+        };
+        const objective = { x: 40.5, y: 10.5, alive: true };
+        const { navGoal } = think(bot, { enemies: [], map, objective, swarm });
+        assert.deepEqual(navGoal, { x: 40.5, y: 10.5 }, "blocked repulsion leaves the goal unchanged");
     });
 });
 

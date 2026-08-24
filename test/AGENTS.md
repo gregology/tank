@@ -56,7 +56,8 @@ recording-context smoke tests; the match simulation, menus, audio, particles,
 camera, the game-mode strategies, the vehicle behaviours, and the AI package
 are measured by `game.test.js` (Game suite), `menu.test.js`, `audio.test.js`,
 `particles.test.js`, `camera.test.js`, `modes.test.js`, `vehicles.test.js`,
-`ai.test.js`, `roles.test.js`, and `ai-modules.test.js` (the latter pins the
+`ai.test.js`, `arbitration.test.js`, `signals.test.js`, `discovery.test.js`,
+and `ai-modules.test.js` (the latter pins the
 `js/ai/` seams directly). The aggregate gate (~97% line / ~90% branch / ~94%
 funcs at last check) is a floor, not a target — keep the untested-modules gap
 closed: any new module must be imported by a test or it silently drops out of
@@ -66,6 +67,17 @@ the report.
 
 - **Deterministic where possible.** Use explicit flat maps (`customMap`) for
   obstacle-course and navigation tests so random terrain can't flake the test.
+- **Config values are not fixtures.** The suite runs against whatever
+  `js/config/tuning.js` contains — a feature, since tuned values that break
+  behaviour *should* fail tests. But it means a test may never secretly
+  depend on a tunable value. The rule: **invariant tests stay
+  value-agnostic** — derive geometry from live config (read the constant,
+  like the crowding and flank-offset tests do) or make the geometry robust
+  across the plausible range (e.g. a wall block wider than any sane
+  repulsion offset). **Scenario tests that genuinely need a specific stage
+  declare it** via `withParams([["CONFIG.X", v], …], fn)` from helpers,
+  which restores the live values afterwards. Never inherit a tunable value
+  implicitly.
 - **Tolerant where the system is genuinely random.** AI aim wobble introduces
   ~5% nondeterminism. For critical AI tests, use generous time limits and
   progress-based assertions ("final distance decreased") instead of exact
@@ -101,6 +113,10 @@ Reusable, deterministic utilities:
   report as isDown/analog, `pressed` actions are consumed by a single
   `wasPressed` call (edge-triggered across frames). Use it to drive human
   tanks and menu navigation.
+- `withParams(patches, fn)` — run `fn` with temporary CONFIG/VEHICLES
+  overrides (restored after). For scenario tests whose stage needs a
+  specific tunable value; invariant tests should derive from live config
+  instead (see "Config values are not fixtures" above).
 - `randomMap()` — random map with base compounds; returns
   `{ map, layouts }`. Derive passable spawn points near a compound centre
   with `map.getBaseSpawnPoint(layout.center.x, layout.center.y)`.
@@ -119,11 +135,11 @@ Reusable, deterministic utilities:
 - **AI module tests** (`ai-modules.test.js`) pin the `js/ai/` package seams
   directly (`steerToPoint`, `updatePath`/`pickWaypoint`, `updateStuck` /
   `handleStuck` / `evade` / `tryShootWall`, `steerTurretTo` / `updateWobble`,
-  `chooseGoalAndTarget` role dispatch, `findBestPosition` /
-  `computeFlankPoint`) using `createBot` + flat `customMap` maps. The
-  controller-level suites (`ai.test.js`, `roles.test.js`) still exercise the
-  same code end-to-end through `AIController.think` — the direct tests guard
-  the extracted seams so a future AI rework starts from a green baseline.
+  `chooseGoalAndTarget` swarm arbitration) using `createBot` + flat
+  `customMap` maps. The controller-level and emergent-behaviour suites
+  (`ai.test.js`, `arbitration.test.js`) exercise the same code end-to-end
+  through `AIController.think` — the direct tests guard the extracted seams
+  so a future AI rework starts from a green baseline.
   Target-priority scoring is tested through `targeting.bestTarget` directly
   (in `ai.test.js`), not through a private controller method.
 - **Map tests** should place tiles explicitly (`map.setTile`) rather than rely
@@ -132,7 +148,7 @@ Reusable, deterministic utilities:
   not by poking internals. The Game suite in `game.test.js` constructs
   two-human skirmish matches (zero bots → deterministic) and battle matches
   with `teamSize: 1` (zero bots) for the base/tower paths; bots are only used
-  when testing bot-specific behaviour (AI role re-assignment, the AI think
+  when testing bot-specific behaviour (AI per-life reset, the AI think
   loop). Where a deep code path can't be reached deterministically through
   `update()` (artillery splash, crush resolution, watch towers, structure
   destruction), the suite calls the `_`-prefixed method directly after

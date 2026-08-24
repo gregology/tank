@@ -1322,13 +1322,14 @@ describe("Game – respawn", () => {
         assert.equal(tank.vehicleType, "tank"); // skirmish only allows tanks
     });
 
-    it("bot respawn re-assigns the AI role", () => {
+    it("bot respawn resets per-life AI state", () => {
         const game = new Game(skirmishConfig([human(1)]));
-        const bot = game._bots[0].tank;
-        bot.kill();
+        const bot = game._bots[0];
+        bot.ai.state.exploreGoal = { x: 1, y: 1 };
+        bot.tank.kill();
         game._handleRespawns(CONFIG.TANK_RESPAWN_TIME + 0.1);
-        assert.ok(bot.alive);
-        assert.ok(game._bots[0].ai.role, "role re-assigned");
+        assert.ok(bot.tank.alive);
+        assert.deepEqual(bot.ai.state, {}, "per-life swarm state cleared");
     });
 });
 

@@ -7,12 +7,28 @@
  * drive" primitive.  Reactive obstacle avoidance is a light fallback for
  * dynamic obstacles (`nudge`), not the primary navigation.
  *
- * A future "tanks follow each other in columns" behaviour replaces the
- * *goal* a bot steers toward — the steering itself (`steerToPoint`)
- * stays as is.
+ * `steerToGoal` is the entry point the think loop uses: near goals with
+ * a walkable line are steered to *directly*, because the cached A*
+ * route refreshes on a timer and a close, moving goal (a convoy
+ * station) would otherwise leave the bot parked at a stale waypoint.
  */
 
 import { ACTIONS, CONFIG } from "../config.js";
+
+/**
+ * Steer toward the navigation goal: directly when it is close and in
+ * the open, otherwise along the cached A* route.
+ */
+export function steerToGoal(ai, dt, me, goal, map) {
+    const near = Math.hypot(goal.x - me.x, goal.y - me.y) < CONFIG.DIRECT_STEER_RANGE;
+    if (near && map.hasWalkableLine(me.x, me.y, goal.x, goal.y)) {
+        steerToPoint(ai, me, goal, { hasPath: true, map });
+        return;
+    }
+    updatePath(ai, dt, me, goal);
+    const wp = pickWaypoint(ai, me, map);
+    steerToPoint(ai, me, wp, { hasPath: ai._path.length > 0, map });
+}
 
 /**
  * Recompute the A* route when the goal moved, the route is empty, or

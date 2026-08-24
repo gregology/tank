@@ -488,9 +488,9 @@ describe("AI Target priority – drone detonation", () => {
     });
 });
 
-describe("AI Target priority – integration with roles", () => {
+describe("AI Target priority – integration with arbitration", () => {
     it("tank bot does not fire at drones when they are the only enemy", () => {
-        const map = new GameMap();
+        const map = customMap([]);
         const rng = seededRng(42);
         const bot = createBot(20, 32, 0, map, rng);
         bot.tank.vehicleType = "tank";
@@ -513,30 +513,30 @@ describe("AI Target priority – integration with roles", () => {
         assert.ok(!fired, "tank should not fire at a drone (priority 0)");
     });
 
-    it("IFV defender intercepts drones near tower", () => {
+    it("IFV fires at a high-priority drone on its path to the objective", () => {
         const map = customMap([]);
         const rng = seededRng(42);
         const bot = createBot(30, 32, 0, map, rng);
         bot.tank.vehicleType = "ifv";
-        bot.ai.role = "defender";
-        bot.ai.friendlyTower = { x: 32, y: 32, alive: true };
 
         const drone = new Tank(2, "#33d", "#239");
         drone.team = 2;
         drone.alive = true;
         drone.vehicleType = "drone";
         drone.x = 34;
-        drone.y = 32; // near the tower
+        drone.y = 32; // directly on the bot's path
 
         const objective = { x: 50, y: 32, alive: true };
-        // Simulate and check that IFV moves toward drone
+        let fired = false;
         let minDist = Infinity;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [drone], map, objective);
             bot.tank.update(0.016, bot.ai, map);
+            if (bot.ai.isDown(ACTIONS.fire)) fired = true;
             const d = Math.hypot(drone.x - bot.tank.x, drone.y - bot.tank.y);
             if (d < minDist) minDist = d;
         }
-        assert.ok(minDist < 4, `IFV defender should intercept drone near tower, got min dist ${minDist.toFixed(1)}`);
+        assert.ok(fired, "IFV should fire at the drone (its top-priority target)");
+        assert.ok(minDist < 4, `IFV should pass close to the drone on its route, got ${minDist.toFixed(1)}`);
     });
 });

@@ -1,7 +1,11 @@
 /**
  * Flat gameplay constants.  Tweak values here to tune gameplay, visuals,
- * and controls.
+ * and controls.  Optimizer-tuned values land in js/config/tuning.js and
+ * are applied over these defaults (see the bottom of this file).
  */
+import { applyOverrides } from "./overrides.js";
+import { TUNING_OVERRIDES } from "./tuning.js";
+
 export const CONFIG = {
     // ── Display ──────────────────────────────────────────────
     TILE_WIDTH: 64,
@@ -35,33 +39,36 @@ export const CONFIG = {
     BULLET_RADIUS: 3, // screen-pixel radius
     BULLET_LIFETIME: 3.0,
 
-    // ── AI Roles (team mode) ─────────────────────────────────
-    SNIPER_FIRE_RANGE: 15, // preferred distance from enemy tower
-    SNIPER_MIN_RANGE: 10, // won't get closer than this
-    SNIPER_ENGAGE_RANGE: 6, // only fights enemies this close
-    SNIPER_FIRE_MARGIN: 5, // extra range beyond SNIPER_FIRE_RANGE to start firing
-    DEFENDER_PATROL_RADIUS: 10, // patrol radius around friendly tower
-    DEFENDER_ENGAGE_RANGE: 18, // intercepts enemies this close to tower
-    OBJECTIVE_ENGAGE_RANGE: 25, // fire at the objective when this close (cavalry/scout/default)
-    CAVALRY_ENGAGE_RANGE: 10, // cavalry fires at enemies this close while rushing
-    SCOUT_ENGAGE_RANGE: 6, // scout self-defence range
-    DEFENDER_PERSONAL_RANGE: 10, // defender's own fire range (vs the intercept radius above)
-    DEFAULT_ENGAGE_RANGE: 10, // no-role bots engage enemies this close
-    DEFAULT_CHASE_RANGE: 8, // no-role bots chase a lone enemy this close
+    // ── AI combat ranges ─────────────────────────────────────
+    OBJECTIVE_ENGAGE_RANGE: 25, // fire at the objective when this close
+    ENGAGE_RANGE: 10, // bots fire at enemies this close while navigating
     IMMOBILISED_ENGAGE_RANGE: 15, // immobilised vehicles pivot toward enemies this close
-    DEFENDER_PATROL_TURN: 0.8, // patrol heading step (radians)
-    DEFENDER_PATROL_TURN_SPREAD: 1.0, // patrol heading jitter (radians)
-    DEFENDER_PATROL_INTERVAL: 3.0, // seconds between patrol heading changes
-    DEFENDER_PATROL_INTERVAL_SPREAD: 2.0, // patrol interval jitter (seconds)
     AIM_DEADZONE: 0.08, // turret/hull aim tolerance (radians) before steering
+    OBJECTIVE_DISCOVERY_RANGE: 12, // sight range at which a unit discovers an enemy objective (with LOS)
 
-    // Position scoring weights: { cover, flank, range, los }
-    // Each role scores candidate positions with these weights.
-    // 0 = don't care, higher = more important.
-    SNIPER_POSITION_WEIGHTS: { cover: 3, flank: 2, range: 2, los: 4 },
-    SCOUT_POSITION_WEIGHTS: { cover: 0, flank: 5, range: 0, los: 0 },
-    POSITION_COVER_RADIUS: 3, // tile radius to count cover around a candidate
-    POSITION_SAMPLES: 24, // number of candidate positions to evaluate
+    // ── Pheromone signal fields (js/ai/signals.js) ───────────
+    SIGNAL_MAX: 20, // per-tile field cap (additive channels)
+    SIGNAL_HALFLIVES: { recruit: 3.8817, trail: 15.0699, alarm: 1.5, food: 2 }, // seconds to halve
+    SIGNAL_ALARM_TIME: 4, // seconds a hit unit keeps broadcasting alarm
+    SIGNAL_ALARM_STRENGTH: 3.2721, // alarm deposit rate while broadcasting
+    SIGNAL_FOOD_STRENGTH: 8, // food-beacon deposit rate at a known objective
+    SIGNAL_HUMAN_EMIT: 2, // human-driven vehicles emit stronger recruitment (convoy leaders)
+    SIGNAL_TRAIL_DISTANCE_FACTOR: 0.0073, // trail strength falloff per world-unit travelled
+
+    // ── Swarm arbitration (js/ai/arbitration.js) ─────────────
+    SIGNAL_SENSE_RADIUS: 8, // how far a bot scans for trail/food signal
+    SIGNAL_SENSE_MIN: 0.05, // field value below which signal is ignored
+    SIGNAL_ALARM_RESPONSE_RADIUS: 10, // how far a bot travels to answer an alarm
+    CONVOY_JOIN_RANGE: 9.2333, // how far a follower looks for a convoy leader
+    CONVOY_EMIT_MARGIN: 1.05, // a leader must out-emit the follower by this factor
+    CONVOY_SPACING: 1.2, // world-units between queued convoy vehicles
+    CONVOY_FLANK_OFFSET: 1.6, // perpendicular offset for flanking vehicles
+    EXPLORE_RADIUS: 14.6112, // how far exploration candidates are sampled
+    EXPLORE_SAMPLES: 6, // candidate points scored per exploration pick
+    EXPLORE_INTERVAL: 2.0646, // seconds between exploration goal picks
+    EXPLORE_VENTURE_WEIGHT: 0.2271, // exploration pull per world-unit away from the home anchor
+    DIRECT_STEER_RANGE: 4, // goals closer than this (with a walkable line) skip A* and steer direct
+    CONVOY_CROWD_LIMIT: 4.7589, // local recruit field above which convoy-joining is suppressed
 
     // ── Particles ────────────────────────────────────────────
     MAX_PARTICLES: 300,
@@ -73,3 +80,5 @@ export const CONFIG = {
     GAMEPAD_STICK_DEADZONE: 0.35, // left-stick deflection needed to register a direction
     GAMEPAD_TRIGGER_THRESHOLD: 0.35, // analogue LT/RT pull needed to rotate the turret
 };
+
+applyOverrides(CONFIG, TUNING_OVERRIDES.CONFIG);

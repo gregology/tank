@@ -11,8 +11,9 @@
  *   hasBases         whether compounds/towers/HQ exist
  *   init(game)       mode-specific construction (battle: compounds)
  *   spawn(game)      where tanks start
- *   setupBot(game, bot, faction)   bot initialisation (battle: friendly base)
- *   aiObjective(game, bot)         what a bot navigates toward
+ *   potentialObjectives(game, faction)   objectives the faction could discover
+ *   homeAnchor(game, faction)      "home" for exploration venture bias
+ *   aiObjective(game, bot)         what a bot navigates toward (known only)
  *   enemyStructures(game, tank)    enemy structures a bot may target
  *   afterSeparation(game)          per-frame step after separation
  *   afterBullets(game, dt)         per-frame step after bullet hits
@@ -94,10 +95,19 @@ const skirmish = {
         }
     },
 
-    setupBot(_game, _bot, _faction) {},
+    /** Skirmish has no objectives — bots hunt enemies directly. */
+    potentialObjectives(_game, _faction) {
+        return [];
+    },
 
-    aiObjective(_game, _bot) {
+    /** Skirmish has no home — exploration is unbiased. */
+    homeAnchor(_game, _faction) {
         return null;
+    },
+
+    /** Skirmish has no structures to discover — bots hunt the nearest enemy. */
+    aiObjective(_game, bot) {
+        return bot.enemies.find((e) => e.alive) ?? null;
     },
 
     enemyStructures(_game, _tank) {
@@ -172,14 +182,24 @@ const battle = {
         }
     },
 
-    setupBot(game, bot, faction) {
-        bot.ai.friendlyBase = game.bases.find((b) => b.team === faction.id) ?? null;
+    /** The enemy base is the one objective a faction can discover. */
+    potentialObjectives(game, faction) {
+        return game.bases.filter((b) => b.team !== faction.id);
     },
 
-    /** Bots navigate toward the enemy base while it is alive. */
+    /** Home is the faction's own compound — exploration ventures away from it. */
+    homeAnchor(game, faction) {
+        return game.bases.find((b) => b.team === faction.id)?.center ?? null;
+    },
+
+    /** Bots navigate toward the enemy base once their faction knows it. */
     aiObjective(game, bot) {
-        const enemyBase = game.bases.find((b) => b.team !== bot.tank.team);
-        return enemyBase?.alive ? enemyBase : null;
+        const faction = game.factions.find((f) => f.id === bot.tank.team);
+        if (!faction) return null;
+        for (const objective of faction.knownObjectives) {
+            if (objective.alive) return objective;
+        }
+        return null;
     },
 
     enemyStructures(game, tank) {

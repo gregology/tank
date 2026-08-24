@@ -63,8 +63,8 @@ describe("battle mode", () => {
     it("init builds two compounds and registers their structures", () => {
         const game = stubGame({
             factions: [
-                { id: 1, color: "#cc3333", darkColor: "#882222" },
-                { id: 2, color: "#3366dd", darkColor: "#223399" },
+                { id: 1, color: "#cc3333", darkColor: "#882222", knownObjectives: new Set() },
+                { id: 2, color: "#3366dd", darkColor: "#223399", knownObjectives: new Set() },
             ],
         });
         getMode("battle").init(game);
@@ -82,8 +82,8 @@ describe("battle mode", () => {
     it("spawn places tanks inside their own compound", () => {
         const game = stubGame({
             factions: [
-                { id: 1, color: "#cc3333", darkColor: "#882222", entities: [] },
-                { id: 2, color: "#3366dd", darkColor: "#223399", entities: [] },
+                { id: 1, color: "#cc3333", darkColor: "#882222", entities: [], knownObjectives: new Set() },
+                { id: 2, color: "#3366dd", darkColor: "#223399", entities: [], knownObjectives: new Set() },
             ],
         });
         const mode = getMode("battle");
@@ -145,18 +145,50 @@ describe("battle mode", () => {
         assert.ok(free && typeof free.x === "number", "fallback free spawn returned");
     });
 
-    it("aiObjective is the enemy base while alive, then null", () => {
+    it("aiObjective is the known enemy base while alive, then null", () => {
         const mode = getMode("battle");
+        const enemyBase = { team: 2, alive: true, id: "base2" };
         const game = stubGame({
-            bases: [
-                { team: 1, alive: true, id: "base1" },
-                { team: 2, alive: true, id: "base2" },
-            ],
+            factions: [{ id: 1, knownObjectives: new Set([enemyBase]) }],
         });
         const bot = { tank: { team: 1 } };
-        assert.equal(mode.aiObjective(game, bot), game.bases[1]);
-        game.bases[1].alive = false;
+        assert.equal(mode.aiObjective(game, bot), enemyBase);
+        enemyBase.alive = false;
         assert.equal(mode.aiObjective(game, bot), null);
+    });
+
+    it("aiObjective ignores an enemy base the faction has not discovered", () => {
+        const mode = getMode("battle");
+        const enemyBase = { team: 2, alive: true };
+        const game = stubGame({
+            factions: [{ id: 1, knownObjectives: new Set() }],
+            bases: [{ team: 1, alive: true }, enemyBase],
+        });
+        assert.equal(mode.aiObjective(game, { tank: { team: 1 } }), null);
+    });
+
+    it("potentialObjectives are the enemy bases (skirmish has none)", () => {
+        const battle = getMode("battle");
+        const game = stubGame({
+            bases: [
+                { team: 1, alive: true },
+                { team: 2, alive: true },
+            ],
+        });
+        assert.deepEqual(battle.potentialObjectives(game, { id: 1 }), [game.bases[1]]);
+        assert.deepEqual(getMode("skirmish").potentialObjectives(game, { id: 1 }), []);
+    });
+
+    it("homeAnchor is the faction's own compound (skirmish has none)", () => {
+        const battle = getMode("battle");
+        const game = stubGame({
+            bases: [
+                { team: 1, center: { x: 10, y: 10 } },
+                { team: 2, center: { x: 50, y: 50 } },
+            ],
+        });
+        assert.deepEqual(battle.homeAnchor(game, { id: 2 }), { x: 50, y: 50 });
+        assert.equal(getMode("skirmish").homeAnchor(game, { id: 1 }), null);
     });
 
     it("enemyStructures lists the enemy faction's structures", () => {
@@ -220,9 +252,12 @@ describe("skirmish mode", () => {
         assert.equal(mode.respawn(stubGame(), {}), null);
     });
 
-    it("aiObjective is null — bots hunt the nearest enemy instead", () => {
+    it("aiObjective is the first living enemy — bots hunt, not explore", () => {
         const mode = getMode("skirmish");
-        assert.equal(mode.aiObjective(stubGame(), { tank: {} }), null);
+        const dead = { alive: false };
+        const alive = { alive: true };
+        assert.equal(mode.aiObjective(stubGame(), { tank: {}, enemies: [dead, alive] }), alive);
+        assert.equal(mode.aiObjective(stubGame(), { tank: {}, enemies: [dead] }), null);
     });
 
     it("afterSeparation / afterBullets are no-ops", () => {
@@ -259,8 +294,8 @@ describe("real map integration", () => {
         const game = stubGame({
             map,
             factions: [
-                { id: 1, color: "#cc3333", darkColor: "#882222", entities: [] },
-                { id: 2, color: "#3366dd", darkColor: "#223399", entities: [] },
+                { id: 1, color: "#cc3333", darkColor: "#882222", entities: [], knownObjectives: new Set() },
+                { id: 2, color: "#3366dd", darkColor: "#223399", entities: [], knownObjectives: new Set() },
             ],
         });
         const mode = getMode("battle");
