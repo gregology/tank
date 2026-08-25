@@ -140,7 +140,8 @@ There are no bot roles. Every AI vehicle runs the same small set of **local rule
 
 | Signal | Laid by | Effect |
 |--------|---------|--------|
-| **Trail** | Units marching on a discovered objective — shorter journeys lay stronger trails | Others follow lit routes; the swarm's paths optimize over time and stale ones fade |
+| **Trail (crumbs)** | Every moving unit, weakly | The substrate: raw wander-scribble, not followed |
+| **Route (lit trail)** | A unit that personally sights an objective — its whole walked path lights up; shorter journeys lay stronger routes, and followers who reach the objective reinforce their own paths | Others follow lit routes; the colony's paths optimize over time and stale ones fade |
 | **Alarm** | A *living* unit that was recently hit | Nearby allies rally to the fight. The signal dies with the victim — no rallying to a corpse |
 | **Food** | A discovered, still-standing enemy objective | Attracts the swarm; destroyed objectives stop attracting |
 | **Visited** | Every unit, wherever it stands | Exploration memory — retreading is repelled, so the colony spreads out instead of blobbing at home |

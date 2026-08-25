@@ -94,7 +94,11 @@ export class Tank extends GameEntity {
 
         // Swarm state (read by the pheromone system in js/systems/swarm.js)
         this.lastHitAt = null; // game time of the last hit taken (alarm signal)
-        this.distanceTravelled = 0; // this life — scales trail deposit strength
+        /** Recent tiles walked (crumb trail substrate; lit when the unit
+         *  personally reaches an objective). */
+        this.routeHistory = [];
+        /** Objectives this unit has personally sighted (per life). */
+        this.objectivesSeen = new Set();
         this.recentSpeed = 0; // smoothed tiles/sec (convoy leadership requires motion)
         this.convoyLeadable = false; // stamped per tick by the swarm system
         this.underAttack = false; // stamped per tick: recently hit (alarm source)
@@ -384,9 +388,10 @@ export class Tank extends GameEntity {
         this.damageAccum = 0;
         this.disabledSubsystems.clear();
 
-        // A fresh life: no alarm history, no travelled route
+        // A fresh life: no alarm history, no walked route, nothing sighted
         this.lastHitAt = null;
-        this.distanceTravelled = 0;
+        this.routeHistory = [];
+        this.objectivesSeen = new Set();
         this.recentSpeed = 0;
         this.convoyLeadable = false;
         this.underAttack = false;

@@ -122,6 +122,9 @@ describe("swarm goal selection", () => {
     it("an alarm near an ally triggers a rally", () => {
         const map = flat();
         const bot = createBot(10, 10, 0, map, seededRng(1));
+        // Declared stage: isolates the rally mechanism from the global
+        // weight balance (the sweep retunes W_RALLY/W_EXPLORE freely).
+        bot.swarm.tuning.W_RALLY = 10;
         bot.swarm.fields.deposit("alarm", 15, 10, 3);
         const { navGoal } = chooseSwarmGoal(bot.ai, 0.016, bot.tank, [], map);
         assert.equal(navGoal.kind, "rally");
@@ -260,11 +263,14 @@ describe("swarm convoy (recruitment)", () => {
 
     it("human-driven vehicles are stronger leaders than bots", () => {
         const map = flat();
+        // Declared stage: isolates the leadership mechanism from the
+        // global weight balance (explore-vs-convoy is a tuning call).
         const scenario = (human) => {
             const bot = createBot(10, 10, 0, map, seededRng(1));
             bot.tank.vehicleType = "squad";
             const ally = leaderTank(12, 10, 0); // a tank — squads convoy behind tanks
             if (human) bot.swarm.humans.add(ally);
+            bot.swarm.tuning.W_EXPLORE = 0.5;
             bot.ai.allies = [bot.tank, ally];
             return chooseSwarmGoal(bot.ai, 0.016, bot.tank, [], map).navGoal;
         };
@@ -333,7 +339,8 @@ describe("swarm system", () => {
         team,
         alive: true,
         lastHitAt: null,
-        distanceTravelled: 0,
+        routeHistory: [],
+        objectivesSeen: new Set(),
     });
     /** An enemy base whose compound is one structure at (x, y). */
     const enemyBase = (x, y) => {
@@ -417,29 +424,54 @@ describe("swarm system", () => {
         assert.ok(swarm.fields.sample("food", 30, 30) < 0.1, "attraction dies with the objective");
     });
 
-    it("shorter journeys lay stronger trails (route optimization)", () => {
-        const fresh = { ...unit(10, 10), distanceTravelled: 0 };
-        const weary = { ...unit(10, 20), distanceTravelled: 100 };
-        const bots = [
-            { ai: { currentGoal: { kind: "objective" } }, tank: fresh },
-            { ai: { currentGoal: { kind: "objective" } }, tank: weary },
-        ];
-        const { game, swarm } = stubWorld({ units: [fresh, weary], bots });
-
+    it("every unit lays crumb trail; the route field stays dark until a route is proven", () => {
+        const wanderer = unit(10, 10);
+        const { game, swarm } = stubWorld({ units: [wanderer] });
         updateSwarms(game, TICK);
-        const short = swarm.fields.sample("trail", 10, 10);
-        const long = swarm.fields.sample("trail", 10, 20);
-        assert.ok(short > 0, "units en route lay trail");
-        assert.ok(short > long * 2, `a shorter route must mark stronger (${short} vs ${long})`);
+        assert.ok(swarm.fields.sample("trail", 10, 10) > 0, "crumbs mark the path");
+        assert.equal(swarm.fields.sample("route", 10, 10), 0, "no route without a discovery");
+        assert.ok(swarm.fields.sample("visited", 10, 10) > 0, "…and it still marks ground as visited");
     });
 
-    it("units that aren't en route to an objective lay no trail", () => {
-        const explorer = unit(10, 10);
-        const bots = [{ ai: { currentGoal: { kind: "explore" } }, tank: explorer }];
-        const { game, swarm } = stubWorld({ units: [explorer], bots });
+    it("a personal sighting lights the unit's walked route", () => {
+        // Bug caught: followers had no lit route to follow because the
+        // discoverer's path never lit up.
+        const scout = unit(10, 10);
+        scout.routeHistory = [10 * 128 + 5, 10 * 128 + 6, 10 * 128 + 7, 10 * 128 + 8, 10 * 128 + 9];
+        const objective = { x: 14, y: 10, alive: true };
+        const { game, swarm } = stubWorld({ units: [scout] });
+        swarm.intel.revealObjective(objective, 10);
+
         updateSwarms(game, TICK);
-        assert.equal(swarm.fields.sample("trail", 10, 10), 0);
-        assert.ok(swarm.fields.sample("visited", 10, 10) > 0, "…but it still marks ground as visited");
+        assert.ok(swarm.fields.sample("route", 5, 10) > 0, "the walked path lights up");
+        assert.ok(swarm.fields.sample("route", 9, 10) > 0, "…the whole of it");
+        assert.ok(scout.objectivesSeen.has(objective), "the sighting is recorded per unit");
+
+        const before = swarm.fields.sample("route", 5, 10);
+        updateSwarms(game, TICK);
+        assert.ok(
+            swarm.fields.sample("route", 5, 10) <= before,
+            "a unit doesn't re-light a route it has already sighted",
+        );
+    });
+
+    it("shorter journeys lay stronger routes (route optimization)", () => {
+        const sprinter = unit(10, 10);
+        sprinter.routeHistory = [10 * 128 + 8, 10 * 128 + 9]; // 2-tile journey
+        const plodder = unit(20, 10);
+        plodder.routeHistory = Array.from({ length: 40 }, (_, i) => 10 * 128 + (i % 40)); // long wander
+        const objective = { x: 14, y: 10, alive: true };
+        const { game, swarm } = stubWorld({ units: [sprinter, plodder] });
+        swarm.intel.revealObjective(objective, 10);
+
+        updateSwarms(game, TICK);
+        const short = swarm.fields.sample("route", 8, 10);
+        const long = swarm.fields.sample("route", 15, 10);
+        assert.ok(short > 0, "routes light on discovery");
+        assert.ok(
+            short > long * 2,
+            `a shorter journey must light stronger (${short.toFixed(1)} vs ${long.toFixed(1)})`,
+        );
     });
 });
 

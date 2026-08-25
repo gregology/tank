@@ -10,7 +10,7 @@
  */
 
 import { Game } from "../game.js";
-import { applyTuning, resetTuning, sliderSpecs } from "./panel.js";
+import { applyTuning, resetTuning, sliderSpecs, teamSizeRange } from "./panel.js";
 import { drawSandbox } from "./view.js";
 
 const TICK_DT = 1 / 60;
@@ -50,6 +50,20 @@ export function start(doc) {
                 seed: Number(els.seed.value) || 1,
             },
         });
+    }
+
+    /** Repopulate team-size options from the selected map size's cap. */
+    function rebuildTeamSizes() {
+        const { min, max, defaultValue } = teamSizeRange(els.mapSize.selectedIndex);
+        const current = Number(els.teamSize.value) || defaultValue;
+        els.teamSize.innerHTML = "";
+        for (let n = min; n <= max; n++) {
+            const option = doc.createElement("option");
+            option.value = String(n);
+            option.textContent = String(n);
+            els.teamSize.append(option);
+        }
+        els.teamSize.value = String(Math.min(Math.max(current, min), max));
     }
 
     function buildSliders() {
@@ -112,11 +126,13 @@ export function start(doc) {
     }
 
     els.newMatch.addEventListener("click", newMatch);
+    els.mapSize.addEventListener("change", rebuildTeamSizes);
     els.pause.addEventListener("click", () => {
         paused = !paused;
         els.pause.textContent = paused ? "Resume" : "Pause";
     });
 
+    rebuildTeamSizes();
     buildSliders();
     newMatch();
     requestAnimationFrame(frame);

@@ -13,8 +13,10 @@
  * to know.
  *
  * Signal semantics (see js/ai/swarm/):
- *   trail    — routes to known objectives; strength ∝ 1/distance travelled,
- *              so shorter paths lay stronger trails and decay fades stale ones
+ *   trail    — weak crumbs every moving unit leaves (wander substrate)
+ *   route    — a discoverer's walked path, lit when it personally sights
+ *              an objective; shorter journeys lay stronger routes,
+ *              followers reinforce their own paths, stale routes fade
  *   alarm    — deposited by a LIVING victim while recently hit; vanishes
  *              with the victim (no rallying to a corpse)
  *   food     — deposited on discovered, still-alive objectives
@@ -29,18 +31,40 @@ export const SWARM_TUNABLES = Object.freeze([
         max: 20,
         doc: "tiles a unit sees — structure/objective discovery radius",
     },
-    { key: "FIELD_TICK", value: 0.708, min: 0.1, max: 1, doc: "seconds between pheromone field updates" },
-    { key: "TRAIL_DEPOSIT", value: 0.4444, min: 0, max: 10, doc: "trail laid per tick while heading for an objective" },
-    { key: "TRAIL_DECAY", value: 0.9016, min: 0.8, max: 1, doc: "per-tick trail multiplier — stale routes fade" },
-    { key: "TRAIL_DIFFUSION", value: 0.12, min: 0, max: 0.5, doc: "trail spread to neighbours per tick" },
     {
-        key: "TRAIL_FOLLOW_RADIUS",
-        value: 16.2596,
-        min: 2,
-        max: 20,
-        doc: "how far a unit samples for a trail to follow",
+        key: "FIELD_TICK",
+        value: 0.708,
+        min: 0.1,
+        max: 1,
+        doc: "pheromone update interval (s) — colony reaction latency, not playback speed",
     },
-    { key: "TRAIL_MIN", value: 1.9833, min: 0, max: 2, doc: "minimum trail strength worth following" },
+    { key: "TRAIL_DEPOSIT", value: 0.3, min: 0, max: 10, doc: "crumb trail laid per tick wherever a unit goes" },
+    {
+        key: "TRAIL_DECAY",
+        value: 0.8465,
+        min: 0.8,
+        max: 1,
+        doc: "per-tick crumb multiplier — wander scribble fades fast",
+    },
+    { key: "TRAIL_DIFFUSION", value: 0.12, min: 0, max: 0.5, doc: "crumb spread to neighbours per tick" },
+    { key: "TRAIL_LIT", value: 15, min: 1, max: 50, doc: "route reinforcement laid along a discoverer's walked path" },
+    {
+        key: "TRAIL_LIT_NORM",
+        value: 32,
+        min: 4,
+        max: 128,
+        doc: "path-length normalizer — shorter journeys lay proportionally stronger routes",
+    },
+    {
+        key: "ROUTE_DECAY",
+        value: 0.995,
+        min: 0.9,
+        max: 1,
+        doc: "per-tick route multiplier — stale routes fade on a route timescale",
+    },
+    { key: "ROUTE_DIFFUSION", value: 0.08, min: 0, max: 0.2, doc: "route spread to neighbours per tick" },
+    { key: "TRAIL_FOLLOW_RADIUS", value: 8, min: 2, max: 20, doc: "how far a unit samples for a lit route to follow" },
+    { key: "TRAIL_MIN", value: 2, min: 0, max: 20, doc: "minimum route strength worth following" },
     { key: "ALARM_DEPOSIT", value: 3, min: 0, max: 10, doc: "alarm laid per tick by a unit under attack" },
     {
         key: "ALARM_DECAY",
@@ -64,9 +88,9 @@ export const SWARM_TUNABLES = Object.freeze([
         doc: "seconds a victim keeps signalling after the last hit",
     },
     { key: "ALARM_RANGE", value: 29.9443, min: 4, max: 40, doc: "how far units sense the alarm field" },
-    { key: "FOOD_DEPOSIT", value: 2.5, min: 0, max: 10, doc: "food laid per tick on a known, alive objective" },
+    { key: "FOOD_DEPOSIT", value: 4.3589, min: 0, max: 10, doc: "food laid per tick on a known, alive objective" },
     { key: "FOOD_DECAY", value: 0.9251, min: 0.9, max: 1, doc: "per-tick food multiplier" },
-    { key: "FOOD_DIFFUSION", value: 0.2, min: 0, max: 0.5, doc: "food spread per tick (objective pulls from afar)" },
+    { key: "FOOD_DIFFUSION", value: 0.2905, min: 0, max: 0.5, doc: "food spread per tick (objective pulls from afar)" },
     { key: "VISITED_DEPOSIT", value: 1, min: 0.1, max: 5, doc: "visited laid per tick where a unit stands" },
     {
         key: "VISITED_DECAY",
@@ -76,7 +100,7 @@ export const SWARM_TUNABLES = Object.freeze([
         doc: "per-tick visited multiplier — slow fade allows eventual re-exploration",
     },
     { key: "EXPLORE_RADIUS", value: 34.7656, min: 4, max: 40, doc: "ring radius for candidate exploration targets" },
-    { key: "EXPLORE_SAMPLES", value: 15.4426, min: 4, max: 32, doc: "candidate points scored per exploration pick" },
+    { key: "EXPLORE_SAMPLES", value: 19.6461, min: 4, max: 32, doc: "candidate points scored per exploration pick" },
     {
         key: "EXPLORE_OUTWARD",
         value: 1.5,
@@ -86,7 +110,7 @@ export const SWARM_TUNABLES = Object.freeze([
     },
     {
         key: "EXPLORE_PERSIST",
-        value: 2.6536,
+        value: 0.2777,
         min: 0,
         max: 3,
         doc: "keep-current-heading bonus when re-picking an exploration target (anti-oscillation)",
@@ -99,7 +123,7 @@ export const SWARM_TUNABLES = Object.freeze([
         doc: "how strongly unexplored ground attracts (anti-blob pressure)",
     },
     { key: "CONVOY_RADIUS", value: 12, min: 3, max: 30, doc: "how far a unit looks for a convoy leader" },
-    { key: "CONVOY_SPACING", value: 1.6, min: 0.5, max: 4, doc: "following distance behind the leader" },
+    { key: "CONVOY_SPACING", value: 1.8707, min: 0.5, max: 4, doc: "following distance behind the leader" },
     {
         key: "ESCORT_BONUS",
         value: 5,
@@ -114,12 +138,12 @@ export const SWARM_TUNABLES = Object.freeze([
         max: 3,
         doc: "extra attraction making human-driven vehicles natural leaders",
     },
-    { key: "W_RALLY", value: 39.2947, min: 0, max: 40, doc: "weight of the rally-to-alarm candidate" },
+    { key: "W_RALLY", value: 3.0978, min: 0, max: 40, doc: "weight of the rally-to-alarm candidate" },
     { key: "W_OBJECTIVE", value: 19.2517, min: 0, max: 40, doc: "weight of a known objective (plus its priority)" },
-    { key: "W_TRAIL", value: 5, min: 0, max: 40, doc: "weight of a trail worth following" },
+    { key: "W_TRAIL", value: 13.08, min: 0, max: 40, doc: "weight of a trail worth following" },
     {
         key: "W_CONVOY",
-        value: 20.1678,
+        value: 13.3133,
         min: 0,
         max: 40,
         doc: "weight of joining a convoy behind a close, strong leader",

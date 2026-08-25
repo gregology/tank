@@ -11,8 +11,13 @@
  *      alarm   — living units hit within ALARM_MEMORY seconds (the
  *                signal dies with the victim: no rallying to a corpse)
  *      food    — known, alive objectives
- *      trail   — units en route to an objective, strength ∝ 1/distance
- *                travelled, so shorter journeys lay stronger routes
+ *      trail   — weak crumbs under every moving unit: the substrate a
+ *                proven route later lights up from
+ *      route   — when a unit PERSONALLY sights a known objective for the
+ *                first time, its walked path lights up, strength ∝
+ *                1/path length (shorter journeys = stronger routes);
+ *                followers who reach the objective reinforce their own
+ *                paths, so good routes brighten and stale ones fade
  *   3. ticks every faction's fields (decay + diffusion).
  *
  * The system reads only observable state (positions, lastHitAt, the
@@ -20,6 +25,9 @@
  */
 
 import { BASE_STRUCTURES } from "../config.js";
+
+/** Tiles of route history kept per unit (~2 map-crossings at tank speed). */
+const ROUTE_HISTORY_LIMIT = 192;
 
 export function updateSwarms(game, dt) {
     for (const [factionId, swarm] of game.swarms) {
@@ -84,6 +92,7 @@ function tickDeposits(game, swarm, factionId) {
         trackTravel(swarm, t, tuning.FIELD_TICK);
 
         fields.deposit("visited", t.x, t.y, tuning.VISITED_DEPOSIT);
+        fields.deposit("trail", t.x, t.y, tuning.TRAIL_DEPOSIT);
 
         t.underAttack = t.lastHitAt != null && game.gameTime - t.lastHitAt < tuning.ALARM_MEMORY;
         if (t.underAttack) fields.deposit("alarm", t.x, t.y, tuning.ALARM_DEPOSIT);
@@ -91,6 +100,22 @@ function tickDeposits(game, swarm, factionId) {
 
     for (const obj of swarm.intel.objectives()) {
         fields.deposit("food", obj.x, obj.y, tuning.FOOD_DEPOSIT);
+        // Personal sighting: a unit "finds" an objective the same way the
+        // faction did — sight + LOS of any of the objective's structures
+        // (a compound's presence spans its walls, not just its centre).
+        const structures = obj.entity.structures ?? [obj.entity];
+        for (const t of game.allTanks) {
+            if (!t.alive || t.team !== factionId || t.objectivesSeen.has(obj.entity)) continue;
+            for (const s of structures) {
+                if (!s.alive) continue;
+                const d = Math.hypot(s.x - t.x, s.y - t.y);
+                if (d > tuning.SIGHT_RANGE) continue;
+                if (!game.map.hasLineOfSight(t.x, t.y, s.x, s.y, { skipTarget: true })) continue;
+                t.objectivesSeen.add(obj.entity);
+                lightRoute(swarm, t, tuning);
+                break;
+            }
+        }
     }
 
     for (const { ai, tank } of game.bots) {
@@ -101,22 +126,37 @@ function tickDeposits(game, swarm, factionId) {
         tank.convoyLeadable =
             (tank.recentSpeed ?? 0) >= 0.5 || ["objective", "trail", "rally"].includes(ai.currentGoal?.kind);
         tank.pursuingObjective = ai.currentGoal?.kind === "objective";
-        const goal = ai.currentGoal;
-        if (goal?.kind !== "objective" && goal?.kind !== "trail") continue;
-        const strength = tuning.TRAIL_DEPOSIT / (1 + tank.distanceTravelled / 10);
-        fields.deposit("trail", tank.x, tank.y, strength);
     }
 }
 
-/** Accumulate distance travelled (drives the trail-strength falloff)
- *  and keep a smoothed recent speed (a bot only leads a convoy while
- *  it's actually going somewhere). */
+/**
+ * A discoverer's walked path lights up as a followable route.  Shorter
+ * journeys lay proportionally stronger routes, and every follower that
+ * reaches the objective reinforces its own path — so the colony's
+ * routes optimize over time.
+ */
+function lightRoute(swarm, t, tuning) {
+    const strength = tuning.TRAIL_LIT / (1 + t.routeHistory.length / tuning.TRAIL_LIT_NORM);
+    for (const idx of t.routeHistory) {
+        const x = (idx % swarm.fields.width) + 0.5;
+        const y = Math.floor(idx / swarm.fields.width) + 0.5;
+        swarm.fields.deposit("route", x, y, strength);
+    }
+}
+
+/** Keep a smoothed recent speed (a bot only leads a convoy while it's
+ *  actually going somewhere) and append the unit's tile to its route
+ *  history when it enters a new one. */
 function trackTravel(swarm, t, tickInterval) {
     const last = swarm._lastPos.get(t);
     if (last) {
         const dist = Math.hypot(t.x - last.x, t.y - last.y);
-        t.distanceTravelled += dist;
         t.recentSpeed = (t.recentSpeed ?? 0) * 0.6 + (dist / tickInterval) * 0.4;
+    }
+    const idx = Math.floor(t.y) * swarm.fields.width + Math.floor(t.x);
+    if (t.routeHistory[t.routeHistory.length - 1] !== idx) {
+        t.routeHistory.push(idx);
+        if (t.routeHistory.length > ROUTE_HISTORY_LIMIT) t.routeHistory.shift();
     }
     swarm._lastPos.set(t, { x: t.x, y: t.y });
 }

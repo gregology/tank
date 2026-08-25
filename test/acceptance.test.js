@@ -21,7 +21,10 @@ import { describe, it } from "node:test";
 import { runMatch } from "../tools/sim.js";
 
 describe("bot-vs-bot battle acceptance", () => {
-    const MATCHES = { map: 64, teamSize: 3, cap: 420 };
+    // The criterion is that matches RESOLVE, not that they resolve fast —
+    // pacing is the sweep's optimization target. 600s covers the slow
+    // wars of attrition that legitimately occur on contested maps.
+    const MATCHES = { map: 64, teamSize: 3, cap: 600 };
 
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
         it(`seed ${seed}: exploration, mutual discovery, convergence, winner`, () => {

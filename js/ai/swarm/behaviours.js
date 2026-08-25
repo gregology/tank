@@ -114,7 +114,7 @@ function objectiveCandidate(me, intel, tuning, cfg) {
 function trailCandidate(me, fields, intel, tuning, cfg) {
     const obj = intel.objectives()[0];
     if (!obj) return null;
-    const hit = fields.strongestToward("trail", me.x, me.y, obj.x, obj.y, tuning.TRAIL_FOLLOW_RADIUS, tuning.TRAIL_MIN);
+    const hit = fields.strongestToward("route", me.x, me.y, obj.x, obj.y, tuning.TRAIL_FOLLOW_RADIUS, tuning.TRAIL_MIN);
     if (!hit) return null;
     return { x: hit.x, y: hit.y, kind: "trail", strength: hit.value * cfg.trail * tuning.W_TRAIL };
 }

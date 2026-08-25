@@ -7,7 +7,7 @@
  * object — the swarm reads it every tick, so changes apply mid-match.
  */
 
-import { SWARM, SWARM_TUNABLES } from "../config.js";
+import { GAME_OPTIONS, SWARM, SWARM_TUNABLES } from "../config.js";
 
 /** Slider descriptors for the control panel. */
 export function sliderSpecs() {
@@ -19,6 +19,16 @@ export function sliderSpecs() {
         step: stepFor(t.min, t.max),
         doc: t.doc,
     }));
+}
+
+/**
+ * Team-size choices for a map-size select index, from the canonical
+ * GAME_OPTIONS declaration — the sandbox never hardcodes its own caps.
+ */
+export function teamSizeRange(mapSizeIndex) {
+    const opt = GAME_OPTIONS.find((o) => o.key === "teamSize");
+    const max = opt.maxByMapSize?.[mapSizeIndex] ?? opt.max;
+    return { min: opt.min, max, defaultValue: opt.default };
 }
 
 /** ~100 steps across the range, snapped to a friendly precision. */

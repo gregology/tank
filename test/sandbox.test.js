@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SWARM, SWARM_TUNABLES } from "../js/config.js";
 import { Game } from "../js/game.js";
-import { applyTuning, resetTuning, sliderSpecs } from "../js/sandbox/panel.js";
+import { applyTuning, resetTuning, sliderSpecs, teamSizeRange } from "../js/sandbox/panel.js";
 import { drawSandbox } from "../js/sandbox/view.js";
 import { fakeCtx } from "./helpers.js";
 
@@ -53,6 +53,15 @@ describe("sandbox panel", () => {
         resetTuning(game);
         assert.equal(game.tuning.SIGHT_RANGE, SWARM.SIGHT_RANGE);
     });
+
+    it("team sizes come from GAME_OPTIONS caps per map size", () => {
+        // Bug caught: the sandbox hardcoded a max of 8 while the game
+        // allows 16/24/32 on small/medium/large maps.
+        assert.equal(teamSizeRange(0).max, 16, "64² cap");
+        assert.equal(teamSizeRange(1).max, 24, "128² cap");
+        assert.equal(teamSizeRange(2).max, 32, "192² cap");
+        assert.equal(teamSizeRange(1).min, 2);
+    });
 });
 
 describe("sandbox view", () => {
@@ -64,5 +73,35 @@ describe("sandbox view", () => {
             assert.doesNotThrow(() => drawSandbox(ctx, game, { field, factionId: 1, width: 400, height: 400 }));
             assert.ok(calls.includes("fillRect"), "tiles/units drawn");
         }
+    });
+
+    it("says so when a field has no signal yet (instead of looking broken)", () => {
+        // Bug caught: trail is all-zero before the first discovery, and
+        // the blank overlay read as a bug rather than as "nothing yet".
+        const game = seededMatch(); // no updates: no signals deposited
+        const { ctx, calls } = fakeCtx();
+        const texts = [];
+        ctx.fillText = (t) => texts.push(t);
+        drawSandbox(ctx, game, { field: "trail", factionId: 1, width: 400, height: 400 });
+        assert.ok(
+            texts.some((t) => t.includes("no signal yet")),
+            `expected the hint, got ${texts}`,
+        );
+        assert.ok(calls.includes("fillRect"), "map still drawn");
+    });
+
+    it("auto-normalizes faint fields so they stay visible after retuning", () => {
+        // Bug caught: trail values are ~100× smaller than alarm's, so a
+        // fixed alpha scale rendered them invisible.
+        const game = seededMatch();
+        game.swarms.get(1).fields.deposit("trail", 10, 10, 0.1); // tiny but real signal
+        let drewHeat = false;
+        const { ctx } = fakeCtx();
+        ctx.fillRect = () => {
+            const style = String(ctx.fillStyle);
+            if (style.startsWith("rgba(0,210,255") && !style.includes(",0.0")) drewHeat = true;
+        };
+        drawSandbox(ctx, game, { field: "trail", factionId: 1, width: 400, height: 400 });
+        assert.ok(drewHeat, "a 0.1-strength trail cell must draw with visible alpha");
     });
 });

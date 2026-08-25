@@ -49,21 +49,38 @@ export function drawSandbox(ctx, game, opts) {
         }
     }
 
-    // Pheromone heat overlay (one faction's one field)
+    // Pheromone heat overlay (one faction's one field).  Alpha scales to
+    // the field's CURRENT maximum — tuning changes absolute strengths by
+    // orders of magnitude (trail values are ~100× smaller than alarm's),
+    // so a fixed scale leaves some fields invisible.  The legend keeps
+    // the absolute scale visible; an empty field says so instead of
+    // looking broken (trail is literally all-zero before the first
+    // objective is discovered).
     if (opts.field) {
         const swarm = game.swarms.get(opts.factionId);
         const grid = swarm?.fields.grids[opts.field];
-        if (grid) {
+        let fieldMax = 0;
+        if (grid) for (const v of grid) if (v > fieldMax) fieldMax = v;
+        if (grid && fieldMax >= 0.05) {
             const rgb = FIELD_COLORS[opts.field] ?? "255,255,255";
+            const alphaScale = 0.85 / fieldMax;
             for (let gy = 0; gy < map.height; gy++) {
                 for (let gx = 0; gx < map.width; gx++) {
                     const v = grid[gy * map.width + gx];
                     if (v < 0.05) continue;
-                    ctx.fillStyle = `rgba(${rgb},${Math.min(0.85, v / 6).toFixed(2)})`;
+                    ctx.fillStyle = `rgba(${rgb},${Math.min(0.85, v * alphaScale).toFixed(2)})`;
                     ctx.fillRect(gx * scale, gy * scale, scale + 0.5, scale + 0.5);
                 }
             }
         }
+        ctx.fillStyle = "#fff";
+        ctx.font = "11px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(
+            fieldMax >= 0.05 ? `${opts.field} (max ${fieldMax.toFixed(2)})` : `${opts.field}: no signal yet`,
+            6,
+            opts.height - 8,
+        );
     }
 
     // Discovered objectives of the watched faction get a marker

@@ -298,7 +298,8 @@ colony's shared signals; cooperation emerges from simple local rules.
   so sandbox sliders and sweep overrides apply immediately), the
   faction's human-driven leaders, and its `home` reference point.
 - `swarm/fields.js` — `SignalFields`: one tile grid per signal type
-  (`trail` / `alarm` / `food` / `visited`, declared in the `SIGNALS`
+  (`trail` crumbs / lit `route` / `alarm` / `food` / `visited`,
+  declared in the `SIGNALS`
   table) with deposit / decay / diffusion / peak queries.  `tick(params)`
   reads decay+diffusion from live tuning each update.
 - `swarm/intel.js` — `FactionIntel`: what the faction has *discovered*
@@ -331,15 +332,18 @@ colony's shared signals; cooperation emerges from simple local rules.
 `js/systems/swarm.js` runs before the think pass: it discovers
 structures/objectives for each faction (a unit within SIGHT_RANGE with
 LOS — with `skipTarget` so a solid structure's own tile doesn't hide it),
-deposits the four signals from observable state (visited under every
-unit, alarm under living victims, food on known objectives, trail under
-units en route), and ticks decay/diffusion.  Key semantics: the alarm
-dies with the victim (no rallying to a corpse); a dead objective's food
-is erased on the spot; trail strength falls with distance travelled, so
-shorter journeys lay stronger routes; a bot only leads a convoy while
-moving or pursuing a goal (`convoyLeadable`), so parked bots can't hold
-idle blobs; escorting a leader who marches on the objective
-(`ESCORT_BONUS`) turns a trickle into a massed assault.
+deposits the signals from observable state (visited under every unit,
+alarm under living victims, food on known objectives, weak `trail`
+crumbs under every moving unit), lights `route` fields when a unit
+*personally* sights an objective (its walked path lights up, strength ∝
+1/path length — followers who reach the objective reinforce their own
+paths, so routes optimize and stale ones fade), and ticks
+decay/diffusion.  Key semantics: the alarm dies with the victim (no
+rallying to a corpse); a dead objective's food is erased on the spot; a
+bot only leads a convoy while moving or pursuing a goal
+(`convoyLeadable`), so parked bots can't hold idle blobs; escorting a
+leader who marches on the objective (`ESCORT_BONUS`) turns a trickle
+into a massed assault.
 
 Behavioural invariants: the AI navigates with A* (`pathfinder.js`) and
 follows waypoints (the swarm picks *goals*, the pathfinder routes to

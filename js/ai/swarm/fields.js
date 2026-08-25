@@ -1,9 +1,9 @@
 /**
  * Pheromone signal fields — the colony's shared memory.
  *
- * One SignalFields instance per faction holds four tile-grid fields,
- * one per signal type.  Everything the swarm "knows" is deposited here
- * by js/systems/swarm.js and read by the behaviours in
+ * One SignalFields instance per faction holds one tile-grid field per
+ * signal type.  Everything the swarm "knows" is deposited here by
+ * js/systems/swarm.js and read by the behaviours in
  * js/ai/swarm/behaviours.js; vehicles never communicate directly.
  *
  * Decay and diffusion are NOT baked in at construction: `tick(params)`
@@ -18,6 +18,7 @@
 export const SIGNALS = {
     trail: { decay: "TRAIL_DECAY", diffusion: "TRAIL_DIFFUSION" },
     alarm: { decay: "ALARM_DECAY", diffusion: "ALARM_DIFFUSION" },
+    route: { decay: "ROUTE_DECAY", diffusion: "ROUTE_DIFFUSION" },
     food: { decay: "FOOD_DECAY", diffusion: "FOOD_DIFFUSION" },
     visited: { decay: "VISITED_DECAY", diffusion: null },
 };

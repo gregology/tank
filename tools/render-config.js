@@ -25,8 +25,10 @@ export function renderSwarmConfig(tunables, values) {
  * to know.
  *
  * Signal semantics (see js/ai/swarm/):
- *   trail    — routes to known objectives; strength ∝ 1/distance travelled,
- *              so shorter paths lay stronger trails and decay fades stale ones
+ *   trail    — weak crumbs every moving unit leaves (wander substrate)
+ *   route    — a discoverer's walked path, lit when it personally sights
+ *              an objective; shorter journeys lay stronger routes,
+ *              followers reinforce their own paths, stale routes fade
  *   alarm    — deposited by a LIVING victim while recently hit; vanishes
  *              with the victim (no rallying to a corpse)
  *   food     — deposited on discovered, still-alive objectives
