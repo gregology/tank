@@ -7,7 +7,7 @@
  * and both call the minimap.
  */
 
-import { CONFIG, ROLE_PRESENTATION, VEHICLES } from "../config.js";
+import { CONFIG, VEHICLES } from "../config.js";
 import { chargeRange, distance } from "../utils.js";
 import { healthColor, roundedRect } from "./canvas-utils.js";
 import { drawMinimap } from "./minimap.js";
@@ -209,25 +209,6 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
             ctx.fillStyle = "#888";
             ctx.textAlign = "center";
             ctx.fillText("HOLD FIRE to charge range", cx, vy + ch - 34);
-        }
-    }
-
-    // Allied bot role roster (bottom-left)
-    const allyBots = (game.bots ?? []).filter((b) => b.tank.team === focusTank.team);
-    ctx.textAlign = "left";
-    ctx.font = 'bold 10px "Courier New", monospace';
-    const rx = vx + 12,
-        ry = vy + ch - 14 - allyBots.length * 13;
-    for (let i = 0; i < allyBots.length; i++) {
-        const b = allyBots[i];
-        const pres = ROLE_PRESENTATION[b.role];
-        const name = pres?.glyph ?? "???";
-        const alive = b.tank.alive;
-        ctx.fillStyle = alive ? (pres?.color ?? "#aaa") : "#555";
-        ctx.fillText(`\u2022 ${name}`, rx, ry + i * 13);
-        if (!alive) {
-            ctx.fillStyle = "#777";
-            ctx.fillText(" \u2620", rx + 30, ry + i * 13);
         }
     }
 

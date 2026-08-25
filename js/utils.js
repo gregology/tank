@@ -49,12 +49,12 @@ export function angleDiff(a, b) {
     return normalizeAngleSigned(b - a);
 }
 
-export function randomInt(lo, hi) {
-    return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+export function randomInt(lo, hi, rng = Math.random) {
+    return Math.floor(rng() * (hi - lo + 1)) + lo;
 }
 
-export function randomFloat(lo, hi) {
-    return Math.random() * (hi - lo) + lo;
+export function randomFloat(lo, hi, rng = Math.random) {
+    return rng() * (hi - lo) + lo;
 }
 
 /* ── Chargeable-weapon range ───────────────────────────────── */

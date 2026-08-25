@@ -122,20 +122,23 @@ export function groundMove(tank, device, dt, map, canDrive) {
 
 /**
  * Immobilised pivot: the tracks are destroyed, so the vehicle can't move —
- * rotate the hull toward the nearest threat (or the objective) and keep
+ * rotate the hull toward the nearest threat (or a known objective) and keep
  * firing.  Shared by the ground vehicles via the base `tank` behaviour.
  */
-function thinkImmobilised(ai, _dt, me, enemies, map, objective) {
+function thinkImmobilised(ai, _dt, me, enemies, map) {
     const bestEnemy = bestTarget(ai, me, enemies);
     let fireTarget = null;
 
     if (bestEnemy && bestEnemy.dist < CONFIG.IMMOBILISED_ENGAGE_RANGE) {
         fireTarget = bestEnemy;
-    } else if (objective) {
-        const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-        fireTarget = { target: objective, dist: d };
-    } else if (bestEnemy) {
-        fireTarget = bestEnemy;
+    } else {
+        const objective = ai.swarm.intel.objectives()[0];
+        if (objective) {
+            const d = Math.hypot(objective.x - me.x, objective.y - me.y);
+            fireTarget = { target: objective, dist: d };
+        } else if (bestEnemy) {
+            fireTarget = bestEnemy;
+        }
     }
 
     if (!fireTarget) return;
@@ -214,9 +217,9 @@ export const tank = {
         ai.tryShootWall(me, map);
     },
 
-    aiThink(ai, dt, me, enemies, map, objective) {
+    aiThink(ai, dt, me, enemies, map) {
         if (!me.trackDamaged) return false;
-        thinkImmobilised(ai, dt, me, enemies, map, objective);
+        thinkImmobilised(ai, dt, me, enemies, map);
         return true;
     },
 };

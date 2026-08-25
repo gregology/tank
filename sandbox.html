@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tank Battle — Swarm Sandbox</title>
+<style>
+  body { margin: 0; background: #111; color: #ccc; font: 12px "Courier New", monospace; display: flex; height: 100vh; }
+  #view { background: #000; flex: 0 0 auto; }
+  #panel { flex: 1; padding: 10px; overflow-y: auto; }
+  #panel .row { margin-bottom: 8px; }
+  #panel label { display: grid; grid-template-columns: 170px 1fr 44px; gap: 6px; align-items: center; margin: 3px 0; }
+  #panel select, #panel input[type=number], #panel button { background: #222; color: #ccc; border: 1px solid #444; font: inherit; padding: 2px 4px; }
+  #panel button { cursor: pointer; }
+  #status { color: #8f8; margin: 8px 0; }
+  h1 { font-size: 14px; color: #fff; margin: 0 0 10px; }
+  .hint { color: #666; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<canvas id="view" width="760" height="760"></canvas>
+<div id="panel">
+  <h1>SWARM SANDBOX</h1>
+  <div class="hint">Same seed + same settings = same match. Sliders apply live.</div>
+  <div class="row">seed <input id="seed" type="number" value="1" min="1"></div>
+  <div class="row">type <select id="gameType"><option value="battle" selected>battle</option><option value="skirmish">skirmish</option></select></div>
+  <div class="row">map <select id="mapSize"><option value="64">64</option><option value="128" selected>128</option><option value="192">192</option></select></div>
+  <div class="row">team <select id="teamSize"><option>2</option><option>3</option><option selected>5</option><option>8</option></select></div>
+  <div class="row">field <select id="field">
+    <option value="">— none —</option>
+    <option value="visited" selected>visited (exploration)</option>
+    <option value="trail">trail (routes)</option>
+    <option value="alarm">alarm (rally)</option>
+    <option value="food">food (objectives)</option>
+  </select></div>
+  <div class="row">faction <select id="faction"><option value="1" selected>1</option><option value="2">2</option></select></div>
+  <div class="row">speed <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="4">4×</option><option value="16">16×</option></select></div>
+  <div class="row"><button id="newMatch">New match</button> <button id="pause">Pause</button></div>
+  <div id="status"></div>
+  <div id="sliders"></div>
+</div>
+<script type="module" src="js/sandbox/main.js"></script>
+</body>
+</html>

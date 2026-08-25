@@ -7,6 +7,7 @@ import {
     customMap,
     GameMap,
     randomMap,
+    revealObjective,
     seededRng,
     simulateNavigation,
     simulateTeam,
@@ -139,7 +140,6 @@ describe("AI Navigation – cross-map (random terrain)", () => {
             const bot = createBot(tp1.x, tp1.y, 0, map, rng);
             const result = simulateNavigation(bot, { x: tp2.x, y: tp2.y }, map, {
                 seconds: 60,
-                objective: { x: tp2.x, y: tp2.y, alive: true },
             });
             if (!result.reachedTarget) failures++;
         }
@@ -152,9 +152,10 @@ describe("AI Combat – fires at terrain", () => {
         const map = customMap(wallH(30, 29, 31)); // 3-tile wall
         const rng = seededRng(42);
         const bot = createBot(30.5, 32.5, -Math.PI / 2, map, rng);
+        revealObjective(bot, { x: 30.5, y: 27.5 });
         let shotsFired = 0;
         for (let f = 0; f < 600; f++) {
-            bot.ai.think(0.016, bot.tank, [], map, { x: 30.5, y: 27.5, alive: true });
+            bot.ai.think(0.016, bot.tank, [], map);
             bot.tank.update(0.016, bot.ai, map);
             if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
@@ -172,7 +173,7 @@ describe("AI Combat – fires at terrain", () => {
         enemy.y = 32.5;
         let shotsFired = 0;
         for (let f = 0; f < 300; f++) {
-            bot.ai.think(0.016, bot.tank, [enemy], map, null);
+            bot.ai.think(0.016, bot.tank, [enemy], map);
             bot.tank.update(0.016, bot.ai, map);
             if (bot.ai.isDown(ACTIONS.fire)) shotsFired++;
         }
@@ -185,9 +186,10 @@ describe("AI Stuck recovery", () => {
         const map = customMap(wallU(27, 28, 10, 6));
         const rng = seededRng(42);
         const bot = createBot(32.5, 31.5, -Math.PI / 2, map, rng);
+        revealObjective(bot, { x: 32.5, y: 26.5 });
         let maxStuck = 0;
         for (let f = 0; f < 1200; f++) {
-            bot.ai.think(0.016, bot.tank, [], map, { x: 32.5, y: 26.5, alive: true });
+            bot.ai.think(0.016, bot.tank, [], map);
             bot.tank.update(0.016, bot.ai, map);
             if (bot.ai.stuckTime > maxStuck) maxStuck = bot.ai.stuckTime;
         }
@@ -198,8 +200,9 @@ describe("AI Stuck recovery", () => {
         const map = new GameMap();
         const rng = seededRng(42);
         const bot = createBot(32.5, 32.5, 0, map, rng);
+        revealObjective(bot, { x: 32.5 - 10, y: 32.5 });
         for (let f = 0; f < 300; f++) {
-            bot.ai.think(0.016, bot.tank, [], map, { x: 32.5 - 10, y: 32.5, alive: true });
+            bot.ai.think(0.016, bot.tank, [], map);
             bot.tank.update(0.016, bot.ai, map);
         }
         assert.ok(bot.ai.stuckTime < 1.0, `rotating should not count as stuck, got ${bot.ai.stuckTime.toFixed(1)}s`);
@@ -421,7 +424,7 @@ describe("AI Target priority – drone detonation", () => {
 
         // Simulate enough frames for detonation decision
         for (let f = 0; f < 30; f++) {
-            bot.ai.think(0.016, bot.tank, [enemyDrone], map, null);
+            bot.ai.think(0.016, bot.tank, [enemyDrone], map);
         }
         assert.ok(!bot.ai.isDown(ACTIONS.fire), "drone should NOT detonate on another drone");
     });
@@ -439,7 +442,7 @@ describe("AI Target priority – drone detonation", () => {
         enemyTank.x = 20.1;
         enemyTank.y = 32; // point-blank
 
-        bot.ai.think(0.016, bot.tank, [enemyTank], map, null);
+        bot.ai.think(0.016, bot.tank, [enemyTank], map);
         assert.ok(bot.ai.isDown(ACTIONS.fire), "drone SHOULD detonate on a tank at point-blank");
     });
 
@@ -456,7 +459,7 @@ describe("AI Target priority – drone detonation", () => {
         enemySpg.x = 20.1;
         enemySpg.y = 32;
 
-        bot.ai.think(0.016, bot.tank, [enemySpg], map, null);
+        bot.ai.think(0.016, bot.tank, [enemySpg], map);
         assert.ok(bot.ai.isDown(ACTIONS.fire), "drone SHOULD detonate on an SPG at point-blank");
     });
 
@@ -480,7 +483,7 @@ describe("AI Target priority – drone detonation", () => {
         enemyTank.x = 20.15;
         enemyTank.y = 32;
 
-        bot.ai.think(0.016, bot.tank, [enemyDrone, enemyTank], map, null);
+        bot.ai.think(0.016, bot.tank, [enemyDrone, enemyTank], map);
         assert.ok(
             bot.ai.isDown(ACTIONS.fire),
             "drone should detonate when a valid target (tank) is in range, even if a drone is also there",
@@ -488,7 +491,7 @@ describe("AI Target priority – drone detonation", () => {
     });
 });
 
-describe("AI Target priority – integration with roles", () => {
+describe("AI Target priority – integration through think", () => {
     it("tank bot does not fire at drones when they are the only enemy", () => {
         const map = new GameMap();
         const rng = seededRng(42);
@@ -502,41 +505,14 @@ describe("AI Target priority – integration with roles", () => {
         drone.x = 23;
         drone.y = 32;
 
-        // No objective — drone is the only possible target
+        // Drone is the only possible target
         let fired = false;
         for (let f = 0; f < 300; f++) {
-            bot.ai.think(0.016, bot.tank, [drone], map, null);
+            bot.ai.think(0.016, bot.tank, [drone], map);
             bot.tank.update(0.016, bot.ai, map);
             if (bot.ai.isDown(ACTIONS.fire)) fired = true;
         }
         // Tank should not waste shots on drone (priority 0)
         assert.ok(!fired, "tank should not fire at a drone (priority 0)");
-    });
-
-    it("IFV defender intercepts drones near tower", () => {
-        const map = customMap([]);
-        const rng = seededRng(42);
-        const bot = createBot(30, 32, 0, map, rng);
-        bot.tank.vehicleType = "ifv";
-        bot.ai.role = "defender";
-        bot.ai.friendlyTower = { x: 32, y: 32, alive: true };
-
-        const drone = new Tank(2, "#33d", "#239");
-        drone.team = 2;
-        drone.alive = true;
-        drone.vehicleType = "drone";
-        drone.x = 34;
-        drone.y = 32; // near the tower
-
-        const objective = { x: 50, y: 32, alive: true };
-        // Simulate and check that IFV moves toward drone
-        let minDist = Infinity;
-        for (let f = 0; f < 300; f++) {
-            bot.ai.think(0.016, bot.tank, [drone], map, objective);
-            bot.tank.update(0.016, bot.ai, map);
-            const d = Math.hypot(drone.x - bot.tank.x, drone.y - bot.tank.y);
-            if (d < minDist) minDist = d;
-        }
-        assert.ok(minDist < 4, `IFV defender should intercept drone near tower, got min dist ${minDist.toFixed(1)}`);
     });
 });

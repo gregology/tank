@@ -5,10 +5,22 @@
  * The game reads VEHICLES[tank.vehicleType] at runtime — adding a new
  * vehicle is just a new entry in this table.
  *
- * roleWeights:    per-vehicle role distribution for team mode AI.
- *                 Higher weight = more likely.  0 = never assigned.
- *                 Drones are always cavalry; IFVs lean toward scout.
- *                 SPGs lean toward sniper (long-range indirect fire).
+ * swarm:          how the vehicle responds to the colony's pheromone
+ *                 signals (js/ai/swarm/).  There are no assigned roles —
+ *                 identity is a sensitivity vector over shared signals:
+ *   attraction    how strongly this vehicle recruits followers (tanks
+ *                 lead; humans get HUMAN_LEADER_BONUS on top)
+ *   follow        how eagerly it joins a convoy behind a leader
+ *   flank         lateral offset from the leader's line (0 = directly
+ *                 behind; squads/drones fan out to the sides)
+ *   keepRange     standoff distance kept from objectives (SPGs shell
+ *                 from afar instead of driving into the base)
+ *   aggression    weight on hunting visible enemies
+ *   alarm         sensitivity to the rally signal
+ *   trail         sensitivity to route pheromones
+ *   explore       urge toward unexplored ground (the anti-blob fallback)
+ *   personalSpace desired separation from neighbours (drones fly over
+ *                 ground collision, so theirs is larger)
  *
  * targetPriority: per-vehicle preference for engaging different target
  *                 types.  Higher = more desirable.  0 = never engage.
@@ -73,7 +85,18 @@ export const VEHICLES = {
         displayRoF: "Med",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 3, sniper: 2, defender: 1, scout: 1 },
+        swarm: {
+            attraction: 1.0,
+            follow: 0.5,
+            flank: 0,
+            keepRange: 0,
+            aggression: 1.0,
+            alarm: 1.0,
+            trail: 0.8,
+            explore: 0.6,
+            personalSpace: 0.9,
+            engageRange: 16,
+        },
         targetPriority: { spg: 10, tank: 10, drone: 0, ifv: 2, squad: 8, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -109,7 +132,18 @@ export const VEHICLES = {
         displayRoF: "Fast",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 2, sniper: 2, defender: 1, scout: 5 },
+        swarm: {
+            attraction: 0.5,
+            follow: 1.0,
+            flank: 0.4,
+            keepRange: 0,
+            aggression: 0.9,
+            alarm: 1.0,
+            trail: 0.9,
+            explore: 0.9,
+            personalSpace: 0.8,
+            engageRange: 16,
+        },
         targetPriority: { tank: 2, drone: 10, ifv: 3, squad: 8, baseWall: 3, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -144,7 +178,18 @@ export const VEHICLES = {
         displayRoF: "N/A",
         spawnWeight: 3,
         cameraLookAhead: 3.5,
-        roleWeights: { cavalry: 1, sniper: 0, defender: 0, scout: 0 },
+        swarm: {
+            attraction: 0.15,
+            follow: 0.9,
+            flank: 1.5,
+            keepRange: 0,
+            aggression: 1.3,
+            alarm: 1.2,
+            trail: 0.7,
+            explore: 1.2,
+            personalSpace: 1.5,
+            engageRange: 20,
+        },
         targetPriority: { spg: 10, drone: 0, ifv: 2, squad: 7, baseWall: 0, baseTower: 0, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -179,7 +224,18 @@ export const VEHICLES = {
         displayRoF: "Slow",
         spawnWeight: 3,
         cameraLookAhead: 10.0,
-        roleWeights: { cavalry: 0, sniper: 5, defender: 0, scout: 0 },
+        swarm: {
+            attraction: 0.2,
+            follow: 0.4,
+            flank: 0,
+            keepRange: 17,
+            aggression: 0.4,
+            alarm: 0.5,
+            trail: 0.6,
+            explore: 0.4,
+            personalSpace: 1.2,
+            engageRange: 22,
+        },
         targetPriority: { tank: 0, drone: 0, ifv: 0, squad: 3, baseWall: 0, baseTower: 10, baseHQ: 10 },
         armour: {
             damageModel: "armour",
@@ -214,8 +270,18 @@ export const VEHICLES = {
         displayRoF: "Auto",
         spawnWeight: 3,
         cameraLookAhead: 2.0,
-        // Squads are never defenders — they advance/flank under cover.
-        roleWeights: { cavalry: 3, sniper: 0, defender: 0, scout: 3 },
+        swarm: {
+            attraction: 0.3,
+            follow: 0.9,
+            flank: 1.0,
+            keepRange: 0,
+            aggression: 1.0,
+            alarm: 1.0,
+            trail: 0.9,
+            explore: 0.8,
+            personalSpace: 0.6,
+            engageRange: 8,
+        },
         targetPriority: { spg: 8, tank: 6, squad: 6, baseWall: 8, baseTower: 8, baseHQ: 8 },
         // Cover/dig-in damage model (see Squad.damageMultiplier):
         //  coverReduction  — incoming damage multiplier while adjacent to

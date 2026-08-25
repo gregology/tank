@@ -11,7 +11,7 @@ export function emitDamageSmoke(game, dt) {
         if (!t.alive || !t.damaged) continue;
         t.smokeTimer -= dt;
         if (t.smokeTimer <= 0) {
-            t.smokeTimer = 0.15 + Math.random() * 0.1;
+            t.smokeTimer = 0.15 + game.rng() * 0.1;
             game.particles.emit("smoke", t.x, t.y);
         }
     }

@@ -46,6 +46,7 @@ function stubGame(overrides = {}) {
             game.scores.set(factionId, (game.scores.get(factionId) ?? 0) + 1);
         },
         nearestEnemy: () => null,
+        rng: Math.random,
         ...overrides,
     };
     return game;
@@ -145,33 +146,6 @@ describe("battle mode", () => {
         assert.ok(free && typeof free.x === "number", "fallback free spawn returned");
     });
 
-    it("aiObjective is the enemy base while alive, then null", () => {
-        const mode = getMode("battle");
-        const game = stubGame({
-            bases: [
-                { team: 1, alive: true, id: "base1" },
-                { team: 2, alive: true, id: "base2" },
-            ],
-        });
-        const bot = { tank: { team: 1 } };
-        assert.equal(mode.aiObjective(game, bot), game.bases[1]);
-        game.bases[1].alive = false;
-        assert.equal(mode.aiObjective(game, bot), null);
-    });
-
-    it("enemyStructures lists the enemy faction's structures", () => {
-        const mode = getMode("battle");
-        const structures = [{ a: 1 }, { a: 2 }];
-        const game = stubGame({
-            bases: [
-                { team: 1, allStructures: [] },
-                { team: 2, allStructures: structures },
-            ],
-        });
-        assert.equal(mode.enemyStructures(game, { team: 1 }), structures);
-        assert.deepEqual(mode.enemyStructures(game, { team: 2 }), []);
-    });
-
     it("afterSeparation / afterBullets dispatch to the base-only steps", () => {
         const game = stubGame();
         const mode = getMode("battle");
@@ -218,11 +192,6 @@ describe("skirmish mode", () => {
     it("respawn returns null — the position was set at kill time", () => {
         const mode = getMode("skirmish");
         assert.equal(mode.respawn(stubGame(), {}), null);
-    });
-
-    it("aiObjective is null — bots hunt the nearest enemy instead", () => {
-        const mode = getMode("skirmish");
-        assert.equal(mode.aiObjective(stubGame(), { tank: {} }), null);
     });
 
     it("afterSeparation / afterBullets are no-ops", () => {

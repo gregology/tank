@@ -81,7 +81,7 @@ Keyboard and gamepads can be used at the same time (e.g. one player on the keybo
 - In **Skirmish**, the first player or team to **10 kills** wins.
 - In **Battle**, each team has a **base compound** (HQ, walls, and watch towers) at their side. Destroy the enemy **HQ** to win (it takes 20 hits); watch towers fire at enemies, and walls block movement. Tanks respawn inside their team's compound.
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
-- Each viewport has a **minimap** in the corner showing the full island, all players, base structures, and role letters.
+- Each viewport has a **minimap** in the corner showing the full island, all players, and base structures.
 
 ## Development
 
@@ -104,7 +104,7 @@ npx lefthook install
 | `npm run graph:validate` | Check architectural boundaries |
 | `npm run mutation` | Mutation testing (slow, run periodically) |
 
-Individual test suites: `npm run test:ai`, `test:pathfinder`, `test:map`, `test:game`, `test:roles`.
+Individual test suites: `npm run test:ai`, `test:pathfinder`, `test:map`, `test:game`.
 
 Pre-commit hooks (via lefthook) run lint and tests automatically on commit.
 
@@ -134,20 +134,31 @@ IFV bullets deal 25% damage — four hits equal one tank hit. This creates an as
 
 **Squads** are five-man infantry fireteams that fight on their own. Members auto-target and auto-fire independently: the RPG engages vehicles and base structures, the shotgun is a dedicated counter to drones, and rifles/machine-guns engage enemy squads. The squad loses members one by one as it takes damage, and pressing **fire** makes it dig in for reduced incoming damage; buildings provide cover.
 
-## AI Bot Roles
+## Swarm AI
 
-In **Battle**, each AI bot is randomly assigned a **role** at spawn and respawn. Roles determine navigation strategy and combat priorities:
+There are no bot roles. Every AI vehicle runs the same small set of **local rules over shared pheromone signals** (colony-insect style), and cooperation — convoys, rallies, sieges — *emerges* rather than being scripted. Each faction has its own pheromone fields:
 
-| Role | Symbol | Behaviour |
-|------|--------|-----------|
-| **Cavalry** | C | Aggressive rush straight to the enemy base. Engages anything in its path. First to arrive but often first to die. |
-| **Sniper** | S | Finds a firing position at range from the enemy base and bombards it from a distance. Avoids close combat (self-defence only). |
-| **Defender** | D | Patrols near the friendly base and intercepts incoming enemies. Switches to cavalry if the base falls. |
-| **Scout** | F | Takes a wide flanking route to reach the enemy base from an unexpected angle. Engages enemies only in close range. |
+| Signal | Laid by | Effect |
+|--------|---------|--------|
+| **Trail** | Units marching on a discovered objective — shorter journeys lay stronger trails | Others follow lit routes; the swarm's paths optimize over time and stale ones fade |
+| **Alarm** | A *living* unit that was recently hit | Nearby allies rally to the fight. The signal dies with the victim — no rallying to a corpse |
+| **Food** | A discovered, still-standing enemy objective | Attracts the swarm; destroyed objectives stop attracting |
+| **Visited** | Every unit, wherever it stands | Exploration memory — retreading is repelled, so the colony spreads out instead of blobbing at home |
 
-Role letters appear on the minimap next to allied bot dots, and an allied roster is shown in the bottom-left of the HUD.
+**Discovery is not omniscient.** A faction learns the enemy base only when a friendly unit actually sees part of the compound (sight range + line of sight). Until then, units explore — preferring unexplored ground away from home. Structures are fog-of-war: only discovered ones can be targeted.
 
-The mix of roles creates more dynamic and unpredictable battles instead of two blobs colliding in the middle of the map. Each respawn re-rolls the role, so team composition shifts throughout the match.
+**Convoys form naturally.** Tanks are strong attractors and spearhead; IFVs, squads and drones fall in behind (squads and drones flank to the sides). A bot only leads while it's actually going somewhere — parked bots hold no followers — and a leader marching on the objective gathers an escort, so assaults arrive as a wave. Human-driven vehicles are natural leaders: nearby bots escort you, but the system never steers the human.
+
+**Vehicle identity is data, not code.** Each vehicle type has a `swarm` block in `js/config/vehicles.js`: how strongly it attracts followers, how eagerly it follows, how far it flanks, the standoff range it keeps (SPGs shell from afar), its aggression, and its personal space.
+
+## Tuning the swarm
+
+Every swarm parameter lives in one table — `SWARM_TUNABLES` in `js/config/swarm.js` — and the tooling treats it uniformly:
+
+- **`sandbox.html`** (serve the folder, open `/sandbox.html`) — watch a seeded match with the pheromone fields as heat overlays, scrub every parameter live with sliders, replay any scenario by seed.
+- **`tools/sim.js`** — headless deterministic match runner with metrics (first contact, discovery, exploration coverage, clustering, decisiveness):  `node tools/sim.js --seeds 1-20 --map 128 --teamSize 5`
+- **`tools/sweep.js`** — samples parameter sets and scores them across seeded matches with weighted goals, worker-parallel but bit-reproducible regardless of thread count:  `node tools/sweep.js --candidates 16`
+- **`tools/adopt.js`** — re-validates the winner on disjoint seeds (anti-lucky-seed guard) and regenerates `js/config/swarm.js`, so adopted values apply everywhere at once: game, sandbox, sims, tests.
 
 ## Technical Notes
 

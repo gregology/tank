@@ -37,9 +37,10 @@ export class GameMap extends TileGrid {
      * @param {number} [height]          map height (defaults to CONFIG.MAP_HEIGHT)
      * @param {number} [villageDensity]  multiplier for village generation (default 1.0)
      * @param {string} [style]           biome key in `MAP_STYLES` (default "island")
+     * @param {number} [seed]            terrain seed (defaults to a random draw)
      */
-    constructor(width, height, villageDensity, style) {
-        super(width, height, villageDensity, style);
+    constructor(width, height, villageDensity, style, seed) {
+        super(width, height, villageDensity, style, seed);
         this.generate();
     }
 
@@ -54,13 +55,13 @@ export class GameMap extends TileGrid {
     }
 
     /** Random passable spawn point inside a compound's interior. */
-    getBaseSpawnPoint(cx, cy, half) {
-        return baseSpawnPoint(this, cx, cy, half);
+    getBaseSpawnPoint(cx, cy, half, rng) {
+        return baseSpawnPoint(this, cx, cy, half, rng);
     }
 
     /** Random passable spawn point, far from (ax, ay). */
-    getSpawnPoint(ax, ay, minDist = 10) {
-        return spawnPoint(this, ax, ay, minDist);
+    getSpawnPoint(ax, ay, minDist = 10, rng) {
+        return spawnPoint(this, ax, ay, minDist, rng);
     }
 
     /* ── shared geometry API (see queries.js) ─────────────── */

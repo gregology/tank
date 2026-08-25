@@ -398,15 +398,16 @@ function connectCompoundToRoad(grid, layout) {
  * @param {number} cx  compound centre grid X
  * @param {number} cy  compound centre grid Y
  * @param {number} half  compound half-extent in tiles (from the layout)
+ * @param {() => number} [rng]  random source (defaults to Math.random)
  */
-export function getBaseSpawnPoint(grid, cx, cy, half = COMPOUND_HALF.small) {
+export function getBaseSpawnPoint(grid, cx, cy, half = COMPOUND_HALF.small, rng = Math.random) {
     const interior = (half - 1) * 2;
     const ox = Math.floor(cx) - half,
         oy = Math.floor(cy) - half;
 
     for (let attempt = 0; attempt < 100; attempt++) {
-        const gx = ox + 1 + Math.floor(Math.random() * interior);
-        const gy = oy + 1 + Math.floor(Math.random() * interior);
+        const gx = ox + 1 + Math.floor(rng() * interior);
+        const gy = oy + 1 + Math.floor(rng() * interior);
         const wx = gx + 0.5,
             wy = gy + 0.5;
         if (canStand(grid, wx, wy, VEHICLES.tank.size)) {
@@ -488,10 +489,10 @@ function areaPassable(grid, gx, gy, r) {
 }
 
 /** Find a random passable spawn point, far from (ax, ay). */
-export function getSpawnPoint(grid, ax, ay, minDist = 10) {
+export function getSpawnPoint(grid, ax, ay, minDist = 10, rng = Math.random) {
     for (let attempt = 0; attempt < 300; attempt++) {
-        const x = randomInt(6, grid.width - 7) + 0.5;
-        const y = randomInt(6, grid.height - 7) + 0.5;
+        const x = randomInt(6, grid.width - 7, rng) + 0.5;
+        const y = randomInt(6, grid.height - 7, rng) + 0.5;
         const t = grid.getTile(Math.floor(x), Math.floor(y));
         // Prefer flat ground for spawning
         if (t !== T.GRASS && t !== T.DARK_GRASS) continue;

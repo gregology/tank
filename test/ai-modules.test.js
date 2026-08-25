@@ -2,18 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { steerTurretTo, updateWobble } from "../js/ai/aiming.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "../js/ai/navigation.js";
-import { computeFlankPoint, findBestPosition } from "../js/ai/positioning.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "../js/ai/recovery.js";
-import { AI_ROLES, chooseGoalAndTarget } from "../js/ai/roles.js";
 import { targetPriorityOf } from "../js/ai/targeting.js";
 import { ACTIONS } from "../js/config.js";
-import { createBot, customMap, seededRng, Tank, wallH } from "./helpers.js";
+import { createBot, customMap, seededRng, wallH } from "./helpers.js";
 
 /*
- * Direct unit tests for the js/ai/ package (roles, targeting,
- * navigation, recovery, aiming).  The controller-level suites
- * (ai.test.js, roles.test.js) exercise the same code end-to-end
- * through `AIController.think`; these pin the module seams themselves.
+ * Direct unit tests for the js/ai/ package (targeting, navigation,
+ * recovery, aiming).  The controller-level suites (ai.test.js,
+ * swarm.test.js) exercise the same code end-to-end through
+ * `AIController.think`; these pin the module seams themselves.
  */
 
 describe("AI modules – navigation", () => {
@@ -197,105 +195,6 @@ describe("AI modules – aiming", () => {
         updateWobble(bot.ai, 0.1);
         assert.equal(typeof bot.ai.aimWobble, "number");
         assert.ok(bot.ai.wobbleTimer > 0.5, "wobble should reschedule its next refresh");
-    });
-});
-
-describe("AI modules – role dispatch", () => {
-    it("no role and no objective → no goal, no target", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), null);
-        assert.equal(navGoal, null);
-        assert.equal(fireTarget, null);
-    });
-
-    it("no role → charge at the objective", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.deepEqual(navGoal, { x: 30, y: 30 });
-        assert.equal(fireTarget, null, "objective beyond fire range");
-    });
-
-    it("role strategy dispatch uses ai.role", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.CAVALRY;
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.deepEqual(navGoal, { x: 30, y: 30 });
-    });
-
-    it("defender patrols a ring around the friendly tower", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: true };
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.ok(navGoal, "defender should always have a patrol goal");
-        const dist = Math.hypot(navGoal.x - 10, navGoal.y - 10);
-        assert.ok(Math.abs(dist - 10) < 0.01, `patrol goal should sit on the patrol ring, got ${dist}`);
-    });
-
-    it("defender intercepts a threat near the friendly tower", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: true };
-        const enemy = new Tank(9, "#33d", "#239");
-        enemy.team = 2;
-        enemy.alive = true;
-        enemy.x = 14;
-        enemy.y = 10;
-        const { navGoal, fireTarget } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [enemy], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.deepEqual(navGoal, { x: 14, y: 10 }, "defender should intercept the threat");
-        assert.ok(fireTarget, "defender should fire at the intercepted threat");
-    });
-
-    it("defender falls back to cavalry when its tower is dead", () => {
-        const bot = createBot(10, 10, 0, customMap([]), seededRng(1));
-        bot.ai.role = AI_ROLES.DEFENDER;
-        bot.ai.friendlyBase = { x: 10, y: 10, alive: false };
-        const { navGoal } = chooseGoalAndTarget(bot.ai, 0.016, bot.tank, [], customMap([]), {
-            x: 30,
-            y: 30,
-            alive: true,
-        });
-        assert.deepEqual(navGoal, { x: 30, y: 30 }, "dead tower → cavalry rush");
-    });
-});
-
-describe("AI modules – position scoring", () => {
-    it("findBestPosition returns a candidate at the ideal range", () => {
-        const map = customMap([]);
-        const pos = findBestPosition(
-            { x: 10, y: 10 },
-            { x: 30, y: 30 },
-            map,
-            { cover: 0, flank: 5, range: 0, los: 0 },
-            10,
-        );
-        assert.ok(pos, "should find a position");
-        const dist = Math.hypot(pos.x - 30, pos.y - 30);
-        assert.ok(dist >= 8 && dist <= 12, `candidate should sit near the ideal range, got ${dist.toFixed(1)}`);
-    });
-
-    it("computeFlankPoint forms a ring around the midpoint", () => {
-        const map = customMap([]);
-        const pos = computeFlankPoint({ x: 10, y: 10 }, { x: 30, y: 30 }, map);
-        assert.ok(pos, "should find a flank point");
-        const midDist = Math.hypot(pos.x - 20, pos.y - 20);
-        assert.ok(midDist >= 8 && midDist <= 14, `flank point should ring the midpoint, got ${midDist.toFixed(1)}`);
     });
 });
 

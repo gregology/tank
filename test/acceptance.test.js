@@ -1,0 +1,48 @@
+/**
+ * Acceptance suite: bot-vs-bot battles with no human input must reliably
+ * produce, across many seeded random maps:
+ *   exploration  — both factions cover ground beyond their spawn crust
+ *   discovery    — BOTH factions' intel learns the enemy base
+ *   convergence  — forces actually engage (deaths on both sides)
+ *   a winner     — the match resolves within the cap
+ *
+ * Bugs this catches: an AI regression that stops exploration (coverage
+ * floor), breaks discovery (fog-of-war/intel regressions), stalls the
+ * siege (decisiveness), or reintroduces faction asymmetry (both factions
+ * must discover, not just one).
+ *
+ * Matches run headless through the same runner the tuning sweeps use
+ * (tools/sim.js), so this suite is the tuneable target: parameter changes
+ * that break these invariants SHOULD fail the suite.
+ */
+
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { runMatch } from "../tools/sim.js";
+
+describe("bot-vs-bot battle acceptance", () => {
+    const MATCHES = { map: 64, teamSize: 3, cap: 420 };
+
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        it(`seed ${seed}: exploration, mutual discovery, convergence, winner`, () => {
+            const r = runMatch({ ...MATCHES, seed });
+            assert.ok(
+                r.coverage["1"] > 0.03 && r.coverage["2"] > 0.03,
+                `both factions explore: ${JSON.stringify(r.coverage)}`,
+            );
+            assert.ok(r.discovery["1"] !== null, `faction 1 discovers the enemy base (seed ${seed})`);
+            assert.ok(r.discovery["2"] !== null, `faction 2 discovers the enemy base (seed ${seed})`);
+            assert.ok(r.deaths["1"] > 0 && r.deaths["2"] > 0, `forces engage: ${JSON.stringify(r.deaths)}`);
+            assert.ok(r.winner !== null, `a winner emerges within the cap (seed ${seed}, ${r.duration}s)`);
+        });
+    }
+
+    it("no systematic faction advantage across the set", () => {
+        // Guards against first-mover/position bias (the personas had a
+        // 30/30 faction-1 sweep at one point during development).
+        const results = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => runMatch({ ...MATCHES, seed }));
+        const wins = { 1: 0, 2: 0 };
+        for (const r of results) if (r.winner !== null) wins[r.winner]++;
+        assert.ok(wins[1] > 0 && wins[2] > 0, `both factions should win some: ${JSON.stringify(wins)}`);
+    });
+});

@@ -30,11 +30,11 @@ export function getVehicleBehaviour(type) {
 }
 
 /** Pick a random vehicle type from an allowed list using spawn weights. */
-export function pickVehicleType(allowed) {
+export function pickVehicleType(allowed, rng = Math.random) {
     if (allowed.length === 1) return allowed[0];
     const entries = allowed.map((t) => [t, VEHICLES[t]]);
     const total = entries.reduce((s, [, v]) => s + v.spawnWeight, 0);
-    let r = Math.random() * total;
+    let r = rng() * total;
     for (const [type, v] of entries) {
         r -= v.spawnWeight;
         if (r <= 0) return type;

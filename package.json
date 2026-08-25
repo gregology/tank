@@ -7,7 +7,6 @@
     "test:pathfinder": "node --test test/pathfinder.test.js",
     "test:map": "node --test test/map.test.js",
     "test:game": "node --test test/game.test.js",
-    "test:roles": "node --test test/roles.test.js",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=85 --test-coverage-functions=80 test/*.test.js",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

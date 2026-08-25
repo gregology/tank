@@ -26,15 +26,17 @@
  *         artillery_impact, drone_strike
  */
 
-import { AIController, pickRoleForVehicle } from "./ai.js";
+import { Swarm } from "./ai/swarm/index.js";
+import { AIController } from "./ai.js";
 import { Camera } from "./camera.js";
-import { CONFIG, GAME_TYPES, TILES as T } from "./config.js";
+import { CONFIG, GAME_TYPES, SWARM, TILES as T } from "./config.js";
 import { resolveDamage } from "./damage.js";
 import { GAME_EVENTS } from "./events.js";
 import { planFactions } from "./factions.js";
 import { GameMap } from "./map.js";
 import { getMode } from "./modes.js";
 import { ParticleSystem } from "./particles.js";
+import { deriveSeed, mulberry32 } from "./rng.js";
 import { updateCamera } from "./systems/camera.js";
 import { pushFromStructures as pushFromStructuresSystem, resolveCrushes, separatePairs } from "./systems/collision.js";
 import { emitDamageSmoke } from "./systems/effects.js";
@@ -42,6 +44,7 @@ import { runFiring } from "./systems/firing.js";
 import { runMovement } from "./systems/movement.js";
 import { checkBulletHits, tickBullets } from "./systems/projectiles.js";
 import { handleRespawns } from "./systems/respawn.js";
+import { updateSwarms } from "./systems/swarm.js";
 import { runThink } from "./systems/think.js";
 import { updateWatchTowers as updateWatchTowersSystem } from "./systems/towers.js";
 import { updateVehicles } from "./systems/update.js";
@@ -63,11 +66,27 @@ export class Game {
         this.settings = matchConfig.settings ?? {};
         this._humanPlan = matchConfig.humans ?? [];
 
+        /**
+         * One match = one seed.  `this.rng` is the master stream for shared
+         * rolls (spawns, vehicle picks, cosmetic timers); each bot's
+         * AIController gets an independent derived stream.  Same seed +
+         * same settings = bit-for-bit reproducible match.
+         */
+        this.seed = this.settings.seed ?? Math.floor(Math.random() * 2147483647);
+        this.rng = mulberry32(this.seed);
+
+        /**
+         * Live swarm tuning for this match: the SWARM defaults with any
+         * per-match overrides.  Shared by reference with every faction's
+         * Swarm, so the sandbox's sliders apply immediately.
+         */
+        this.tuning = { ...SWARM, ...(this.settings.tuning ?? {}) };
+
         // Build map with settings-driven dimensions and density
         const mapW = this.settings.mapSize?.w;
         const mapH = this.settings.mapSize?.h;
         const density = this.settings.buildingDensity;
-        this.map = new GameMap(mapW, mapH, density);
+        this.map = new GameMap(mapW, mapH, density, undefined, this.seed);
         /** Particle system (world-space effects) — part of the world-model surface. */
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
@@ -122,9 +141,13 @@ export class Game {
     get humanTanks() {
         return this._humanTanks;
     }
-    /** All AI-controlled bots as `{ tank, role }` pairs (for the HUD/minimap). */
+    /** All AI-controlled bots as `{ ai, tank, enemies, allies, swarm }` records. */
     get bots() {
-        return this._bots.map(({ tank, ai }) => ({ tank, role: ai.role }));
+        return this._bots;
+    }
+    /** Per-faction colony state (pheromone fields + intel). */
+    get swarms() {
+        return this._swarms;
     }
     /** All cameras (one per human player). */
     get cameras() {
@@ -175,8 +198,12 @@ export class Game {
         this.particles = new ParticleSystem();
         this.gameOver = false;
         this.winner = null;
+        // A restart sequence is reproducible too: the next map's seed is
+        // drawn from the current match's stream.
+        this.seed = Math.floor(this.rng() * 2147483647);
+        this.rng = mulberry32(this.seed);
         const s = this.settings;
-        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity);
+        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity, undefined, this.seed);
         this._init();
     }
 
@@ -204,6 +231,9 @@ export class Game {
         const factionById = new Map(factions.map((f) => [f.id, f]));
         this._factions = factions;
 
+        // ── One colony per faction: shared pheromone fields + intel ──
+        this._swarms = new Map(factions.map((f) => [f.id, new Swarm(this.map.width, this.map.height, this.tuning)]));
+
         // ── Mode-specific construction (battle: base compounds) ──
         this.mode.init(this);
 
@@ -214,7 +244,7 @@ export class Game {
             if (!f) continue;
             const t = new Tank(nextId++, h.color, h.darkColor);
             t.team = h.team;
-            t.vehicleType = pickVehicleType(def.vehicles);
+            t.vehicleType = pickVehicleType(def.vehicles, this.rng);
             f.entities.push(t);
             this._humanTanks.push(t);
             this._humanDevices.push(h.device);
@@ -226,7 +256,7 @@ export class Game {
             for (let i = 0; i < f.botCount; i++) {
                 const t = new Tank(nextId++, f.color, f.darkColor);
                 t.team = f.id;
-                t.vehicleType = pickVehicleType(def.vehicles);
+                t.vehicleType = pickVehicleType(def.vehicles, this.rng);
                 f.entities.push(t);
             }
         }
@@ -234,23 +264,39 @@ export class Game {
         this._allTanks = factions.flatMap((f) => f.entities);
         for (const f of factions) this._scores.set(f.id, 0);
 
+        // Humans are their colony's natural convoy leaders (the swarm
+        // reads them as attractors; it never steers them).
+        for (const t of this._humanTanks) this._swarms.get(t.team)?.humans.add(t);
+
         // ── AI bots (every non-human tank) ──
         for (const f of factions) {
             for (const t of f.entities) {
                 if (this._humanTanks.includes(t)) continue;
-                const ai = new AIController(this.map);
-                ai.role = pickRoleForVehicle(t.vehicleType);
-                const bot = {
+                const swarm = this._swarms.get(f.id);
+                const ai = new AIController(this.map, mulberry32(deriveSeed(this.seed, t.playerNumber)), swarm);
+                ai.allies = f.entities;
+                this._bots.push({
                     ai,
                     tank: t,
+                    swarm,
                     enemies: this._allTanks.filter((e) => e.team !== t.team),
-                };
-                this.mode.setupBot(this, bot, f);
-                this._bots.push(bot);
+                    allies: f.entities,
+                });
             }
         }
 
         this._spawn();
+
+        // The colony's home reference (spawn centroid) — exploration
+        // expands away from it (see the swarm's explore behaviour).
+        for (const f of factions) {
+            const swarm = this._swarms.get(f.id);
+            if (!swarm || f.entities.length === 0) continue;
+            swarm.home = {
+                x: f.entities.reduce((s, t) => s + t.x, 0) / f.entities.length,
+                y: f.entities.reduce((s, t) => s + t.y, 0) / f.entities.length,
+            };
+        }
     }
 
     _spawn() {
@@ -292,6 +338,7 @@ export class Game {
         const humanDevices = this._humanDevices;
 
         // A thin, ordered list of per-frame system calls.
+        updateSwarms(this, dt);
         runThink(this, bots, dt);
         runMovement(this, bots, humanDevices, dt);
         updateVehicles(this, dt);
@@ -370,6 +417,10 @@ export class Game {
         const zone = entity.getHitZone ? entity.getHitZone(source.x, source.y) : null;
         const dmg = amount * entity.incomingDamageMultiplier(this.map);
         const result = resolveDamage(entity, zone, dmg);
+
+        // A living victim keeps emitting the alarm pheromone (see the
+        // swarm system); the signal dies with it — no rallying to a corpse.
+        if (entity.isVehicle) entity.lastHitAt = this.gameTime;
 
         if (result === "destroyed") {
             this.destroyEntity(entity, source);
