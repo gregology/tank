@@ -256,13 +256,16 @@ object — never more `if (typeDef.bases)` sprinkles.**
 ### 7. Map + shared geometry API (`map.js` → `js/map/`)
 
 `GameMap` (`js/map.js`) is a facade over the `js/map/` package: `grid.js`
-(tile data + tile-property queries, data-driven from `TILE_PROPS`),
-`queries.js` (the spatial geometry below), `generation.js` (procedural
-terrain, reading the per-biome `MAP_STYLES` table), `compounds.js` (base
-layout + spawn helpers; the per-tier compound shapes are dispatched by the
-`COMPOUND_STAMPERS` registry, with the square tiers sharing one
-`stampSquareCompound`). One implementation per geometric question; nothing
-re-implements them:
+(tile data + tile-property queries, data-driven from `TILE_PROPS` —
+including the `opaque` axis, which line-of-sight reads independently of
+`solid`), `noise.js` (seeded hash/noise/fbm shared by every stage),
+`queries.js` (the spatial geometry below), `generation/` (the ordered
+stage pipeline — terrain, settlements, …; a new feature is one stage
+module + one registry entry), `compounds.js` (base layout + spawn helpers;
+repulsion-sampled placement with centre-facing entrances; the per-tier
+compound shapes are dispatched by the `COMPOUND_STAMPERS` registry, with
+the square tiers sharing one `stampSquareCompound`). One implementation
+per geometric question; nothing re-implements them:
 
 - `map.canStand(wx, wy, size)` — the four-corner passability box (movement,
   separation, structure pushing, base spawn).

@@ -32,6 +32,8 @@ export const TILES = {
  *
  *   passable  — a vehicle can stand here (movement/pathfinding).
  *   solid     — blocks movement and projectiles (obstacle/cover).
+ *   opaque    — blocks line of sight (sight cover); independent of
+ *               movement — tree lines are opaque but passable.
  *   road      — a road tile (buildings must not be placed on it).
  *   water     — water (never passable, but not "solid" cover).
  *   building  — a destructible building (cover for squads).
@@ -42,6 +44,7 @@ export const TILE_PROPS = Object.freeze([
     /* 0 DEEP_WATER    */ {
         passable: false,
         solid: false,
+        opaque: false,
         road: false,
         water: true,
         building: false,
@@ -51,6 +54,7 @@ export const TILE_PROPS = Object.freeze([
     /* 1 SHALLOW_WATER */ {
         passable: false,
         solid: false,
+        opaque: false,
         road: false,
         water: true,
         building: false,
@@ -60,6 +64,7 @@ export const TILE_PROPS = Object.freeze([
     /* 2 SAND          */ {
         passable: true,
         solid: false,
+        opaque: false,
         road: false,
         water: false,
         building: false,
@@ -69,6 +74,7 @@ export const TILE_PROPS = Object.freeze([
     /* 3 GRASS         */ {
         passable: true,
         solid: false,
+        opaque: false,
         road: false,
         water: false,
         building: false,
@@ -78,6 +84,7 @@ export const TILE_PROPS = Object.freeze([
     /* 4 DARK_GRASS    */ {
         passable: true,
         solid: false,
+        opaque: false,
         road: false,
         water: false,
         building: false,
@@ -87,6 +94,7 @@ export const TILE_PROPS = Object.freeze([
     /* 5 HILL          */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: false,
@@ -96,17 +104,37 @@ export const TILE_PROPS = Object.freeze([
     /* 6 ROCK          */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: false,
         height: Math.round(CONFIG.TILE_DEPTH * 0.6),
         hp: CONFIG.ROCK_HP,
     },
-    /* 7 DIRT          */ { passable: true, solid: false, road: true, water: false, building: false, height: 0, hp: 0 },
-    /* 8 PAVED         */ { passable: true, solid: false, road: true, water: false, building: false, height: 0, hp: 0 },
+    /* 7 DIRT          */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: true,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
+    /* 8 PAVED         */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: true,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
     /* 9 BLDG_SMALL    */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: true,
@@ -116,6 +144,7 @@ export const TILE_PROPS = Object.freeze([
     /* 10 BLDG_MEDIUM  */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: true,
@@ -125,6 +154,7 @@ export const TILE_PROPS = Object.freeze([
     /* 11 BLDG_LARGE   */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: true,
@@ -134,6 +164,7 @@ export const TILE_PROPS = Object.freeze([
     /* 12 BASE_STRUCTURE */ {
         passable: false,
         solid: true,
+        opaque: true,
         road: false,
         water: false,
         building: false,

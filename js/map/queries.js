@@ -64,7 +64,7 @@ function lineSamples(x1, y1, x2, y2, skipOrigin, skipTarget = false) {
  */
 export function hasLineOfSight(grid, x1, y1, x2, y2, { skipOrigin = false, skipTarget = false } = {}) {
     for (const [sx, sy] of lineSamples(x1, y1, x2, y2, skipOrigin, skipTarget)) {
-        if (grid.blocksProjectile(sx, sy)) return false;
+        if (grid.blocksSight(sx, sy)) return false;
     }
     return true;
 }
@@ -95,7 +95,7 @@ export function countCoverTiles(grid, wx, wy, radius = 3) {
     for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
             if (dx * dx + dy * dy > radius * radius) continue;
-            if (grid.blocksProjectile(gx + dx + 0.5, gy + dy + 0.5)) count++;
+            if (grid.blocksSight(gx + dx + 0.5, gy + dy + 0.5)) count++;
         }
     }
     return count;

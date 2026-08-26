@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { GameMap, T, VEHICLES } from "./helpers.js";
+import { TILE_PROPS } from "../js/config.js";
+import { spanningTree } from "../js/map/generation/roads.js";
+import { customMap, GameMap, T, VEHICLES } from "./helpers.js";
 
 describe("Map generation", () => {
     it("creates a map matching CONFIG dimensions", () => {
@@ -56,6 +58,29 @@ describe("Map generation", () => {
     });
 });
 
+describe("Road network primitives", () => {
+    it("spanningTree connects every node with exactly n-1 edges", () => {
+        // Bug caught: a village dropped from the chain becomes an
+        // unreachable island of pavement.  n-1 edges + full coverage =
+        // a tree.
+        const nodes = [
+            { x: 0, y: 0 },
+            { x: 10, y: 2 },
+            { x: 5, y: 12 },
+            { x: 20, y: 20 },
+            { x: 18, y: 4 },
+        ];
+        const edges = spanningTree(nodes);
+        assert.equal(edges.length, nodes.length - 1, "a tree has n-1 edges");
+        const covered = new Set(edges.flat());
+        assert.equal(covered.size, nodes.length, "every node is connected");
+    });
+
+    it("spanningTree of a single node has no edges", () => {
+        assert.deepEqual(spanningTree([{ x: 1, y: 1 }]), []);
+    });
+});
+
 describe("Map passability", () => {
     it("grass and sand are passable; structures are not", () => {
         const map = new GameMap();
@@ -85,6 +110,22 @@ describe("Map passability", () => {
                 }
             }
         }
+    });
+
+    it("every tile declares opacity; sight-blocking is the opaque axis, not solidity", () => {
+        // Bug caught: a future tile type (tree lines are opaque but
+        // passable, sight-only cover) silently dropping the axis would be
+        // see-through forever — and bullets must keep reading `solid`.
+        for (const t of Object.values(T)) {
+            assert.notEqual(TILE_PROPS[t]?.opaque, undefined, `tile ${t} must declare opaque`);
+        }
+        // Flat deterministic map — generation could otherwise plant a
+        // building on the sampled tile and flake the assertions.
+        const map = customMap([]);
+        map.setTile(5, 5, T.HILL);
+        assert.ok(map.blocksSight(5.5, 5.5), "hills block sight");
+        assert.ok(!map.blocksSight(6.5, 5.5), "open ground doesn't");
+        assert.ok(!map.blocksProjectile(6.5, 5.5), "…and doesn't stop bullets either");
     });
 });
 
@@ -132,11 +173,27 @@ describe("Base compounds", () => {
     const countBy = (layout, type) => layout.structures.filter((s) => s.type === type).length;
     const hqTiles = (layout) => layout.structures.find((s) => s.type === "baseHQ").tiles.length;
 
-    it("places compounds on opposite sides of the island", () => {
-        const map = new GameMap();
-        const [l1, l2] = map.buildBaseCompounds();
-        const d = Math.hypot(l2.hqCenter.x - l1.hqCenter.x, l2.hqCenter.y - l1.hqCenter.y);
-        assert.ok(d > 15, `compounds should be far apart, got ${d.toFixed(0)}`);
+    it("places compounds far apart (repulsion), with centre-facing entrances", () => {
+        // The placement invariants: bases are random per seed but always
+        // far apart, and each entrance opens toward the map centre.
+        for (let seed = 1; seed <= 5; seed++) {
+            const map = new GameMap(128, 128, 1.0, undefined, seed);
+            const [l1, l2] = map.buildBaseCompounds();
+            const d = Math.hypot(l2.hqCenter.x - l1.hqCenter.x, l2.hqCenter.y - l1.hqCenter.y);
+            assert.ok(d > 60, `seed ${seed}: compounds should be far apart, got ${d.toFixed(0)}`);
+            for (const l of [l1, l2]) {
+                const toCentre = { x: 64 - l.center.x, y: 64 - l.center.y };
+                const dominant =
+                    Math.abs(toCentre.x) >= Math.abs(toCentre.y)
+                        ? toCentre.x > 0
+                            ? "E"
+                            : "W"
+                        : toCentre.y > 0
+                          ? "S"
+                          : "N";
+                assert.equal(l.dir, dominant, `seed ${seed}: entrance should face the map centre`);
+            }
+        }
     });
 
     it("creates sand interior and structure walls", () => {

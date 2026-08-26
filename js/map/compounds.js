@@ -9,7 +9,8 @@
 
 import { TILES as T, VEHICLES } from "../config.js";
 import { distance, randomInt } from "../utils.js";
-import { layDirtRoad } from "./generation.js";
+import { layDirtRoad } from "./generation/index.js";
+import { hash } from "./noise.js";
 import { canStand } from "./queries.js";
 
 /** Half-extent (tiles) of each compound tier; full size and spawn radius derive from it. */
@@ -54,23 +55,20 @@ export function buildBaseCompounds(grid, baseType) {
     const clearR = Math.round(maxR * 0.25); // clear terrain radius around base
     const pathHW = Math.max(3, Math.round(maxR * 0.06)); // path half-width
 
-    // Place bases by searching inward from the coast on opposite sides.
-    const baseAngle = Math.PI * 1.25; // SW -> NE diagonal
-    const p1 = findCoastalSpot(grid, cx, cy, maxR, baseAngle, compoundR);
-    const p2 = findCoastalSpot(grid, cx, cy, maxR, baseAngle + Math.PI, compoundR);
+    // Place bases with a repelling force: seeded candidate spots, the
+    // second chosen to maximise separation from the first — random but
+    // always far apart.
+    const p1 = pickBaseSpot(grid, cx, cy, maxR, compoundR, 1000);
+    const p2 = pickBaseSpot(grid, cx, cy, maxR, compoundR, 2000, [p1]);
 
     // Clear large areas (remove hills, rocks, buildings)
     clearAroundBase(grid, Math.floor(p1.x), Math.floor(p1.y), clearR);
     clearAroundBase(grid, Math.floor(p2.x), Math.floor(p2.y), clearR);
 
-    // Determine entrance directions (face each other).  The base-to-base
-    // axis is near-diagonal, so snapping each side independently lands on
-    // a knife-edge (E vs N) — which side the towers face then differs per
-    // base, and the side whose towers face the attack loses them early.
-    // Snapping one side and mirroring keeps the compounds symmetric.
-    const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const dir1 = angleToCardinal(angle1);
-    const dir2 = { N: "S", S: "N", E: "W", W: "E" }[dir1];
+    // Each entrance is the side closest to the map centre — the compound
+    // opens inward.
+    const dir1 = angleToCardinal(Math.atan2(cy - p1.y, cx - p1.x));
+    const dir2 = angleToCardinal(Math.atan2(cy - p2.y, cx - p2.x));
 
     // Stamp compounds onto the map (size scales with map)
     const stamp = COMPOUND_STAMPERS[tier];
@@ -110,6 +108,27 @@ function findCoastalSpot(grid, cx, cy, maxR, angle, clearRadius) {
         Math.round(cy + Math.sin(angle) * maxR * 0.4),
         clearRadius,
     );
+}
+
+/**
+ * Pick a base spot with a repelling force: sample seeded coastal
+ * candidates and take the one with maximum separation from `avoid`
+ * (the other base).  Random per map seed, always far apart.
+ */
+function pickBaseSpot(grid, cx, cy, maxR, clearRadius, salt, avoid = []) {
+    let best = null,
+        bestScore = -Infinity;
+    for (let i = 0; i < 24; i++) {
+        const angle = hash(grid, salt + i * 17, 300) * Math.PI * 2;
+        const spot = findCoastalSpot(grid, cx, cy, maxR, angle, clearRadius);
+        const sep = avoid.length ? Math.min(...avoid.map((a) => Math.hypot(spot.x - a.x, spot.y - a.y))) : 1;
+        const score = sep + hash(grid, salt + i * 31, 400) * 0.01;
+        if (score > bestScore) {
+            bestScore = score;
+            best = spot;
+        }
+    }
+    return best;
 }
 
 /** True if every tile in a square of radius `r` is on land (not water). */
@@ -457,11 +476,9 @@ function clearPath(grid, p1, p2, hw) {
             const gx = Math.floor(cx + px * w);
             const gy = Math.floor(cy + py * w);
             const tile = grid.getTile(gx, gy);
-            if (tile === T.BASE_STRUCTURE) {
-            } else if (grid.isSolid(tile)) {
+            // Water stays water — crossings are bridges, never causeways.
+            if (tile !== T.BASE_STRUCTURE && grid.isSolid(tile)) {
                 grid.setTile(gx, gy, T.GRASS);
-            } else if (grid.isWaterTile(tile)) {
-                grid.setTile(gx, gy, T.SAND);
             }
         }
     }

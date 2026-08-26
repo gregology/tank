@@ -57,6 +57,12 @@ export class TileGrid {
         return TILE_PROPS[tileType]?.solid ?? false;
     }
 
+    /** Is this tile type opaque (blocks line of sight)?  Independent of
+     *  movement — tree lines are opaque but passable. */
+    isOpaque(tileType) {
+        return TILE_PROPS[tileType]?.opaque ?? false;
+    }
+
     /** Can a vehicle stand at continuous world position (wx, wy)? */
     isPassable(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
@@ -89,6 +95,12 @@ export class TileGrid {
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
         return TILE_PROPS[t]?.solid ?? false;
+    }
+
+    /** Does this tile block line of sight? */
+    blocksSight(wx, wy) {
+        const t = this.getTile(Math.floor(wx), Math.floor(wy));
+        return TILE_PROPS[t]?.opaque ?? false;
     }
 
     /** Pixel-height of a tile type (for isometric elevation). */

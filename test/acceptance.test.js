@@ -41,11 +41,10 @@ describe("bot-vs-bot battle acceptance", () => {
     }
 
     it("no hard faction sweep across the set", () => {
-        // Guards against a TOTAL systematic sweep (the persona-era bug was
-        // 30/30 for one faction).  Known residual: the NE compound position
-        // wins ~80% on current terrain (position-bound — persists across
-        // streams/compositions; root cause still open).  This test asserts
-        // the floor: neither faction may be swept out of a 16-seed set.
+        // Guards against systematic faction bias (the persona-era bug was
+        // a 30/30 sweep; the fixed-diagonal base placement later gave the
+        // NE position ~80% — random repulsion-sampled placement fixed it).
+        // Floor: neither faction may be swept out of a 16-seed set.
         const results = Array.from({ length: 16 }, (_, i) => runMatch({ ...MATCHES, seed: i + 1 }));
         const wins = { 1: 0, 2: 0 };
         for (const r of results) if (r.winner !== null) wins[r.winner]++;

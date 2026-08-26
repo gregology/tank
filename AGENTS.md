@@ -120,7 +120,9 @@ pathfinder.js  A* + wall-cost overlay
 map.js       thin facade over js/map/: tile data + queries, spatial geometry,
              procedural generation, base-compound layout
 map/         grid (data + tile-property queries), queries (geometry),
-             generation (terrain), compounds (base layout + spawns)
+             noise (seeded randomness), generation/ (ordered stage
+             registry: terrain, settlements, …), compounds (base layout
+             + spawns)
 renderer.js  thin shell: canvas, viewport layout, per-frame draw order
 render/      render package: viewport (two-pass depth sort), tiles,
              buildings, vehicles/ + structures/ (sprite registries), effects,

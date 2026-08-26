@@ -19,7 +19,7 @@ import {
     buildBaseCompounds,
     getSpawnPoint as spawnPoint,
 } from "./map/compounds.js";
-import { generate } from "./map/generation.js";
+import { generate } from "./map/generation/index.js";
 import { TileGrid } from "./map/grid.js";
 import {
     canStand as canStandQuery,
