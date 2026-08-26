@@ -47,6 +47,20 @@ export class SignalFields {
         grid[i] = Math.min(MAX_FIELD, grid[i] + amount);
     }
 
+    /**
+     * Max-merge deposit: the cell keeps the larger of current vs new.
+     * The route field uses this so its value encodes *progress along the
+     * route* (a gradient followers ascend) — summing would distort it.
+     */
+    depositMax(kind, wx, wy, amount) {
+        const gx = Math.floor(wx),
+            gy = Math.floor(wy);
+        if (gx < 0 || gx >= this.width || gy < 0 || gy >= this.height) return;
+        const i = gy * this.width + gx;
+        const grid = this.grids[kind];
+        if (amount > grid[i]) grid[i] = Math.min(MAX_FIELD, amount);
+    }
+
     /** Signal value at a world position. */
     sample(kind, wx, wy) {
         const gx = Math.floor(wx),
@@ -73,36 +87,6 @@ export class SignalFields {
                 const gx = cx + dx,
                     gy = cy + dy;
                 if (gx < 0 || gx >= this.width || gy < 0 || gy >= this.height) continue;
-                const v = grid[gy * this.width + gx];
-                if (v > bestValue) {
-                    bestValue = v;
-                    best = { x: gx + 0.5, y: gy + 0.5, value: v };
-                }
-            }
-        }
-        return best;
-    }
-
-    /**
-     * Like strongestInRadius, but only considers cells closer to (tx, ty)
-     * than the caller is — following a trail must make progress toward
-     * its destination, not just wander toward any nearby puddle.
-     */
-    strongestToward(kind, wx, wy, tx, ty, radius, min = 0) {
-        const grid = this.grids[kind];
-        const cx = Math.floor(wx),
-            cy = Math.floor(wy);
-        const distHere = Math.hypot(tx - wx, ty - wy);
-        const r = Math.ceil(radius);
-        let best = null,
-            bestValue = min;
-        for (let dy = -r; dy <= r; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-                if (dx * dx + dy * dy > radius * radius) continue;
-                const gx = cx + dx,
-                    gy = cy + dy;
-                if (gx < 0 || gx >= this.width || gy < 0 || gy >= this.height) continue;
-                if (Math.hypot(tx - (gx + 0.5), ty - (gy + 0.5)) >= distHere) continue;
                 const v = grid[gy * this.width + gx];
                 if (v > bestValue) {
                     bestValue = v;

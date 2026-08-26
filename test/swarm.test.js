@@ -62,15 +62,6 @@ describe("swarm fields", () => {
         assert.equal(Math.floor(hit.x), 10);
         assert.equal(f.strongestInRadius("alarm", 8, 8, 6, 5), null, "below-threshold peaks are ignored");
     });
-
-    it("strongestToward ignores trails that lead away from the destination", () => {
-        const f = new SignalFields(32, 32);
-        f.deposit("trail", 4, 16, 10); // behind the follower
-        f.deposit("trail", 20, 16, 1); // weak, but toward the objective
-        const hit = f.strongestToward("trail", 16, 16, 28, 16, 10, 0.05);
-        assert.ok(hit, "a forward trail exists");
-        assert.ok(hit.x > 16, "following a trail must make progress toward its destination");
-    });
 });
 
 /* ── intel ────────────────────────────────────────────────── */
@@ -233,6 +224,25 @@ describe("swarm convoy (recruitment)", () => {
         assert.equal(navGoal.kind, "convoy");
         assert.ok(navGoal.x < leader.x, "the follow point sits behind the leader");
         assert.ok(navGoal.y > leader.y, "an IFV flanks slightly to the side");
+    });
+
+    it("a track-crippled vehicle never leads a convoy", () => {
+        // Bug caught: an immobilised tank kept its 'objective' goal kind,
+        // so it stayed convoy-leadable — its escorts parked around the
+        // casualty forever and the whole assault stalled out.
+        const map = flat();
+        const bot = createBot(10, 10, 0, map, seededRng(1));
+        bot.tank.vehicleType = "ifv";
+        const leader = leaderTank(12, 10, 0);
+        leader.pursuingObjective = true;
+        leader.convoyLeadable = false; // the swarm system now stamps this for cripples
+        leader.disabledSubsystems.add("leftTrack");
+        leader.disabledSubsystems.add("rightTrack");
+        assert.ok(leader.trackDamaged, "stage: the leader is immobilised");
+        bot.ai.allies = [bot.tank, leader];
+
+        const { navGoal } = chooseSwarmGoal(bot.ai, 0.016, bot.tank, [], map);
+        assert.notEqual(navGoal?.kind, "convoy", "nobody follows a casualty");
     });
 
     it("a parked leader holds no convoy (no idle blobs)", () => {

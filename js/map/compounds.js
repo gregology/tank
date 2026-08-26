@@ -63,11 +63,14 @@ export function buildBaseCompounds(grid, baseType) {
     clearAroundBase(grid, Math.floor(p1.x), Math.floor(p1.y), clearR);
     clearAroundBase(grid, Math.floor(p2.x), Math.floor(p2.y), clearR);
 
-    // Determine entrance directions (face each other)
+    // Determine entrance directions (face each other).  The base-to-base
+    // axis is near-diagonal, so snapping each side independently lands on
+    // a knife-edge (E vs N) — which side the towers face then differs per
+    // base, and the side whose towers face the attack loses them early.
+    // Snapping one side and mirroring keeps the compounds symmetric.
     const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const angle2 = Math.atan2(p1.y - p2.y, p1.x - p2.x);
     const dir1 = angleToCardinal(angle1);
-    const dir2 = angleToCardinal(angle2);
+    const dir2 = { N: "S", S: "N", E: "W", W: "E" }[dir1];
 
     // Stamp compounds onto the map (size scales with map)
     const stamp = COMPOUND_STAMPERS[tier];

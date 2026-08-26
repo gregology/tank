@@ -110,11 +110,15 @@ function objectiveCandidate(me, intel, tuning, cfg) {
     return { ...goal, kind: "objective", strength: tuning.W_OBJECTIVE + obj.priority };
 }
 
-/** Follow a lit route toward the objective (progress-guaranteed). */
+/** Follow a lit route: gradient ascent — the strongest route cell
+ *  nearby is toward the objective end of the path, detours included.
+ *  Within sight of the objective the route hands off to the direct
+ *  push, or units would orbit the route's hot end forever. */
 function trailCandidate(me, fields, intel, tuning, cfg) {
     const obj = intel.objectives()[0];
     if (!obj) return null;
-    const hit = fields.strongestToward("route", me.x, me.y, obj.x, obj.y, tuning.TRAIL_FOLLOW_RADIUS, tuning.TRAIL_MIN);
+    if (Math.hypot(obj.x - me.x, obj.y - me.y) < tuning.TRAIL_FOLLOW_RADIUS) return null;
+    const hit = fields.strongestInRadius("route", me.x, me.y, tuning.TRAIL_FOLLOW_RADIUS, tuning.TRAIL_MIN);
     if (!hit) return null;
     return { x: hit.x, y: hit.y, kind: "trail", strength: hit.value * cfg.trail * tuning.W_TRAIL };
 }

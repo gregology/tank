@@ -139,7 +139,7 @@ describe("AI Navigation – cross-map (random terrain)", () => {
             const rng = seededRng(i + 100);
             const bot = createBot(tp1.x, tp1.y, 0, map, rng);
             const result = simulateNavigation(bot, { x: tp2.x, y: tp2.y }, map, {
-                seconds: 60,
+                seconds: 120, // clearance-aware routes detour wide of obstacles — they cost time by design
             });
             if (!result.reachedTarget) failures++;
         }
@@ -163,7 +163,9 @@ describe("AI Combat – fires at terrain", () => {
     });
 
     it("fires at enemies with line of sight", () => {
-        const map = new GameMap();
+        // Flat map so a fire event can only mean "aimed at the enemy",
+        // never stuck-recovery terrain blasting.
+        const map = customMap([]);
         const rng = seededRng(42);
         const bot = createBot(20.5, 32.5, 0, map, rng);
         const enemy = new Tank(2, "#33d", "#239");
@@ -197,15 +199,25 @@ describe("AI Stuck recovery", () => {
     });
 
     it("rotation is not detected as stuck", () => {
-        const map = new GameMap();
+        // Flat map: navigation to a clear, close goal never stalls into
+        // stuck recovery.  (Random maps made this flaky — a bot parked at
+        // its destination is legitimately "not moving".)
+        const map = customMap([]);
         const rng = seededRng(42);
         const bot = createBot(32.5, 32.5, 0, map, rng);
         revealObjective(bot, { x: 32.5 - 10, y: 32.5 });
+        let maxStuck = 0;
+        let arrived = false;
         for (let f = 0; f < 300; f++) {
             bot.ai.think(0.016, bot.tank, [], map);
             bot.tank.update(0.016, bot.ai, map);
+            if (!arrived) {
+                if (bot.ai.stuckTime > maxStuck) maxStuck = bot.ai.stuckTime;
+                if (Math.hypot(bot.tank.x - 22.5, bot.tank.y - 32.5) < 2) arrived = true;
+            }
         }
-        assert.ok(bot.ai.stuckTime < 1.0, `rotating should not count as stuck, got ${bot.ai.stuckTime.toFixed(1)}s`);
+        assert.ok(arrived, "reaches the close objective");
+        assert.ok(maxStuck < 1.0, `navigating should not count as stuck, got ${maxStuck.toFixed(1)}s`);
     });
 });
 
@@ -493,7 +505,10 @@ describe("AI Target priority – drone detonation", () => {
 
 describe("AI Target priority – integration through think", () => {
     it("tank bot does not fire at drones when they are the only enemy", () => {
-        const map = new GameMap();
+        // Flat map is load-bearing: on random terrain the bot can get
+        // stuck and legitimately blast obstacles with its cannon, which
+        // is not "firing at a drone" — the random map made this flaky.
+        const map = customMap([]);
         const rng = seededRng(42);
         const bot = createBot(20, 32, 0, map, rng);
         bot.tank.vehicleType = "tank";

@@ -122,25 +122,36 @@ function tickDeposits(game, swarm, factionId) {
         if (tank.team !== factionId || !tank.alive) continue;
         // A bot leads a convoy while moving or while actively pursuing a
         // goal; a parked, purposeless bot leads nothing (no idle-blob
-        // gravity wells) — but a besieging leader keeps its convoy massed.
+        // gravity wells) — but a besieging leader keeps its convoy
+        // massed.  A track-crippled vehicle can never lead: it fights on
+        // as a casualty, but the column must not wait for it.
         tank.convoyLeadable =
-            (tank.recentSpeed ?? 0) >= 0.5 || ["objective", "trail", "rally"].includes(ai.currentGoal?.kind);
+            !tank.trackDamaged &&
+            ((tank.recentSpeed ?? 0) >= 0.5 || ["objective", "trail", "rally"].includes(ai.currentGoal?.kind));
         tank.pursuingObjective = ai.currentGoal?.kind === "objective";
     }
 }
 
 /**
- * A discoverer's walked path lights up as a followable route.  Shorter
- * journeys lay proportionally stronger routes, and every follower that
- * reaches the objective reinforces its own path — so the colony's
- * routes optimize over time.
+ * A discoverer's walked path lights up as a followable route.  The
+ * deposit is a GRADIENT: values rise toward the objective end of the
+ * path, so following the strongest nearby cell traces the route around
+ * obstacles — including legs that temporarily lead away from the
+ * objective (detours), which a straight-line progress filter can never
+ * represent.  Shorter journeys lay stronger routes (their gradient runs
+ * hotter), and every follower that reaches the objective reinforces its
+ * own path — so the colony's routes optimize over time.
  */
 function lightRoute(swarm, t, tuning) {
-    const strength = tuning.TRAIL_LIT / (1 + t.routeHistory.length / tuning.TRAIL_LIT_NORM);
-    for (const idx of t.routeHistory) {
+    const len = t.routeHistory.length;
+    if (len === 0) return;
+    const base = tuning.TRAIL_LIT / (1 + len / tuning.TRAIL_LIT_NORM);
+    for (let i = 0; i < len; i++) {
+        const idx = t.routeHistory[i];
         const x = (idx % swarm.fields.width) + 0.5;
         const y = Math.floor(idx / swarm.fields.width) + 0.5;
-        swarm.fields.deposit("route", x, y, strength);
+        // 0.5–1.0 of base, rising toward the objective end of the path
+        swarm.fields.depositMax("route", x, y, base * (0.5 + 0.5 * ((i + 1) / len)));
     }
 }
 

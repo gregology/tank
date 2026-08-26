@@ -16,6 +16,7 @@ import { TILE_VISUALS, VEHICLES } from "../config.js";
 /** Heat colour per signal kind (rgb; alpha comes from field strength). */
 export const FIELD_COLORS = {
     trail: "0,210,255",
+    route: "255,190,60",
     alarm: "255,60,60",
     food: "80,220,80",
     visited: "120,80,220",
