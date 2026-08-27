@@ -12,7 +12,7 @@
  */
 export const BASE_STRUCTURES = {
     baseWall: {
-        hp: 3,
+        hp: 8, // a breach takes ~3 shell hits — rushes cost time, the colony can rally
         size: 0.5,
         visHeight: 10,
         category: "wall",

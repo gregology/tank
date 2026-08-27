@@ -18,12 +18,19 @@ import { VEHICLES } from "../config.js";
  */
 export function canStand(grid, wx, wy, size = VEHICLES.tank.size) {
     const s = size * 0.85;
-    return (
-        grid.isPassable(wx - s, wy - s) &&
-        grid.isPassable(wx + s, wy - s) &&
-        grid.isPassable(wx - s, wy + s) &&
-        grid.isPassable(wx + s, wy + s)
-    );
+    // Every tile the box overlaps — with size > 1 the box spans three
+    // tiles per axis and four-corner sampling would miss the middle one
+    // (a vehicle wedged on a wall corner the pathfinder had "cleared").
+    const x0 = Math.floor(wx - s),
+        x1 = Math.floor(wx + s),
+        y0 = Math.floor(wy - s),
+        y1 = Math.floor(wy + s);
+    for (let gy = y0; gy <= y1; gy++) {
+        for (let gx = x0; gx <= x1; gx++) {
+            if (!grid.isPassable(gx + 0.5, gy + 0.5)) return false;
+        }
+    }
+    return true;
 }
 
 /** Sample points along a line, excluding the origin/destination tiles on request. */

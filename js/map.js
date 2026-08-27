@@ -10,15 +10,11 @@
  *   compounds.js   base-compound layout + spawn helpers
  *
  * Callers keep using `new GameMap(...)` and the method API unchanged
- * (`map.canStand`, `map.hasLineOfSight`, `map.buildBaseCompounds`, …);
+ * (`map.canStand`, `map.hasLineOfSight`, `map.baseLayouts`, …);
  * only the internals moved behind this facade.
  */
 
-import {
-    getBaseSpawnPoint as baseSpawnPoint,
-    buildBaseCompounds,
-    getSpawnPoint as spawnPoint,
-} from "./map/compounds.js";
+import { getBaseSpawnPoint as baseSpawnPoint, getSpawnPoint as spawnPoint } from "./map/compounds.js";
 import { generate } from "./map/generation/index.js";
 import { TileGrid } from "./map/grid.js";
 import {
@@ -39,19 +35,17 @@ export class GameMap extends TileGrid {
      * @param {string} [style]           biome key in `MAP_STYLES` (default "island")
      * @param {number} [seed]            terrain seed (defaults to a random draw)
      */
-    constructor(width, height, villageDensity, style, seed) {
+    constructor(width, height, villageDensity, style, seed, bases = null) {
         super(width, height, villageDensity, style, seed);
+        /** The generation plan: `bases` is a base type ("compound" /
+         *  "hq_only") when the mode builds compounds, else null. */
+        this.plan = { bases };
         this.generate();
     }
 
     /** Regenerate the island terrain (water/sand/grass + villages). */
     generate() {
         generate(this);
-    }
-
-    /** Build two base compounds; returns the layout pair (see compounds.js). */
-    buildBaseCompounds(baseType) {
-        return buildBaseCompounds(this, baseType);
     }
 
     /** Random passable spawn point inside a compound's interior. */

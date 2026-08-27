@@ -39,11 +39,10 @@ export const seededRng = mulberry32;
 
 /* ── Map builders ─────────────────────────────────────────── */
 
-/** Create a fresh random map with base compounds. */
-export function randomMap() {
-    const map = new GameMap();
-    const layouts = map.buildBaseCompounds();
-    return { map, layouts };
+/** Create a fresh random map with base compounds (battle plan). */
+export function randomMap(width, height, seed) {
+    const map = new GameMap(width, height, undefined, undefined, seed, "compound");
+    return { map, layouts: map.baseLayouts };
 }
 
 /**

@@ -15,14 +15,16 @@
 import { ACTIONS, CONFIG } from "../config.js";
 
 /**
- * Recompute the A* route when the goal moved, the route is empty, or
- * the refresh timer elapsed.
+ * Recompute the A* route when the goal moved or the refresh timer
+ * elapsed.  An empty route (arrived, or unreachable) does NOT force a
+ * recompute — the timer covers retries; an every-frame A* per parked
+ * bot is a GC-thrash OOM.
  */
 export function updatePath(ai, dt, me, goal) {
     ai._pathTimer -= dt;
     const stale = ai._pathGoal && Math.hypot(goal.x - ai._pathGoal.x, goal.y - ai._pathGoal.y) > 3;
 
-    if (ai._pathTimer <= 0 || ai._path.length === 0 || stale) {
+    if (!ai._pathGoal || ai._pathTimer <= 0 || stale) {
         ai._pathTimer = 1.2 + ai.rng() * 0.6;
         ai._pathGoal = { x: goal.x, y: goal.y };
         ai._path = ai._pf.findPath(me.x, me.y, goal.x, goal.y) ?? [];
@@ -117,10 +119,12 @@ export function patrol(ai) {
 function nudge(ai, me, map) {
     const k = ACTIONS,
         a = me.angle;
-    // The drive integrates axis-separated; if either axis fits, the
-    // vehicle slides along the obstacle without help.
-    const fitsX = map.canStand(me.x + Math.cos(a) * 0.5, me.y, me.size);
-    const fitsY = map.canStand(me.x, me.y + Math.sin(a) * 0.5, me.size);
+    // The drive integrates axis-separated; a fitting axis only helps if
+    // the vehicle is actually MOVING along it — a negligible slide
+    // component means the vehicle grinds into the obstacle instead of
+    // escaping (the wall-corner wedge).
+    const fitsX = map.canStand(me.x + Math.cos(a) * 0.5, me.y, me.size) && Math.abs(Math.cos(a)) > 0.3;
+    const fitsY = map.canStand(me.x, me.y + Math.sin(a) * 0.5, me.size) && Math.abs(Math.sin(a)) > 0.3;
     if (fitsX || fitsY) return;
     // Fully blocked (pressed into a wall/corner): turn toward room.
     const fits = (ang) => map.canStand(me.x + Math.cos(ang) * 0.5, me.y + Math.sin(ang) * 0.5, me.size);

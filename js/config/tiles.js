@@ -19,12 +19,18 @@ export const TILES = {
     DARK_GRASS: 4,
     HILL: 5,
     ROCK: 6,
-    DIRT: 7, // dirt road (between villages)
-    PAVED: 8, // paved road (inside villages)
-    BLDG_SMALL: 9, // 1-tile cottage / shed
-    BLDG_MEDIUM: 10, // taller house
-    BLDG_LARGE: 11, // 2-storey building
-    BASE_STRUCTURE: 12, // base compound tile (impassable, blocks projectiles)
+    DIRT: 7, // dirt track (rural spurs)
+    BLDG_SMALL: 8, // 1-tile cottage / shed
+    BLDG_MEDIUM: 9, // taller house
+    BLDG_LARGE: 10, // 2-storey building
+    BASE_STRUCTURE: 11, // base compound tile (impassable, blocks projectiles)
+    BRIDGE_STONE: 12, // stone bridge over water (passable, 2-lane)
+    FIELD: 13, // ploughed farmer field (passable, purely cosmetic)
+    TREE: 14, // hedgerow scrub — opaque sight cover, passable, bullets pass through
+    BARN: 15, // farm building (acts like other buildings)
+    SILO: 16, // farm silo (acts like other buildings)
+    BRIDGE_WOOD: 17, // wooden bridge over water (same, different look)
+    TARMAC: 18, // tarmac road (arteries + town streets), dashed centre line
 };
 
 /**
@@ -121,17 +127,7 @@ export const TILE_PROPS = Object.freeze([
         height: 0,
         hp: 0,
     },
-    /* 8 PAVED         */ {
-        passable: true,
-        solid: false,
-        opaque: false,
-        road: true,
-        water: false,
-        building: false,
-        height: 0,
-        hp: 0,
-    },
-    /* 9 BLDG_SMALL    */ {
+    /* 8 BLDG_SMALL    */ {
         passable: false,
         solid: true,
         opaque: true,
@@ -141,7 +137,7 @@ export const TILE_PROPS = Object.freeze([
         height: 14,
         hp: CONFIG.BLDG_SMALL_HP,
     },
-    /* 10 BLDG_MEDIUM  */ {
+    /* 9 BLDG_MEDIUM  */ {
         passable: false,
         solid: true,
         opaque: true,
@@ -151,7 +147,7 @@ export const TILE_PROPS = Object.freeze([
         height: 22,
         hp: CONFIG.BLDG_MEDIUM_HP,
     },
-    /* 11 BLDG_LARGE   */ {
+    /* 10 BLDG_LARGE   */ {
         passable: false,
         solid: true,
         opaque: true,
@@ -161,11 +157,81 @@ export const TILE_PROPS = Object.freeze([
         height: 32,
         hp: CONFIG.BLDG_LARGE_HP,
     },
-    /* 12 BASE_STRUCTURE */ {
+    /* 11 BASE_STRUCTURE */ {
         passable: false,
         solid: true,
         opaque: true,
         road: false,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
+    /* 12 BRIDGE_STONE   */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: true,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
+    /* 13 FIELD          */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: false,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
+    /* 14 TREE           */ {
+        passable: true, // vehicles drive through tree lines
+        solid: false, // …and bullets pass — sight-only cover
+        opaque: true, // but you can't SEE through them
+        road: false,
+        water: false,
+        building: false,
+        height: 8, // low scrub — joins the depth pass, slightly occludes units behind
+        hp: 0,
+    },
+    /* 15 BARN           */ {
+        passable: false,
+        solid: true,
+        opaque: true,
+        road: false,
+        water: false,
+        building: true,
+        height: 17,
+        hp: CONFIG.BLDG_MEDIUM_HP,
+    },
+    /* 16 SILO           */ {
+        passable: false,
+        solid: true,
+        opaque: true,
+        road: false,
+        water: false,
+        building: true,
+        height: 26,
+        hp: CONFIG.BLDG_SMALL_HP,
+    },
+    /* 17 BRIDGE_WOOD    */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: true,
+        water: false,
+        building: false,
+        height: 0,
+        hp: 0,
+    },
+    /* 18 TARMAC         */ {
+        passable: true,
+        solid: false,
+        opaque: false,
+        road: true,
         water: false,
         building: false,
         height: 0,
@@ -202,10 +268,24 @@ export const TILE_VISUALS = Object.freeze([
         right: "rockRight",
         mapColor: "#808080",
     },
-    /* 7 DIRT          */ { draw: "flat", color: "dirt", variation: { r: 3, g: 3, b: 2 }, mapColor: "#9b8260" },
-    /* 8 PAVED         */ { draw: "flat", color: "paved", variation: { r: 2, g: 2, b: 2 }, mapColor: "#8c8a82" },
-    /* 9 BLDG_SMALL    */ { draw: "building", mapColor: "#b4a08c" },
-    /* 10 BLDG_MEDIUM  */ { draw: "building", mapColor: "#a0a0b0" },
-    /* 11 BLDG_LARGE   */ { draw: "building", mapColor: "#707080" },
-    /* 12 BASE_STRUCTURE */ { draw: "none", mapColor: "#000" },
+    /* 7 DIRT          */ {
+        draw: "road",
+        mapColor: "#9b8260",
+        road: { surface: "dirt", kerb: null, dash: null, verge: null, width: 9 },
+    },
+    /* 8 BLDG_SMALL    */ { draw: "building", mapColor: "#b4a08c" },
+    /* 9 BLDG_MEDIUM  */ { draw: "building", mapColor: "#a0a0b0" },
+    /* 10 BLDG_LARGE   */ { draw: "building", mapColor: "#707080" },
+    /* 11 BASE_STRUCTURE */ { draw: "none", mapColor: "#000" },
+    /* 12 BRIDGE_STONE   */ { draw: "bridge", mapColor: "#9a948a" },
+    /* 13 FIELD          */ { draw: "field", color: "field", mapColor: "#a89058" },
+    /* 14 TREE           */ { draw: "bush", mapColor: "#2a5424" },
+    /* 15 BARN           */ { draw: "building", mapColor: "#a05038" },
+    /* 16 SILO           */ { draw: "building", mapColor: "#909098" },
+    /* 17 BRIDGE_WOOD    */ { draw: "bridge", mapColor: "#8a6c48" },
+    /* 18 TARMAC         */ {
+        draw: "road",
+        mapColor: "#55555c",
+        road: { surface: "tarmac", kerb: "tarmacKerb", dash: "roadDash", verge: "verge", width: 13 },
+    },
 ]);
