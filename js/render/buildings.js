@@ -17,6 +17,8 @@ const BUILDING_STYLES = {
     [T.BLDG_SMALL]: { palette: PALETTE.bldgSmall, roof: "gable", roofRise: 7 },
     [T.BLDG_MEDIUM]: { palette: PALETTE.bldgMedium, roof: "gable", roofRise: 9 },
     [T.BLDG_LARGE]: { palette: PALETTE.bldgLarge, roof: "flat" },
+    [T.BARN]: { palette: PALETTE.bldgBarn, roof: "gable", roofRise: 9 },
+    [T.SILO]: { palette: PALETTE.bldgSilo, roof: "flat" },
 };
 
 /**

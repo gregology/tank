@@ -86,7 +86,8 @@ export class Game {
         const mapW = this.settings.mapSize?.w;
         const mapH = this.settings.mapSize?.h;
         const density = this.settings.buildingDensity;
-        this.map = new GameMap(mapW, mapH, density, undefined, this.seed);
+        const bases = this.typeDef.bases ? (this.settings.baseType ?? "compound") : null;
+        this.map = new GameMap(mapW, mapH, density, undefined, this.seed, bases);
         /** Particle system (world-space effects) — part of the world-model surface. */
         this.particles = new ParticleSystem();
         /** @type {Bullet[]} */
@@ -203,7 +204,8 @@ export class Game {
         this.seed = Math.floor(this.rng() * 2147483647);
         this.rng = mulberry32(this.seed);
         const s = this.settings;
-        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity, undefined, this.seed);
+        const bases = this.typeDef.bases ? (s.baseType ?? "compound") : null;
+        this.map = new GameMap(s.mapSize?.w, s.mapSize?.h, s.buildingDensity, undefined, this.seed, bases);
         this._init();
     }
 
@@ -420,7 +422,8 @@ export class Game {
 
         // A living victim keeps emitting the alarm pheromone (see the
         // swarm system); the signal dies with it — no rallying to a corpse.
-        if (entity.isVehicle) entity.lastHitAt = this.gameTime;
+        // Structures too: the nest under attack emits while the hits land.
+        entity.lastHitAt = this.gameTime;
 
         if (result === "destroyed") {
             this.destroyEntity(entity, source);
@@ -492,14 +495,14 @@ export class Game {
         return this._bots.find((b) => b.tank === tank) ?? null;
     }
 
-    /** Handle a structure being destroyed: clear tiles, particles, events. */
+    /** Handle a structure being destroyed: clear its tiles and re-emit
+     *  terrain_changed.  DESTROY and the explosion already come from
+     *  destroyEntity — this hook is the structure-specific aftermath. */
     onStructureDestroyed(structure) {
         for (const pos of structure.tilePositions) {
             this.map.setTile(pos.gx, pos.gy, T.SAND);
             this._structureMap.delete(`${pos.gx},${pos.gy}`);
         }
-        this.particles.emit("explosion", structure.x, structure.y);
-        this.emit(GAME_EVENTS.DESTROY, { entity: structure });
         this.emit(GAME_EVENTS.TERRAIN_CHANGED, { structure });
     }
 

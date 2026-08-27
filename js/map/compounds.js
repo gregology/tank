@@ -9,7 +9,6 @@
 
 import { TILES as T, VEHICLES } from "../config.js";
 import { distance, randomInt } from "../utils.js";
-import { layDirtRoad } from "./generation/index.js";
 import { hash } from "./noise.js";
 import { canStand } from "./queries.js";
 
@@ -78,10 +77,6 @@ export function buildBaseCompounds(grid, baseType) {
     // Carve a wide path between the two bases
     clearPath(grid, p1, p2, pathHW);
 
-    // Connect each compound entrance to the road network
-    connectCompoundToRoad(grid, layout1);
-    connectCompoundToRoad(grid, layout2);
-
     return [layout1, layout2];
 }
 
@@ -129,6 +124,16 @@ function pickBaseSpot(grid, cx, cy, maxR, clearRadius, salt, avoid = []) {
         }
     }
     return best;
+}
+
+/** The point just outside the compound's entrance gate (for roads). */
+export function entrancePoint(layout) {
+    const { ox, oy, dir, size } = layout;
+    const half = Math.floor(size / 2);
+    if (dir === "N") return { x: ox + half, y: oy - 1 };
+    if (dir === "S") return { x: ox + half, y: oy + size };
+    if (dir === "E") return { x: ox + size, y: oy + half };
+    return { x: ox - 1, y: oy + half };
 }
 
 /** True if every tile in a square of radius `r` is on land (not water). */
@@ -374,45 +379,6 @@ function finishLayout(grid, ox, oy, half, size, walls, towers, hqTilesArr, dir) 
         size,
         half,
     };
-}
-
-/** Connect a compound entrance to the nearest road tile. */
-function connectCompoundToRoad(grid, layout) {
-    const { ox, oy, dir, size } = layout;
-    const half = Math.floor(size / 2);
-    let ex, ey;
-    if (dir === "N") {
-        ex = ox + half;
-        ey = oy - 1;
-    } else if (dir === "S") {
-        ex = ox + half;
-        ey = oy + size;
-    } else if (dir === "E") {
-        ex = ox + size;
-        ey = oy + half;
-    } else {
-        ex = ox - 1;
-        ey = oy + half;
-    }
-
-    // Find nearest road tile
-    let bestX = -1,
-        bestY = -1,
-        bestD = Infinity;
-    for (let y = 0; y < grid.height; y++) {
-        for (let x = 0; x < grid.width; x++) {
-            if (!grid.isRoad(x, y)) continue;
-            const d = Math.hypot(x - ex, y - ey);
-            if (d < bestD) {
-                bestD = d;
-                bestX = x;
-                bestY = y;
-            }
-        }
-    }
-    if (bestX >= 0) {
-        layDirtRoad(grid, { x: ex, y: ey }, { x: bestX, y: bestY });
-    }
 }
 
 /**

@@ -11,7 +11,7 @@
 
 /* ── tiny binary min-heap keyed by fScore ─────────────────── */
 
-class MinHeap {
+export class MinHeap {
     constructor() {
         this.d = [];
     }
@@ -88,6 +88,27 @@ export class Pathfinder {
         this.map = map;
         this._w = map.width;
         this._h = map.height;
+        // Scratch buffers allocated lazily on the first search and
+        // refilled per call — a per-call allocation of ~150 KB per
+        // search is pure GC churn (heap-thrash OOM in heavy sims), but
+        // eager allocation makes every short-lived Pathfinder pay for
+        // buffers it may never use (generation stamps many).
+        this._scratch = null;
+        this._open = new MinHeap();
+    }
+
+    get _bufs() {
+        if (!this._scratch) {
+            const n = this._w * this._h;
+            this._scratch = {
+                g: new Float32Array(n),
+                f: new Float32Array(n),
+                from: new Int32Array(n),
+                closed: new Uint8Array(n),
+                inOpen: new Uint8Array(n),
+            };
+        }
+        return this._scratch;
     }
 
     /**
@@ -101,6 +122,12 @@ export class Pathfinder {
             map = this.map;
         const s = { gx: Math.floor(sx), gy: Math.floor(sy) };
         const g = { gx: Math.floor(gx), gy: Math.floor(gy) };
+
+        // Off-grid endpoints would form out-of-bounds keys — typed-array
+        // OOB reads return undefined, which _rebuild's `!== -1` guard
+        // can't stop: the walk would loop forever (the 4 GB OOM).
+        if (s.gx < 0 || s.gx >= w || s.gy < 0 || s.gy >= h) return null;
+        if (g.gx < 0 || g.gx >= w || g.gy < 0 || g.gy >= h) return null;
 
         // If goal tile itself doesn't fit a vehicle, find the nearest
         // tile that does (so we can pathfind *next to* a tower/wall).
@@ -122,16 +149,18 @@ export class Pathfinder {
             gKey = key(g.gx, g.gy);
         if (sKey === gKey) return [];
 
-        const gArr = new Float32Array(w * h).fill(Infinity);
-        const fArr = new Float32Array(w * h).fill(Infinity);
-        const from = new Int32Array(w * h).fill(-1);
-        const closed = new Uint8Array(w * h);
-        const inOpen = new Uint8Array(w * h);
+        const bufs = this._bufs;
+        const gArr = bufs.g.fill(Infinity);
+        const fArr = bufs.f.fill(Infinity);
+        const from = bufs.from.fill(-1);
+        const closed = bufs.closed.fill(0);
+        const inOpen = bufs.inOpen.fill(0);
 
         gArr[sKey] = 0;
         fArr[sKey] = this._h8(s.gx, s.gy, g.gx, g.gy);
 
-        const open = new MinHeap();
+        const open = this._open;
+        open.d.length = 0;
         open.push({ k: sKey, f: fArr[sKey] });
         inOpen[sKey] = 1;
 

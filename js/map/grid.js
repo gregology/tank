@@ -34,6 +34,10 @@ export class TileGrid {
         this.maxHp = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions: injected seeds make matches reproducible. */
         this.seed = seed ?? Math.floor(Math.random() * 2147483647);
+        /** Base-compound layouts stamped into this map (battle plans; empty otherwise). */
+        this.baseLayouts = [];
+        /** Bridge spans over water channels: [{ centre, ends }]. */
+        this.bridges = [];
     }
 
     getTile(gx, gy) {

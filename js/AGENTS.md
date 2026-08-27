@@ -81,7 +81,8 @@ correct and the dependency leaf rule is enforced at the package boundary.
 The single source of truth for everything that varies:
 
 - `TILES` — tile type enum; `TILE_PROPS` — per-tile gameplay semantics
-  (passable/solid/road/water/building/height/hp), indexed by that enum;
+  (passable/solid/opaque/road/water/building/height/hp), indexed by that
+  enum;
   `TILE_VISUALS` — per-tile *visual* semantics (draw kind, palette key,
   variation, minimap colour), also indexed by that enum.
 - `CONFIG` — flat constants (map size, speed, armour arcs, …).
@@ -260,11 +261,14 @@ object — never more `if (typeDef.bases)` sprinkles.**
 including the `opaque` axis, which line-of-sight reads independently of
 `solid`), `noise.js` (seeded hash/noise/fbm shared by every stage),
 `queries.js` (the spatial geometry below), `generation/` (the ordered
-stage pipeline — terrain, settlements, …; a new feature is one stage
-module + one registry entry), `compounds.js` (base layout + spawn helpers;
-repulsion-sampled placement with centre-facing entrances; the per-tier
-compound shapes are dispatched by the `COMPOUND_STAMPERS` registry, with
-the square tiers sharing one `stampSquareCompound`). One implementation
+stage pipeline — terrain, bases, water, bridges, farms, roads,
+settlements; roads anchor on bases/bridges/farms and run L-routed (never
+staircased), and villages grow around the network at junctions and along
+long runs; a new feature is one stage module + one registry entry),
+`compounds.js` (base layout + spawn helpers; repulsion-sampled placement
+with centre-facing entrances; the per-tier compound shapes are dispatched
+by the `COMPOUND_STAMPERS` registry, with the square tiers sharing one
+`stampSquareCompound`). One implementation
 per geometric question; nothing re-implements them:
 
 - `map.canStand(wx, wy, size)` — the four-corner passability box (movement,

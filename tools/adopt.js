@@ -22,6 +22,7 @@ import { aggregateMetrics, DEFAULT_GOALS, metricsOf, runTasks, scoreMetrics, SIZ
 import { summarize } from "./sim.js";
 
 const CONFIG_PATH = new URL("../js/config/swarm.js", import.meta.url);
+const HISTORY_PATH = new URL("./adoption-history.jsonl", import.meta.url);
 
 export async function adopt({ report, candidateName, validateSeeds, sizes = SIZE_MATRIX, goals = DEFAULT_GOALS, margin = 0 }) {
     const candidate = candidateName
@@ -60,6 +61,18 @@ export async function adopt({ report, candidateName, validateSeeds, sizes = SIZE
     return { candidate, baseline, validated, baseScore, candScore, accepted };
 }
 
+/** Append the adoption to the history log — the previous values are
+ *  always recoverable (the lesson of a rejected post-adoption revert). */
+function recordAdoption(params) {
+    const previous = Object.fromEntries(SWARM_TUNABLES.map((t) => [t.key, t.value]));
+    const line = JSON.stringify({ at: new Date().toISOString(), adopted: params, previous });
+    let existing = "";
+    try {
+        existing = readFileSync(HISTORY_PATH, "utf8");
+    } catch { /* first adoption */ }
+    writeFileSync(HISTORY_PATH, `${existing}${line}\n`);
+}
+
 /** Regenerate js/config/swarm.js with the adopted values and verify. */
 export function writeAdoptedConfig(params) {
     for (const key of Object.keys(params)) {
@@ -69,6 +82,7 @@ export function writeAdoptedConfig(params) {
             throw new Error(`${key}=${params[key]} outside [${entry.min}, ${entry.max}]`);
         }
     }
+    recordAdoption(params);
     writeFileSync(CONFIG_PATH, renderSwarmConfig(SWARM_TUNABLES, params));
     execFileSync("npx", ["biome", "format", "--write", "js/config/swarm.js"], { stdio: "pipe" });
 }

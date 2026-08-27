@@ -132,10 +132,11 @@ const battle = {
     hasBases: true,
     hud: "battle",
 
-    /** Build both factions' compounds and register their structures. */
+    /** Build both factions' compounds and register their structures.
+     *  The compounds themselves are placed by the map pipeline (the
+     *  `bases` plan); this hook only converts layouts to entities. */
     init(game) {
-        const baseType = game.settings.baseType ?? "compound";
-        const [layout1, layout2] = game.map.buildBaseCompounds(baseType);
+        const [layout1, layout2] = game.map.baseLayouts;
         game.setBases([
             buildBase(layout1, 1, game.factions[0].color, game.factions[0].darkColor),
             buildBase(layout2, 2, game.factions[1].color, game.factions[1].darkColor),

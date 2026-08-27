@@ -83,8 +83,8 @@ describe("Pathfinder", () => {
 
     it("paths between base compounds on random maps", () => {
         for (let i = 0; i < 5; i++) {
-            const map = new GameMap();
-            const [l1, l2] = map.buildBaseCompounds();
+            const map = new GameMap(undefined, undefined, undefined, undefined, undefined, "compound");
+            const [l1, l2] = map.baseLayouts;
             const pf = new Pathfinder(map);
             const path = pf.findPath(l1.hqCenter.x, l1.hqCenter.y, l2.hqCenter.x, l2.hqCenter.y);
             assert.ok(path, `map seed ${map.seed}: should find cross-map path`);

@@ -69,7 +69,10 @@ Keyboard and gamepads can be used at the same time (e.g. one player on the keybo
 
 ## How to Play
 
-- Each game generates a **random island** with villages, buildings, and road networks.
+- Each game generates a **random island** with villages, farms, and a road network that joins them.
+- **Rivers** cut through the island (battle's main river always separates the two bases; bigger maps add tributaries and lakes). Ground vehicles cross only at **bridges** — stone or wooden, two lanes wide (vehicles pass each other) — natural choke points. Drones fly straight over.
+- **Farmland districts** patchwork the island: aligned fields (with hay bales) separated by **hedgerows** — ragged bush lines (a forest's uncleared edge) that give **sight cover**: you can't see through them, but vehicles drive through and bullets pass. Barns and silos act like normal buildings (solid, destructible, squad cover).
+- Roads run **Transport Tycoon-style**: straight along the grid axes with 90° turns (never staircased), drawn connection-aware (strips, kerbs, dashed centre lines; junctions and crossings fall out of the mask). Arteries are tarmac, side lanes dirt tracks; bridges carry the road across. Villages grow around the network — at junctions and along long stretches (ribbon development). Roads never ford rivers.
 - Tanks drive forward/backward in the direction they're facing, and rotate with left/right.
 - The **turret and barrel** rotate independently with Q/E or ,/. — aim while moving.
 - **Directional armour** determines hit effects based on where a shot lands:

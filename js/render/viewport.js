@@ -1,7 +1,7 @@
 /**
  * Per-viewport rendering: the two-pass depth-sort contract.
  *
- * Pass 1 draws all flat ground tiles (water, sand, grass, dirt, paved).
+ * Pass 1 draws all flat ground tiles (water, sand, grass, roads).
  * Pass 2 depth-sorts elevated tiles and entities together: elevated tiles
  * use depth gx+gy+1 so their side walls correctly occlude entities behind
  * them, and entities use their world position.  Flat tiles must never

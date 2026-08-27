@@ -17,7 +17,7 @@ import { randomMap } from "./helpers.js";
 /** A stub Game with the public fields and methods a mode hook reads/writes. */
 function stubGame(overrides = {}) {
     const game = {
-        map: new GameMap(),
+        map: new GameMap(undefined, undefined, undefined, undefined, undefined, "compound"),
         settings: {},
         factions: [],
         bases: [],

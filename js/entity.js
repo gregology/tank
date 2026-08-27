@@ -101,6 +101,7 @@ export class BaseStructure extends GameEntity {
         this.hp = cfg.hp;
         this.maxHp = cfg.hp;
         this.tilePositions = [];
+        this.lastHitAt = null; // game time of the last hit taken (the nest's alarm signal)
         if (cfg.isShooter) {
             this.fireCooldown = 0;
             this.turretAngle = 0;

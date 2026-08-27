@@ -121,8 +121,8 @@ map.js       thin facade over js/map/: tile data + queries, spatial geometry,
              procedural generation, base-compound layout
 map/         grid (data + tile-property queries), queries (geometry),
              noise (seeded randomness), generation/ (ordered stage
-             registry: terrain, settlements, …), compounds (base layout
-             + spawns)
+             pipeline: terrain → bases → water → bridges → settlements
+             → farms → roads), compounds (base layout + spawns)
 renderer.js  thin shell: canvas, viewport layout, per-frame draw order
 render/      render package: viewport (two-pass depth sort), tiles,
              buildings, vehicles/ + structures/ (sprite registries), effects,

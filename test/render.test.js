@@ -26,7 +26,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CONFIG, TILES as T, VEHICLES } from "../js/config.js";
+import { CONFIG, TILES as T, TILE_VISUALS, VEHICLES } from "../js/config.js";
 import { drawMenuVehicle } from "../js/menu/background.js";
 import { drawBuilding } from "../js/render/buildings.js";
 import { drawArcingBullet, drawBullet, drawParticle } from "../js/render/effects.js";
@@ -103,21 +103,10 @@ function baseFixture(team, overrides = {}) {
     };
 }
 
-/** Every tile type that drawTile must handle. */
-const ALL_TILES = [
-    T.DEEP_WATER,
-    T.SHALLOW_WATER,
-    T.SAND,
-    T.DIRT,
-    T.PAVED,
-    T.GRASS,
-    T.DARK_GRASS,
-    T.HILL,
-    T.ROCK,
-    T.BLDG_SMALL,
-    T.BLDG_MEDIUM,
-    T.BLDG_LARGE,
-];
+/** Every tile type that drawTile must handle — derived from the enum so
+ *  a new tile type is automatically covered.  `draw: "none"` tiles
+ *  (base structures) render as entities, not tiles. */
+const ALL_TILES = Object.values(T).filter((t) => TILE_VISUALS[t]?.draw !== "none");
 
 /* ── 1. The depth-sort contract ───────────────────────────── */
 
@@ -237,6 +226,63 @@ describe("collectDepthItems — two-pass depth-sort contract", () => {
 });
 
 /* ── 2. Smoke tests — every draw entry point ──────────────── */
+
+describe("TT-style road rendering", () => {
+    // Bug caught: roads that read wrong on the iso grid — gray blobs in
+    // villages, no visible junctions.  Roads draw by connection mask:
+    // strips per connected edge, kerbs and dashes per style.
+    const roadMap = (tiles) => {
+        const map = customMap([]);
+        for (const [x, y, t] of tiles) map.setTile(x, y, t);
+        return map;
+    };
+
+    it("a tarmac T-junction draws a paved pad; a straight run draws strips with kerbs and dashes", () => {
+        const junction = roadMap([
+            [10, 9, T.TARMAC],
+            [10, 10, T.TARMAC],
+            [10, 11, T.TARMAC],
+            [11, 10, T.TARMAC],
+        ]);
+        const { ctx, calls } = fakeCtx();
+        drawTile(ctx, { gx: 10, gy: 10, tile: T.TARMAC, sx: 320, sy: 240 }, 0, junction);
+        assert.ok(calls.filter((c) => c === "fill").length >= 1, "junction draws its pad");
+        assert.equal(calls.filter((c) => c === "stroke").length, 0, "junctions are a pad, not overlapping strip kerbs");
+
+        const straight = roadMap([
+            [10, 10, T.TARMAC],
+            [11, 10, T.TARMAC],
+        ]);
+        const { ctx: c2, calls: calls2 } = fakeCtx();
+        drawTile(c2, { gx: 10, gy: 10, tile: T.TARMAC, sx: 320, sy: 240 }, 0, straight);
+        assert.ok(calls2.filter((c) => c === "stroke").length >= 2, "a strip draws kerb + dash strokes");
+    });
+
+    it("a dirt track draws strips with no kerbs or dashes (style-driven)", () => {
+        const map = roadMap([
+            [10, 10, T.DIRT],
+            [11, 10, T.DIRT],
+        ]);
+        const { ctx, calls } = fakeCtx();
+        drawTile(ctx, { gx: 10, gy: 10, tile: T.DIRT, sx: 320, sy: 240 }, 0, map);
+        assert.equal(calls.filter((c) => c === "stroke").length, 0, "dirt tracks have no kerb/dash strokes");
+        assert.ok(calls.filter((c) => c === "fill").length >= 2, "but the strip still draws");
+    });
+
+    it("a bridge deck carries the road strip across the span", () => {
+        const map = roadMap([
+            [9, 10, T.TARMAC],
+            [10, 10, T.BRIDGE_STONE],
+            [11, 10, T.BRIDGE_STONE],
+            [12, 10, T.TARMAC],
+        ]);
+        const { ctx, calls } = fakeCtx();
+        drawTile(ctx, { gx: 10, gy: 10, tile: T.BRIDGE_STONE, sx: 320, sy: 240 }, 0, map);
+        // deck fill + strips toward the bridge/road neighbours (a 2-link
+        // span tile draws a strip per link, each with a dash)
+        assert.ok(calls.filter((c) => c === "stroke").length >= 2, "the road runs across the bridge deck");
+    });
+});
 
 describe("tiles smoke", () => {
     it("draws every tile type without throwing", () => {

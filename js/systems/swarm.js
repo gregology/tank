@@ -98,6 +98,17 @@ function tickDeposits(game, swarm, factionId) {
         if (t.underAttack) fields.deposit("alarm", t.x, t.y, tuning.ALARM_DEPOSIT);
     }
 
+    // The nest screams while it's being dismantled: recently-hit
+    // structures emit alarm for as long as the hits keep landing, so a
+    // siege rallies the colony (one-shot wall kills otherwise spike and
+    // fade before anyone reacts).
+    for (const s of game.baseStructures) {
+        if (!s.alive || s.team !== factionId) continue;
+        if (s.lastHitAt != null && game.gameTime - s.lastHitAt < tuning.ALARM_MEMORY) {
+            fields.deposit("alarm", s.x, s.y, tuning.ALARM_STRUCTURE_DEPOSIT);
+        }
+    }
+
     for (const obj of swarm.intel.objectives()) {
         fields.deposit("food", obj.x, obj.y, tuning.FOOD_DEPOSIT);
         // Personal sighting: a unit "finds" an objective the same way the

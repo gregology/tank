@@ -1502,15 +1502,18 @@ describe("Game – separation, crush, structures, towers", () => {
         assert.ok(after >= VEHICLES.tank.size + 0.5 - 0.05, `tank at min distance (${after})`);
     });
 
-    it("structureAt finds structures by tile and onStructureDestroyed clears them", () => {
+    it("structureAt finds structures by tile; destroying one clears it and emits DESTROY once", () => {
+        // Bug caught: structure destruction emitted DESTROY twice
+        // (destroyEntity + the onStructureDestroyed hook) — double
+        // explosion sound, double event for every wall that fell.
         const game = new Game(battleConfig([human(1), human(2)]));
         const structure = game.baseStructures[0];
         const pos = structure.tilePositions[0];
         assert.equal(game.structureAt(pos.gx, pos.gy), structure);
         const destroys = [];
         game.on("destroy", (d) => destroys.push(d));
-        game.onStructureDestroyed(structure);
-        assert.equal(destroys.length, 1);
+        game.destroyEntity(structure, { x: pos.gx, y: pos.gy });
+        assert.equal(destroys.length, 1, "one DESTROY per structure, not two");
         assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
         assert.equal(game.structureAt(pos.gx, pos.gy), null);
     });
@@ -1729,7 +1732,11 @@ describe("Game – deeper coverage", () => {
         game.bullets.push(b);
         for (let i = 0; i < 40 && b.alive; i++) game._tickBullets(0.016);
         assert.ok(!b.alive);
-        assert.ok(!wall.alive, "wall destroyed by a single tank shell");
+        // Walls are 8hp, tank shells deal 3: one shell damages, three destroy.
+        assert.ok(wall.alive, "a wall survives one shell (8hp vs 3dmg)");
+        game.applyDamage(wall, { x: pos.gx, y: pos.gy }, 3);
+        game.applyDamage(wall, { x: pos.gx, y: pos.gy }, 3);
+        assert.ok(!wall.alive, "the wall falls to sustained fire");
         assert.equal(game.map.getTile(pos.gx, pos.gy), T.SAND);
     });
 

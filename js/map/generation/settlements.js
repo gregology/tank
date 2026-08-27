@@ -1,183 +1,234 @@
 /**
- * Settlements stage — village clusters, the dirt-road chain between
- * them, and roadside buildings.
+ * Settlements stage — villages grow around the road network.
  *
- * Villages are placed with a minimum separation, connected by a
- * nearest-neighbour chain of 1-tile-wide cardinal-step dirt roads (no
- * isolated villages), with buildings scattered along roads.
+ * The roads come FIRST (they connect bases, bridges, and farms);
+ * villages then pop up where settlement naturally happens: at road
+ * junctions, and at intervals along long straight stretches (ribbon
+ * development).  A village is a cluster of buildings flanking the
+ * existing road — the through-road is its main street — never its own
+ * separate street grid.
  */
 
+import { TILES as T } from "../../config.js";
 import { distance } from "../../utils.js";
 import { hash } from "../noise.js";
-import { layDirtRoad, spanningTree } from "./roads.js";
 import { styleFor } from "./terrain.js";
 
 /**
- * Place village clusters (min 14 tiles apart), connect with dirt
- * roads, then scatter roadside buildings along the connecting roads.
+ * Place a building beside a road — the shared rule for every
+ * settlement building: never on roads/water/existing structures,
+ * never within 2 tiles of a bridge span (buildings there block the
+ * approach and read as clutter).  A new bridge shape only has to keep
+ * its `span` record honest and stays protected.
  */
-export function placeVillages(grid) {
-    const cx = grid.width / 2,
-        cy = grid.height / 2,
-        maxR = Math.min(grid.width, grid.height) / 2 - 1;
-    // Scale village density with map size and density multiplier
-    const mapScale = Math.min(grid.width, grid.height) / 64;
+export function placeBuildingBesideRoad(grid, gx, gy, tile) {
+    if (grid.isRoad(gx, gy)) return false;
+    if (!isNaturalGround(grid, gx, gy)) return false;
+    if (nearBase(grid, gx, gy)) return false;
+    if (nearBridge(grid, gx, gy)) return false;
+    grid.setTile(gx, gy, tile);
+    return true;
+}
+
+/** Within 2 tiles of any bridge span (the deck + approach). */
+function nearBridge(grid, x, y) {
+    for (const b of grid.bridges ?? []) {
+        if (x >= b.span.x0 - 2 && x <= b.span.x1 + 2 && y >= b.span.y0 - 2 && y <= b.span.y1 + 2) return true;
+    }
+    return false;
+}
+
+/** Find village sites on the road network and stamp them. */
+export function placeVillages(grid, ctx) {
     const density = grid.villageDensity;
-    const MIN_VILLAGE_DIST = Math.max(6, Math.round((14 * mapScale) / density));
-    const villageCentres = [];
-    const attempts = Math.round((20 + Math.floor(hash(grid, 77, 88) * 10)) * mapScale * mapScale * density);
+    const mapScale = Math.min(grid.width, grid.height) / 64;
+    const minSep = Math.max(8, Math.round(12 * mapScale));
+    const sites = [];
 
-    // Step 1: pick village positions, enforcing minimum separation
-    for (let i = 0; i < attempts; i++) {
-        const angle = hash(grid, i * 11, 100) * Math.PI * 2;
-        const dist = 5 + hash(grid, i * 17, 200) * (maxR - 12);
-        const vx = Math.round(cx + Math.cos(angle) * dist);
-        const vy = Math.round(cy + Math.sin(angle) * dist);
+    for (const site of junctionSites(grid)) maybeAdd(sites, site, minSep, grid, density);
+    for (const site of ribbonSites(grid)) maybeAdd(sites, site, minSep, grid, density);
 
-        if (!grid.isPassable(vx + 0.5, vy + 0.5)) continue;
-        if (distance(vx, vy, cx, cy) > maxR - 6) continue;
-
-        // Enforce minimum distance from every existing village
-        let tooClose = false;
-        for (const vc of villageCentres) {
-            if (distance(vx, vy, vc.x, vc.y) < MIN_VILLAGE_DIST) {
-                tooClose = true;
-                break;
-            }
-        }
-        if (tooClose) continue;
-
-        stampVillage(grid, vx, vy, i);
-        villageCentres.push({ x: vx, y: vy });
-    }
-
-    // Step 2: connect villages with dirt roads (nearest-neighbour tree)
-    if (villageCentres.length < 2) return;
-    const roadSegments = spanningTree(villageCentres).map(([i, j]) => ({
-        a: villageCentres[i],
-        b: villageCentres[j],
-    }));
-    for (const { a, b } of roadSegments) layDirtRoad(grid, a, b);
-
-    // Step 3: scatter a few buildings along the dirt roads between villages
-    for (let seg = 0; seg < roadSegments.length; seg++) {
-        scatterRoadsideBuildings(grid, roadSegments[seg].a, roadSegments[seg].b, seg);
-    }
+    ctx.villages = sites;
+    for (const site of sites) stampRibbonVillage(grid, site);
 }
 
-/**
- * Scatter a few isolated buildings alongside a dirt road between
- * two villages.  Gives the roads a lived-in feel without creating
- * a full village.
- */
-function scatterRoadsideBuildings(grid, a, b, seed) {
-    const dx = b.x - a.x,
-        dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 8) return; // too short, skip
-
-    const ux = dx / len,
-        uy = dy / len; // road direction
-    const px = -uy,
-        py = ux; // perpendicular
-    const s = styleFor(grid);
-
-    const count = 2 + Math.floor(hash(grid, seed * 67, 1100) * 4);
-    for (let i = 0; i < count; i++) {
-        // Position along the road (skip first/last 20% to stay away from villages)
-        const t = 0.2 + hash(grid, seed * 13 + i * 47, 1200) * 0.6;
-        const cx = a.x + dx * t;
-        const cy = a.y + dy * t;
-
-        // Offset 1-2 tiles to one side
-        const side = hash(grid, seed * 19 + i * 31, 1300) > 0.5 ? 1 : -1;
-        const off = 1 + Math.floor(hash(grid, seed * 23 + i * 37, 1400) * 1.5);
-        const bx = Math.round(cx + px * side * off);
-        const by = Math.round(cy + py * side * off);
-
-        if (grid.isRoad(bx, by)) continue;
-        if (!grid.isPassable(bx + 0.5, by + 0.5)) continue;
-
-        // Roadside buildings are mostly small
-        const sizeRoll = hash(grid, seed * 29 + i * 41, 1500);
-        const bldgType = sizeRoll < 0.6 ? s.buildings.small : s.buildings.medium;
-        grid.setTile(bx, by, bldgType);
+/** Junctions: road tiles with 3+ road connections (clustered). */
+function junctionSites(grid) {
+    const junctionTiles = [];
+    for (let y = 1; y < grid.height - 1; y++) {
+        for (let x = 1; x < grid.width - 1; x++) {
+            if (!isRoadTile(grid, x, y)) continue;
+            const links = roadLinks(grid, x, y);
+            if (links >= 3) junctionTiles.push({ x, y });
+        }
     }
+    // cluster adjacent junction tiles into one site (the centroid)
+    const sites = [];
+    const used = new Set();
+    for (const t of junctionTiles) {
+        const key = `${t.x},${t.y}`;
+        if (used.has(key)) continue;
+        const cluster = junctionTiles.filter((o) => Math.abs(o.x - t.x) <= 2 && Math.abs(o.y - t.y) <= 2);
+        for (const o of cluster) used.add(`${o.x},${o.y}`);
+        // the site must be ON the road — the junction tile nearest the
+        // cluster's centroid (a bare centroid can land off-road, and a
+        // ribbon village that isn't on the road stamps nothing)
+        const cx = cluster.reduce((s, o) => s + o.x, 0) / cluster.length,
+            cy = cluster.reduce((s, o) => s + o.y, 0) / cluster.length;
+        const onRoad = cluster.reduce((best, o) =>
+            Math.hypot(o.x - cx, o.y - cy) < Math.hypot(best.x - cx, best.y - cy) ? o : best,
+        );
+        sites.push({ x: onRoad.x, y: onRoad.y });
+    }
+    return sites;
 }
 
-/**
- * Stamp a single village at (vx, vy).
- *
- * 1. Lay 1-2 paved roads through the village
- * 2. Place buildings along both sides -- NEVER on a road tile
- */
-function stampVillage(grid, vx, vy, seed) {
-    const roadCount = hash(grid, seed * 31, 400) > 0.4 ? 2 : 1;
-    const style = styleFor(grid);
-
-    const roads = [];
-    for (let r = 0; r < roadCount; r++) {
-        const dirRoll = hash(grid, seed * 11 + r * 71, 410);
-        let dx, dy;
-        if (r === 0) {
-            dx = dirRoll < 0.5 ? 1 : 0;
-            dy = dx === 0 ? 1 : 0;
-        } else {
-            dx = roads[0].dy !== 0 ? 1 : 0;
-            dy = dx === 0 ? 1 : 0;
-        }
-        const halfLen = 3 + Math.floor(hash(grid, seed * 17 + r * 43, 420) * 4);
-        roads.push({ dx, dy, halfLen });
-    }
-
-    // Step 1: lay paved roads
-    for (const road of roads) {
-        for (let i = -road.halfLen; i <= road.halfLen; i++) {
-            const rx = vx + road.dx * i;
-            const ry = vy + road.dy * i;
-            if (grid.isPassable(rx + 0.5, ry + 0.5)) {
-                grid.setTile(rx, ry, style.paved);
-            }
-        }
-    }
-
-    // Step 2: place buildings along roads (never ON a road)
-    for (const road of roads) {
-        const px = road.dy !== 0 ? 1 : 0; // perpendicular
-        const py = road.dx !== 0 ? 1 : 0;
-
-        for (let i = -road.halfLen; i <= road.halfLen; i++) {
-            const rx = vx + road.dx * i;
-            const ry = vy + road.dy * i;
-
-            for (const side of [-1, 1]) {
-                const skip = hash(grid, seed * 7 + i * 13 + side * 37, 500 + side);
-                if (skip < 0.45) continue;
-
-                const offset = 1 + Math.floor(hash(grid, seed * 3 + i * 19 + side * 41, 550) * 1.5);
-                const bx = rx + px * side * offset;
-                const by = ry + py * side * offset;
-
-                // NEVER place on a road tile
-                if (grid.isRoad(bx, by)) continue;
-                if (!grid.isPassable(bx + 0.5, by + 0.5)) continue;
-
-                const sizeRoll = hash(grid, seed * 23 + i * 37 + side * 53, 600);
-                let bldgType;
-                if (sizeRoll < 0.45) bldgType = style.buildings.small;
-                else if (sizeRoll < 0.8) bldgType = style.buildings.medium;
-                else bldgType = style.buildings.large;
-
-                grid.setTile(bx, by, bldgType);
-
-                // Large buildings extend along the road
-                if (bldgType === style.buildings.large) {
-                    const ex = bx + road.dx,
-                        ey = by + road.dy;
-                    if (!grid.isRoad(ex, ey) && grid.isPassable(ex + 0.5, ey + 0.5))
-                        grid.setTile(ex, ey, style.buildings.large);
+/** Ribbon sites: intervals along long straight road runs. */
+function ribbonSites(grid) {
+    const sites = [];
+    for (const horiz of [true, false]) {
+        const outer = horiz ? grid.height : grid.width;
+        const inner = horiz ? grid.width : grid.height;
+        for (let o = 1; o < outer - 1; o++) {
+            let run = 0;
+            for (let i = 1; i < inner - 1; i++) {
+                const x = horiz ? i : o,
+                    y = horiz ? o : i;
+                if (isRoadTile(grid, x, y) && roadLinks(grid, x, y) === 2) {
+                    run++;
+                    if (run > 0 && run % 12 === 0) sites.push({ x, y }); // a village every long stretch
+                } else {
+                    run = 0;
                 }
             }
         }
     }
+    return sites;
+}
+
+/** A site joins unless it's too close to another village, a compound, or a bridge. */
+function maybeAdd(sites, site, minSep, grid, density) {
+    if (hash(grid, site.x * 7 + site.y * 13, 2300) > density) return; // density thins sites
+    if (sites.some((s) => distance(s.x, s.y, site.x, site.y) < minSep)) return;
+    if (nearBase(grid, site.x, site.y)) return;
+    if (nearBridge(grid, site.x, site.y)) return; // villages don't crowd crossings
+    sites.push(site);
+}
+
+/** Village shape (data, so village types stay a table): a main street
+ *  along the through-road's direction, cross lanes of dirt, buildings
+ *  dense on both sides of every street. */
+const VILLAGE = {
+    mainStreet: { tile: T.TARMAC, halfLenMin: 5, halfLenVar: 4 },
+    lanes: { count: 2, tile: T.DIRT, halfLenMin: 3, halfLenVar: 3 },
+    buildingSkip: 0.22, // gaps between buildings
+};
+
+/**
+ * A village is a place, not a line: a main street (tarmac, extending the
+ * through-road), cross lanes (dirt), and dense buildings flanking every
+ * street — the lanes join the road network back (villages create roads).
+ */
+function stampRibbonVillage(grid, site) {
+    const style = styleFor(grid);
+    const seed = site.x * 101 + site.y * 977;
+
+    // The through-road's direction at the site
+    const horiz = isRoadTile(grid, site.x - 1, site.y) || isRoadTile(grid, site.x + 1, site.y);
+    const dx = horiz ? 1 : 0,
+        dy = horiz ? 0 : 1;
+    const px = dy,
+        py = dx;
+
+    const stampStreet = (ox, oy, ddx, ddy, halfLen, tile, { paveOverDirt = false } = {}) => {
+        for (let i = -halfLen; i <= halfLen; i++) {
+            const rx = ox + ddx * i,
+                ry = oy + ddy * i;
+            if (isNaturalGround(grid, rx, ry)) grid.setTile(rx, ry, tile);
+            // a village's main street upgrades the through road to tarmac
+            // (dirt lanes never overwrite — they'd mix surfaces on one line)
+            else if (paveOverDirt && grid.getTile(rx, ry) === T.DIRT) grid.setTile(rx, ry, tile);
+        }
+    };
+
+    // Main street + cross lanes
+    const mainHalf = VILLAGE.mainStreet.halfLenMin + Math.floor(hash(grid, seed, 2400) * VILLAGE.mainStreet.halfLenVar);
+    stampStreet(site.x, site.y, dx, dy, mainHalf, VILLAGE.mainStreet.tile, { paveOverDirt: true });
+    const laneOffsets = [-2, 2];
+    const lanes = [];
+    for (let l = 0; l < VILLAGE.lanes.count; l++) {
+        const off = laneOffsets[l] ?? 0;
+        const lx = site.x + dx * off,
+            ly = site.y + dy * off;
+        const laneHalf =
+            VILLAGE.lanes.halfLenMin + Math.floor(hash(grid, seed + l * 71, 2500) * VILLAGE.lanes.halfLenVar);
+        stampStreet(lx, ly, px, py, laneHalf, VILLAGE.lanes.tile);
+        lanes.push({ x: lx, y: ly, dx: px, dy: py, halfLen: laneHalf });
+    }
+
+    // Buildings: dense, flanking the main street and every lane
+    const streets = [{ x: site.x, y: site.y, dx, dy, halfLen: mainHalf }, ...lanes];
+    for (const street of streets) {
+        for (let i = -street.halfLen; i <= street.halfLen; i++) {
+            const rx = street.x + street.dx * i,
+                ry = street.y + street.dy * i;
+            if (!isRoadTile(grid, rx, ry)) continue;
+            const ppx = street.dy,
+                ppy = street.dx;
+            for (const side of [-1, 1]) {
+                if (hash(grid, seed + i * 13 + side * 37 + street.halfLen * 7, 2600) < VILLAGE.buildingSkip) continue;
+                let bx = -1,
+                    by = -1;
+                for (let k = 1; k <= 2; k++) {
+                    const tx = rx + ppx * side * k,
+                        ty = ry + ppy * side * k;
+                    if (!grid.isRoad(tx, ty)) {
+                        bx = tx;
+                        by = ty;
+                        break;
+                    }
+                }
+                if (bx < 0) continue;
+                const sizeRoll = hash(grid, seed + i * 23 + side * 53 + street.halfLen, 2700);
+                let bldgType;
+                if (sizeRoll < 0.45) bldgType = style.buildings.small;
+                else if (sizeRoll < 0.8) bldgType = style.buildings.medium;
+                else bldgType = style.buildings.large;
+                placeBuildingBesideRoad(grid, bx, by, bldgType);
+            }
+        }
+    }
+}
+
+/** How many cardinal neighbours are road tiles (roads + bridges). */
+function roadLinks(grid, x, y) {
+    let n = 0;
+    for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+    ]) {
+        if (isRoadTile(grid, x + dx, y + dy)) n++;
+    }
+    return n;
+}
+
+function isRoadTile(grid, x, y) {
+    return grid.isRoad(x, y); // covers DIRT/TARMAC/BRIDGE_* via TILE_PROPS.road
+}
+
+/** True for tiles a settlement may paint over (grass/sand/dirt — never
+ *  water, bridges, or existing structures). */
+function isNaturalGround(grid, gx, gy) {
+    const t = grid.getTile(gx, gy);
+    return t !== undefined && !grid.isWaterTile(t) && !grid.isSolid(t) && t !== T.BRIDGE_STONE && t !== T.BRIDGE_WOOD;
+}
+
+/** True if (x, y) falls within a base compound's exclusion zone. */
+function nearBase(grid, x, y) {
+    for (const layout of grid.baseLayouts) {
+        if (distance(x, y, layout.center.x, layout.center.y) < layout.half + 8) return true;
+    }
+    return false;
 }
