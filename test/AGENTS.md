@@ -56,7 +56,7 @@ recording-context smoke tests; the match simulation, menus, audio, particles,
 camera, the game-mode strategies, the vehicle behaviours, and the AI package
 are measured by `game.test.js` (Game suite), `menu.test.js`, `audio.test.js`,
 `particles.test.js`, `camera.test.js`, `modes.test.js`, `vehicles.test.js`,
-`ai.test.js`, `roles.test.js`, and `ai-modules.test.js` (the latter pins the
+`ai.test.js`, `swarm.test.js`, and `ai-modules.test.js` (the latter pins the
 `js/ai/` seams directly). The aggregate gate (~97% line / ~90% branch / ~94%
 funcs at last check) is a floor, not a target — keep the untested-modules gap
 closed: any new module must be imported by a test or it silently drops out of
@@ -119,9 +119,8 @@ Reusable, deterministic utilities:
 - **AI module tests** (`ai-modules.test.js`) pin the `js/ai/` package seams
   directly (`steerToPoint`, `updatePath`/`pickWaypoint`, `updateStuck` /
   `handleStuck` / `evade` / `tryShootWall`, `steerTurretTo` / `updateWobble`,
-  `chooseGoalAndTarget` role dispatch, `findBestPosition` /
-  `computeFlankPoint`) using `createBot` + flat `customMap` maps. The
-  controller-level suites (`ai.test.js`, `roles.test.js`) still exercise the
+  the swarm goal candidates) using `createBot` + flat `customMap` maps. The
+  controller-level suites (`ai.test.js`, `swarm.test.js`) still exercise the
   same code end-to-end through `AIController.think` — the direct tests guard
   the extracted seams so a future AI rework starts from a green baseline.
   Target-priority scoring is tested through `targeting.bestTarget` directly
@@ -132,7 +131,7 @@ Reusable, deterministic utilities:
   not by poking internals. The Game suite in `game.test.js` constructs
   two-human skirmish matches (zero bots → deterministic) and battle matches
   with `teamSize: 1` (zero bots) for the base/tower paths; bots are only used
-  when testing bot-specific behaviour (AI role re-assignment, the AI think
+  when testing bot-specific behaviour (respawn AI reset, the AI think
   loop). Where a deep code path can't be reached deterministically through
   `update()` (artillery splash, crush resolution, watch towers, structure
   destruction), the suite calls the `_`-prefixed method directly after

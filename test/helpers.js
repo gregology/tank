@@ -2,18 +2,19 @@
  * Shared test utilities: map builders, bot simulation, assertions.
  */
 
-import { AI_ROLES, AIController, pickRoleForVehicle } from "../js/ai.js";
+import { Swarm } from "../js/ai/swarm/index.js";
+import { AIController } from "../js/ai.js";
 import { Bullet } from "../js/bullet.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, TILES as T, VEHICLES } from "../js/config.js";
 import { Base, BaseStructure, GameEntity } from "../js/entity.js";
 import { GameMap } from "../js/map.js";
 import { Pathfinder } from "../js/pathfinder.js";
+import { mulberry32 } from "../js/rng.js";
 import { Tank } from "../js/tank.js";
 import { distance } from "../js/utils.js";
 
 export {
     ACTIONS,
-    AI_ROLES,
     BASE_STRUCTURES,
     Base,
     BaseStructure,
@@ -22,27 +23,19 @@ export {
     GameEntity,
     GameMap,
     Pathfinder,
-    pickRoleForVehicle,
+    Swarm,
     T,
     Tank,
     VEHICLES,
 };
 
-/* ── Seeded PRNG (mulberry32) ─────────────────────────────── */
+/* ── Seeded PRNG ──────────────────────────────────────────── */
 
 /**
- * Return a deterministic PRNG seeded with `seed`.
- * Produces values in [0, 1) — a drop-in replacement for Math.random().
+ * Deterministic PRNG seeded with `seed` — the game's own stream
+ * implementation (js/rng.js), re-exported under the test-suite name.
  */
-export function seededRng(seed) {
-    let s = seed | 0;
-    return () => {
-        s = (s + 0x6d2b79f5) | 0;
-        let t = Math.imul(s ^ (s >>> 15), 1 | s);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
+export const seededRng = mulberry32;
 
 /* ── Map builders ─────────────────────────────────────────── */
 
@@ -156,9 +149,11 @@ export function fakeCtx() {
 /* ── Bot simulation ───────────────────────────────────────── */
 
 /**
- * Create a bot tank + AI at the given position.
+ * Create a bot tank + AI at the given position.  The bot gets a private
+ * colony (its own Swarm) — share `swarm` between bots to test swarm
+ * behaviours that cross vehicles.
  */
-export function createBot(x, y, angle = 0, map = null, rng = undefined) {
+export function createBot(x, y, angle = 0, map = null, rng = undefined, swarm = undefined) {
     const tank = new Tank(1, "#cc3333", "#882222");
     tank.team = 1;
     tank.alive = true;
@@ -166,12 +161,26 @@ export function createBot(x, y, angle = 0, map = null, rng = undefined) {
     tank.y = y;
     tank.angle = angle;
     tank.turretAngle = 0;
-    const ai = new AIController(map, rng);
-    return { tank, ai };
+    const ai = new AIController(map, rng, swarm ?? (map ? new Swarm(map.width, map.height) : undefined));
+    return { tank, ai, swarm: ai.swarm };
+}
+
+/**
+ * Declare a scenario stage: make the bot's colony know the target as a
+ * discovered objective.  Scenario tests that need a specific world state
+ * declare it explicitly rather than depending on emergent discovery.
+ */
+export function revealObjective(bot, target, priority = 10) {
+    const entity = { x: target.x, y: target.y, team: 99, alive: true, isObjective: true, targetType: "baseHQ" };
+    bot.swarm.intel.revealObjective(entity, priority);
+    bot.swarm.intel.revealStructure(entity);
 }
 
 /**
  * Simulate a bot navigating from its current position to a target.
+ * The target is declared as a discovered objective in the bot's intel
+ * (see revealObjective), so navigation exercises the swarm's
+ * objective-pull on top of A* pathfinding.
  *
  * @param {object}  bot        { tank, ai } from createBot()
  * @param {object}  target     { x, y } world position
@@ -179,22 +188,22 @@ export function createBot(x, y, angle = 0, map = null, rng = undefined) {
  * @param {object}  [opts]
  * @param {number}  [opts.seconds=20]      max simulation time
  * @param {Tank[]}  [opts.enemies=[]]      enemy tanks
- * @param {object}  [opts.objective=null]  objective position for AI
  * @returns {{ reachedTarget, finalDist, maxStuck, elapsed, positions }}
  */
 export function simulateNavigation(bot, target, map, opts = {}) {
-    const { seconds = 20, enemies = [], objective = null, arrivalDist = 2.0 } = opts;
+    const { seconds = 20, enemies = [], arrivalDist = 2.0 } = opts;
 
     const dt = 0.016;
     const frames = Math.ceil(seconds / dt);
     const { tank, ai } = bot;
+    revealObjective(bot, target);
     const positions = [];
     let maxStuck = 0;
     let arrived = false;
     let arrivedFrame = -1;
 
     for (let f = 0; f < frames; f++) {
-        ai.think(dt, tank, enemies, map, objective ?? target);
+        ai.think(dt, tank, enemies, map);
         tank.update(dt, ai, map);
 
         if (ai.stuckTime > maxStuck) maxStuck = ai.stuckTime;
@@ -263,11 +272,15 @@ export function simulateTeam(map, redSpawn, blueSpawn, redTarget, blueTarget, op
 
     const canStand = (x, y) => map.canStand(x, y);
 
+    // Declare the scenario stage: every bot's colony knows its target.
+    for (const b of bots) revealObjective(b, b.target);
+
     for (let f = 0; f < frames; f++) {
         const allTanks = bots.map((b) => b.tank);
         for (const b of bots) {
             const enemies = allTanks.filter((t) => t.team !== b.tank.team && t.alive);
-            b.ai.think(dt, b.tank, enemies, map, { x: b.target.x, y: b.target.y, alive: true });
+            b.ai.allies = allTanks.filter((t) => t.team === b.tank.team);
+            b.ai.think(dt, b.tank, enemies, map);
             b.tank.update(dt, b.ai, map);
         }
         // Separation

@@ -17,8 +17,9 @@ export class TileGrid {
      * @param {number} [height]          map height (defaults to CONFIG.MAP_HEIGHT)
      * @param {number} [villageDensity]  multiplier for village generation (default 1.0)
      * @param {string} [style]           biome key in `MAP_STYLES` (default "island")
+     * @param {number} [seed]            terrain seed (defaults to a random draw)
      */
-    constructor(width, height, villageDensity, style) {
+    constructor(width, height, villageDensity, style, seed) {
         this.width = width ?? CONFIG.MAP_WIDTH;
         this.height = height ?? CONFIG.MAP_HEIGHT;
         /** Village density multiplier (0.5 = sparse, 1.0 = normal, 1.5 = dense). */
@@ -31,8 +32,8 @@ export class TileGrid {
         this.hp = new Float32Array(this.width * this.height);
         /** Max HP per tile (for damage fraction calculation). */
         this.maxHp = new Uint8Array(this.width * this.height);
-        /** Seed for the noise functions (new island every game). */
-        this.seed = Math.floor(Math.random() * 2147483647);
+        /** Seed for the noise functions: injected seeds make matches reproducible. */
+        this.seed = seed ?? Math.floor(Math.random() * 2147483647);
     }
 
     getTile(gx, gy) {
@@ -54,6 +55,12 @@ export class TileGrid {
     /** Is this tile type a solid obstacle (hill, rock, building, or base structure)? */
     isSolid(tileType) {
         return TILE_PROPS[tileType]?.solid ?? false;
+    }
+
+    /** Is this tile type opaque (blocks line of sight)?  Independent of
+     *  movement — tree lines are opaque but passable. */
+    isOpaque(tileType) {
+        return TILE_PROPS[tileType]?.opaque ?? false;
     }
 
     /** Can a vehicle stand at continuous world position (wx, wy)? */
@@ -88,6 +95,12 @@ export class TileGrid {
     blocksProjectile(wx, wy) {
         const t = this.getTile(Math.floor(wx), Math.floor(wy));
         return TILE_PROPS[t]?.solid ?? false;
+    }
+
+    /** Does this tile block line of sight? */
+    blocksSight(wx, wy) {
+        const t = this.getTile(Math.floor(wx), Math.floor(wy));
+        return TILE_PROPS[t]?.opaque ?? false;
     }
 
     /** Pixel-height of a tile type (for isometric elevation). */

@@ -120,7 +120,7 @@ export const squad = {
 
     aim(_ai, _me, _target, _map) {},
 
-    aiThink(ai, _dt, me, enemies, map, _objective) {
+    aiThink(ai, _dt, me, enemies, map) {
         // Dig in when enemies are close AND building cover exists; otherwise
         // stay mobile.
         const component = me.squad;

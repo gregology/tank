@@ -11,9 +11,6 @@
  *   hasBases         whether compounds/towers/HQ exist
  *   init(game)       mode-specific construction (battle: compounds)
  *   spawn(game)      where tanks start
- *   setupBot(game, bot, faction)   bot initialisation (battle: friendly base)
- *   aiObjective(game, bot)         what a bot navigates toward
- *   enemyStructures(game, tank)    enemy structures a bot may target
  *   afterSeparation(game)          per-frame step after separation
  *   afterBullets(game, dt)         per-frame step after bullet hits
  *   respawn(game, tank)            spawn point for a respawning tank
@@ -82,26 +79,16 @@ const skirmish = {
         let lastX = -1,
             lastY = -1;
         for (const t of game.allTanks) {
-            const sp = game.map.getSpawnPoint(lastX, lastY);
-            t.respawnAt(sp.x, sp.y);
+            const sp = game.map.getSpawnPoint(lastX, lastY, 10, game.rng);
+            t.respawnAt(sp.x, sp.y, game.rng);
             t.alive = true;
             lastX = sp.x;
             lastY = sp.y;
         }
         for (const t of game.allTanks) {
             const enemy = game.nearestEnemy(t);
-            if (enemy) t.angle = Math.atan2(enemy.y - t.y, enemy.x - t.x) + (Math.random() - 0.5) * 0.3;
+            if (enemy) t.angle = Math.atan2(enemy.y - t.y, enemy.x - t.x) + (game.rng() - 0.5) * 0.3;
         }
-    },
-
-    setupBot(_game, _bot, _faction) {},
-
-    aiObjective(_game, _bot) {
-        return null;
-    },
-
-    enemyStructures(_game, _tank) {
-        return [];
     },
 
     afterSeparation(_game) {},
@@ -116,8 +103,8 @@ const skirmish = {
     /** Kill credit → score; the dead tank's respawn spot is reserved now. */
     onKill(game, killerTeam, deadTank) {
         game.creditKill(killerTeam);
-        const sp = game.map.getSpawnPoint();
-        deadTank.respawnAt(sp.x, sp.y);
+        const sp = game.map.getSpawnPoint(undefined, undefined, 10, game.rng);
+        deadTank.respawnAt(sp.x, sp.y, game.rng);
     },
 
     /** First faction to WIN_SCORE kills. */
@@ -162,28 +149,14 @@ const battle = {
             const enemyBase = game.bases.find((b) => b.team !== f.id);
             if (!base) continue;
             for (const t of f.entities) {
-                const sp = game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half);
-                t.respawnAt(sp.x, sp.y);
+                const sp = game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half, game.rng);
+                t.respawnAt(sp.x, sp.y, game.rng);
                 t.alive = true;
                 t.angle = enemyBase
-                    ? Math.atan2(enemyBase.y - base.y, enemyBase.x - base.x) + (Math.random() - 0.5) * 0.5
-                    : Math.random() * Math.PI * 2;
+                    ? Math.atan2(enemyBase.y - base.y, enemyBase.x - base.x) + (game.rng() - 0.5) * 0.5
+                    : game.rng() * Math.PI * 2;
             }
         }
-    },
-
-    setupBot(game, bot, faction) {
-        bot.ai.friendlyBase = game.bases.find((b) => b.team === faction.id) ?? null;
-    },
-
-    /** Bots navigate toward the enemy base while it is alive. */
-    aiObjective(game, bot) {
-        const enemyBase = game.bases.find((b) => b.team !== bot.tank.team);
-        return enemyBase?.alive ? enemyBase : null;
-    },
-
-    enemyStructures(game, tank) {
-        return game.bases.find((b) => b.team !== tank.team)?.allStructures ?? [];
     },
 
     /** Tanks must not end up inside the compound walls. */
@@ -199,8 +172,8 @@ const battle = {
     respawn(game, tank) {
         const base = game.bases.find((b) => b.team === tank.team);
         return base?.alive
-            ? game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half)
-            : game.map.getSpawnPoint();
+            ? game.map.getBaseSpawnPoint(base.center.x, base.center.y, base.half, game.rng)
+            : game.map.getSpawnPoint(undefined, undefined, 10, game.rng);
     },
 
     /** No scoring — timed respawns are handled by Game._handleRespawns. */

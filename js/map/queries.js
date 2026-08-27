@@ -26,20 +26,23 @@ export function canStand(grid, wx, wy, size = VEHICLES.tank.size) {
     );
 }
 
-/** Sample points along a line, excluding the origin tile when `skipOrigin`. */
-function lineSamples(x1, y1, x2, y2, skipOrigin) {
+/** Sample points along a line, excluding the origin/destination tiles on request. */
+function lineSamples(x1, y1, x2, y2, skipOrigin, skipTarget = false) {
     const dx = x2 - x1,
         dy = y2 - y1;
     const d = Math.hypot(dx, dy);
     const n = Math.ceil(d * 3);
     const originGx = Math.floor(x1),
         originGy = Math.floor(y1);
+    const targetGx = Math.floor(x2),
+        targetGy = Math.floor(y2);
     const samples = [];
     for (let i = 1; i < n; i++) {
         const t = i / n;
         const sx = x1 + dx * t,
             sy = y1 + dy * t;
         if (skipOrigin && Math.floor(sx) === originGx && Math.floor(sy) === originGy) continue;
+        if (skipTarget && Math.floor(sx) === targetGx && Math.floor(sy) === targetGy) continue;
         samples.push([sx, sy]);
     }
     return samples;
@@ -55,10 +58,13 @@ function lineSamples(x1, y1, x2, y2, skipOrigin) {
  *        structure standing on a blocking tile (e.g. a watch tower) does
  *        not block itself.  Harmless for tanks (they never stand on
  *        blocking tiles).
+ * @param {boolean} [opts.skipTarget]  skip the target's own tile so a
+ *        solid structure can be *seen*: the wall's tile shouldn't block
+ *        sight of the wall (the swarm's discovery uses this).
  */
-export function hasLineOfSight(grid, x1, y1, x2, y2, { skipOrigin = false } = {}) {
-    for (const [sx, sy] of lineSamples(x1, y1, x2, y2, skipOrigin)) {
-        if (grid.blocksProjectile(sx, sy)) return false;
+export function hasLineOfSight(grid, x1, y1, x2, y2, { skipOrigin = false, skipTarget = false } = {}) {
+    for (const [sx, sy] of lineSamples(x1, y1, x2, y2, skipOrigin, skipTarget)) {
+        if (grid.blocksSight(sx, sy)) return false;
     }
     return true;
 }
@@ -89,7 +95,7 @@ export function countCoverTiles(grid, wx, wy, radius = 3) {
     for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
             if (dx * dx + dy * dy > radius * radius) continue;
-            if (grid.blocksProjectile(gx + dx + 0.5, gy + dy + 0.5)) count++;
+            if (grid.blocksSight(gx + dx + 0.5, gy + dy + 0.5)) count++;
         }
     }
     return count;

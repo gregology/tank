@@ -79,7 +79,14 @@ export function steerToPoint(ai, me, point, { hasPath, map }) {
         if (absDiff < Math.PI * 0.8) {
             ai.keys[ACTIONS.forward] = true;
         } else {
-            ai.keys[ACTIONS.backward] = true;
+            // Reverse only when there's room behind; boxed in, rotate in
+            // place instead — crawling backward into a pocket corner
+            // fights the steering into a limit cycle that never escapes.
+            const backX = me.x - Math.cos(me.angle) * 0.5,
+                backY = me.y - Math.sin(me.angle) * 0.5;
+            if (map.canStand(backX, backY, me.size)) {
+                ai.keys[ACTIONS.backward] = true;
+            }
         }
     } else if (!hasPath && wpDist > 2.0 && absDiff < 0.6) {
         ai.keys[ACTIONS.forward] = true;
@@ -101,15 +108,26 @@ export function patrol(ai) {
 }
 
 /**
- * Light reactive obstacle avoidance: if the tile straight ahead is
- * impassable, steer around it (or stop rather than drive into it).
+ * Light reactive obstacle avoidance: if the vehicle's next drive
+ * position doesn't fit (canStand — the vehicle's actual width, not a
+ * point probe), steer toward the side with room, or stop rather than
+ * drive into it.  Point probes miss wall corners and pin the vehicle
+ * against them (corner-clipping).
  */
 function nudge(ai, me, map) {
     const k = ACTIONS,
         a = me.angle;
-    const bk = (ang, d) => !map.isPassable(me.x + Math.cos(ang) * d, me.y + Math.sin(ang) * d);
-    if (!bk(a, 0.6)) return;
-    if (!bk(a - 0.5, 0.8)) ai.keys[k.left] = true;
-    else if (!bk(a + 0.5, 0.8)) ai.keys[k.right] = true;
+    // The drive integrates axis-separated; if either axis fits, the
+    // vehicle slides along the obstacle without help.
+    const fitsX = map.canStand(me.x + Math.cos(a) * 0.5, me.y, me.size);
+    const fitsY = map.canStand(me.x, me.y + Math.sin(a) * 0.5, me.size);
+    if (fitsX || fitsY) return;
+    // Fully blocked (pressed into a wall/corner): turn toward room.
+    const fits = (ang) => map.canStand(me.x + Math.cos(ang) * 0.5, me.y + Math.sin(ang) * 0.5, me.size);
+    const leftOk = fits(a - 0.6);
+    const rightOk = fits(a + 0.6);
+    if (leftOk && !rightOk) ai.keys[k.left] = true;
+    else if (rightOk && !leftOk) ai.keys[k.right] = true;
+    else if (leftOk && rightOk) ai.keys[ai.rng() > 0.5 ? k.left : k.right] = true;
     else ai.keys[k.forward] = false;
 }

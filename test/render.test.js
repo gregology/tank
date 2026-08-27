@@ -448,17 +448,6 @@ describe("minimap + HUD smoke", () => {
         assert.ok(calls.filter((c) => c === "fillRect").length > 10, "minimap should draw tiles");
     });
 
-    it("draws role letters for allied bots on the minimap", () => {
-        const botTank = fakeTank("tank", { x: 12, y: 12 });
-        const game = gameFixture({
-            allTanks: [botTank],
-            bots: [{ tank: botTank, role: "cavalry" }],
-        });
-        const { ctx, calls } = fakeCtx();
-        assert.doesNotThrow(() => drawMinimap(ctx, game, 1, 0, 0, 400, 300));
-        assert.ok(calls.includes("fillText"), "bot role letter should be drawn");
-    });
-
     it("draws the score HUD alive and respawning", () => {
         const tank = fakeTank("tank", { x: 8, y: 8 });
         const game = gameFixture({
@@ -485,10 +474,7 @@ describe("minimap + HUD smoke", () => {
             allTanks: [enemy],
             baseStructures: [new BaseStructure("baseWall", 2, "#3366dd", "#223399")],
             bases: [baseFixture(1), baseFixture(2)],
-            bots: [
-                { tank: fakeTank("tank", { team: 1 }), role: "cavalry" },
-                { tank: fakeTank("tank", { team: 1, alive: false }), role: "sniper" },
-            ],
+            bots: [{ tank: fakeTank("tank", { team: 1 }) }, { tank: fakeTank("tank", { team: 1, alive: false }) }],
         });
 
         const focusCases = [

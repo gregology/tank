@@ -112,14 +112,17 @@ shoot.js     firing seam: spawnBullet + flashMuzzle (one construct-push-flash)
 entity.js    entity hierarchy (GameEntity → Tank / BaseStructure)
 tank.js      vehicle entity + data-driven damage model + hitbox capabilities
 ai.js        bot brain: thin controller over the js/ai/ package
-ai/          AI package: roles (ROLE_STRATEGIES), targeting (pickTarget),
-             navigation (path/A*/steering), recovery (stuck/evade/blast),
-             aiming (turret steering)
+ai/          AI package: swarm/ (pheromone fields, faction intel, goal
+             behaviours), targeting (pickTarget), navigation
+             (path/A*/steering), recovery (stuck/evade/blast), aiming
+             (turret steering)
 pathfinder.js  A* + wall-cost overlay
 map.js       thin facade over js/map/: tile data + queries, spatial geometry,
              procedural generation, base-compound layout
 map/         grid (data + tile-property queries), queries (geometry),
-             generation (terrain), compounds (base layout + spawns)
+             noise (seeded randomness), generation/ (ordered stage
+             registry: terrain, settlements, …), compounds (base layout
+             + spawns)
 renderer.js  thin shell: canvas, viewport layout, per-frame draw order
 render/      render package: viewport (two-pass depth sort), tiles,
              buildings, vehicles/ + structures/ (sprite registries), effects,
@@ -204,12 +207,17 @@ around them. (Details live in `js/AGENTS.md`.)
   composition like this over subclass explosion; the entity's interaction
   capabilities (`flies` / `softTarget` / `crushable` / `canCrush`) express
   "what kind of thing is this" without type checks.
-- **AI role strategies** (`js/ai/roles.js`) — each bot role (cavalry /
-  sniper / defender / scout) is a plain strategy object with a
-  `goal(ai, ctx)` hook, dispatched from `ai.role`; the AI helper modules
-  (`js/ai/targeting.js`, `navigation.js`, `recovery.js`, `aiming.js`) are
-  the seams for target selection, path steering, stuck recovery, and
-  turret aiming. `AIController` is the orchestration glue only.
+- **Swarm AI** (`js/ai/swarm/`) — no roles. Each faction owns a `Swarm`
+  (pheromone `SignalFields` for trail/alarm/food/visited + `FactionIntel`
+  for discovered structures/objectives), ticked by `js/systems/swarm.js`
+  (deposits, decay/diffusion, discovery via sight + LOS).  Every bot runs
+  the same candidate behaviours (`behaviours.js` — rally / objective /
+  trail / convoy / hunt / explore) and picks the strongest goal; vehicle
+  personality is the `swarm` sensitivity block in `VEHICLES`, and every
+  numeric parameter is one entry in `SWARM_TUNABLES`
+  (`js/config/swarm.js`).  Navigation (A* steering), targeting
+  (`pickTarget`), recovery, and aiming stay as the seams underneath —
+  the swarm only chooses goals.
 - **Pure planner** (`factions.js`) — "who fights whom" is computed by a pure
   function (`planFactions`) with no entities/input/rendering, so it unit-tests
   in isolation.
@@ -242,7 +250,7 @@ All five refactor rounds are done (`docs/refactor_opportunities.md`,
   (`pickTarget` + `targetPriorityOf` over one `damageables`/`enemiesOf`
   surface), sound synthesis (`SOUNDS` + `play`), particle effects (`EFFECTS` +
   `emit`), the event vocabulary (`GAME_EVENTS` + `game.off`), the render
-  registries (`DEPTH_DRAWERS` / `DRAW_KINDS` / `ROLE_PRESENTATION` /
+  registries (`DEPTH_DRAWERS` / `DRAW_KINDS` /
   `healthColor` / `drawHealthBar`), and the game-mode axis (`GAME_TYPE_ORDER`
   + `teamSet` + `mode.hud`). A new vehicle, tile, biome, structure, unit kind,
   projectile, turret, sound, effect, subsystem, or mode is a table entry /

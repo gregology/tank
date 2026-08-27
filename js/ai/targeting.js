@@ -61,15 +61,20 @@ export function pickTarget(candidates, priorities, origin, { range = Infinity, h
 }
 
 /**
- * Pick the best target from enemies + enemy structures using
+ * Pick the best target from enemies + discovered enemy structures using
  * priority-weighted scoring:  weight / distance.
  *
- * @param {object} ai       the AIController (for `_enemyStructures`)
+ * Structures are fog-of-war: only ones the faction has discovered
+ * (sight + LOS, tracked by the swarm's intel) are considered.
+ *
+ * @param {object} ai       the AIController (for the swarm intel)
  * @param {object} me       the bot's own tank
  * @param {object[]} enemies array of enemy Tank objects
+ * @param {object} [opts]
+ * @param {number} [opts.range=Infinity]  maximum distance to consider
  * @returns {{ target: object, dist: number } | null}
  */
-export function bestTarget(ai, me, enemies) {
+export function bestTarget(ai, me, enemies, { range = Infinity } = {}) {
     const priorities = VEHICLES[me.vehicleType]?.targetPriority ?? {};
-    return pickTarget([...enemies, ...ai._enemyStructures], priorities, me);
+    return pickTarget([...enemies, ...ai.swarm.intel.knownStructures()], priorities, me, { range });
 }

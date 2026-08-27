@@ -54,6 +54,20 @@ class MinHeap {
     }
 }
 
+import { VEHICLES } from "./config.js";
+
+/**
+ * Path clearance uses the largest ground-vehicle size: a route only
+ * exists where every ground vehicle actually FITS (canStand's
+ * four-corner box), so bots are never routed into gaps they can't
+ * squeeze through.  (Drones fly and don't pathfind.)
+ */
+const CLEARANCE = Math.max(
+    ...Object.values(VEHICLES)
+        .filter((v) => !v.flies)
+        .map((v) => v.size),
+);
+
 /* ── 8 directions: [dx, dy, cost] ─────────────────────────── */
 
 const DIRS = [
@@ -88,9 +102,9 @@ export class Pathfinder {
         const s = { gx: Math.floor(sx), gy: Math.floor(sy) };
         const g = { gx: Math.floor(gx), gy: Math.floor(gy) };
 
-        // If goal tile itself is impassable, find the nearest passable
-        // neighbour (so we can pathfind *next to* a tower/wall).
-        if (!map.isPassable(g.gx + 0.5, g.gy + 0.5)) {
+        // If goal tile itself doesn't fit a vehicle, find the nearest
+        // tile that does (so we can pathfind *next to* a tower/wall).
+        if (!map.canStand(g.gx + 0.5, g.gy + 0.5, CLEARANCE)) {
             const alt = this._nearestPassable(g.gx, g.gy);
             if (!alt) return null;
             g.gx = alt.x;
@@ -137,10 +151,14 @@ export class Pathfinder {
                 if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
                 const nk = key(nx, ny);
                 if (closed[nk]) continue;
-                if (!map.isPassable(nx + 0.5, ny + 0.5)) continue;
+                if (!map.canStand(nx + 0.5, ny + 0.5, CLEARANCE)) continue;
 
                 if (dx !== 0 && dy !== 0) {
-                    if (!map.isPassable(cx + dx + 0.5, cy + 0.5) || !map.isPassable(cx + 0.5, cy + dy + 0.5)) continue;
+                    if (
+                        !map.canStand(cx + dx + 0.5, cy + 0.5, CLEARANCE) ||
+                        !map.canStand(cx + 0.5, cy + dy + 0.5, CLEARANCE)
+                    )
+                        continue;
                 }
 
                 const tg = gArr[cur] + baseCost + wallCost[nk];
@@ -174,7 +192,7 @@ export class Pathfinder {
 
         for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
-                if (!map.isPassable(x + 0.5, y + 0.5)) continue;
+                if (!map.canStand(x + 0.5, y + 0.5, CLEARANCE)) continue;
                 let adj = 0;
                 for (let dy = -1; dy <= 1; dy++) {
                     for (let dx = -1; dx <= 1; dx++) {
@@ -221,7 +239,7 @@ export class Pathfinder {
                     if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
                     const nx = gx + dx,
                         ny = gy + dy;
-                    if (this.map.isPassable(nx + 0.5, ny + 0.5)) return { x: nx, y: ny };
+                    if (this.map.canStand(nx + 0.5, ny + 0.5, CLEARANCE)) return { x: nx, y: ny };
                 }
             }
         }

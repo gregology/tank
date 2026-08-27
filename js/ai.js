@@ -1,10 +1,20 @@
 /**
  * AI controller for a tank — the orchestration glue over the js/ai/
- * package (roles, targeting, navigation, recovery, aiming).
+ * package (swarm behaviours, targeting, navigation, recovery, aiming).
  *
- * Navigation is driven by **A* pathfinding**: the bot computes a route
- * on the tile grid and follows waypoints.  Combat targeting is separate
- * — the bot aims the turret at enemies/towers while navigating.
+ * There are no assigned roles.  Every bot reacts to its faction's shared
+ * pheromone fields (js/ai/swarm/): discovered objectives attract, allies
+ * under attack rally the neighbourhood, routes to objectives light up,
+ * unexplored ground pulls, and stronger attractors gather convoys.
+ * Vehicle personality is *how it responds* to those signals, expressed
+ * as the `swarm` data block in VEHICLES — not code.
+ *
+ * Navigation is driven by **A* pathfinding**: the swarm picks the goal,
+ * the pathfinder routes to it (this is what will let bots funnel
+ * through hard choke points like bridges).  Combat targeting is
+ * separate — the bot aims the turret at enemies while navigating.
+ * Structures are fog-of-war: only discovered ones (sight + LOS, tracked
+ * by the faction's intel) can be targeted.
  *
  * The turret rotates independently from the hull using turretLeft /
  * turretRight virtual keys.  turretAngle is a hull-relative offset,
@@ -17,25 +27,6 @@
  *   - trackDamaged:   AI can only pivot, so it rotates to face targets
  *                     and fires; navigation is abandoned
  *
- * IFV awareness:
- *   - Fixed gun: fires forward only — does not override navigation to aim,
- *     instead fires opportunistically when hull faces near a target.
- *   - Faster fire rate with lower fire delay.
- *
- * AI Roles (team mode only):
- *   - cavalry:  rush straight to enemy tower, engage anything in path
- *   - sniper:   find firing position at range, bombard tower from distance
- *   - defender: patrol near friendly tower, intercept incoming enemies
- *   - scout:    wide flanking route to enemy tower, engage only close threats
- *   The per-role goal/target logic lives in js/ai/roles.js.
- *
- * Target priority: each vehicle type has a targetPriority table in
- * VEHICLES (config.js) that maps target vehicle types → desirability
- * weights.  The AI scores candidates as  weight / distance and picks the
- * highest-scoring one (js/ai/targeting.js).  A weight of 0 means "never
- * engage" — the AI won't fire at, navigate toward, or (for drones)
- * detonate on that target type.
- *
  * When stuck, the bot shoots destructible terrain to blast a path
  * (js/ai/recovery.js).
  */
@@ -43,32 +34,33 @@
 import { steerTurretTo, updateWobble } from "./ai/aiming.js";
 import { patrol, pickWaypoint, steerToPoint, updatePath } from "./ai/navigation.js";
 import { evade, handleStuck, tryShootWall, updateStuck } from "./ai/recovery.js";
-import { chooseGoalAndTarget } from "./ai/roles.js";
+import { chooseSwarmGoal, spacingOffset } from "./ai/swarm/behaviours.js";
+import { Swarm } from "./ai/swarm/index.js";
+import { CONFIG } from "./config.js";
 import { Pathfinder } from "./pathfinder.js";
 import { getVehicleBehaviour } from "./vehicles/index.js";
 
-export { AI_ROLES, pickRoleForVehicle } from "./ai/roles.js";
-
 export class AIController {
-    constructor(map, rng = Math.random) {
+    constructor(map, rng = Math.random, swarm = null) {
         this.keys = {};
         this._rng = rng;
 
-        // Role (set externally for team mode, null for duel modes)
-        this.role = null;
-
-        // Base references (set by game.js for team mode)
-        this.friendlyBase = null;
-        this._enemyStructures = [];
-
-        // Per-role per-life state (owned by the role strategies in js/ai/roles.js).
-        this.roleState = {};
+        /**
+         * The faction's shared colony state.  The Game injects it; a bot
+         * built without one (unit tests) gets a private colony.
+         */
+        this.swarm = swarm ?? new Swarm(map?.width ?? CONFIG.MAP_WIDTH, map?.height ?? CONFIG.MAP_HEIGHT);
+        /** Friendly vehicles (self included) for convoy/spacing reads. */
+        this.allies = [];
 
         // Pathfinding
         this._pf = map ? new Pathfinder(map) : null;
         this._path = []; // [{x,y}] waypoints
         this._pathTimer = this._rng() * 0.3;
         this._pathGoal = null;
+
+        /** The behaviour driving navigation right now ({kind, x, y}). */
+        this.currentGoal = null;
 
         // Firing
         this.fireDelay = 0;
@@ -104,12 +96,14 @@ export class AIController {
      * Reset per-life cached state (called on respawn).
      */
     resetLife() {
-        this.roleState = {};
         this._path = [];
         this._pathTimer = 0;
         this._posHistory = [];
         this.stuckTime = 0;
         this.evading = false;
+        this.currentGoal = null;
+        this._exploreGoal = null;
+        this._exploreTimer = 0;
     }
 
     /** Deterministic random source (injected rng, defaults to Math.random). */
@@ -133,11 +127,10 @@ export class AIController {
      *  Main think                                              *
      * ════════════════════════════════════════════════════════ */
 
-    think(dt, me, enemies, map, objective = null, enemyStructures = []) {
+    think(dt, me, enemies, map) {
         this.keys = {};
         if (!me.alive) return;
         if (!this._pf) this._pf = new Pathfinder(map);
-        this._enemyStructures = enemyStructures;
 
         this.fireDelay -= dt;
         updateWobble(this, dt);
@@ -146,7 +139,7 @@ export class AIController {
         // Vehicle behaviours that drive the whole think (drones fly their
         // own loop; squads hold while digging in; immobilised vehicles pivot)
         // consume the frame.
-        if (getVehicleBehaviour(me.vehicleType).aiThink(this, dt, me, enemies, map, objective)) return;
+        if (getVehicleBehaviour(me.vehicleType).aiThink(this, dt, me, enemies, map)) return;
 
         // ── Stuck escalation ──
         if (this.stuckTime > 1.0 && !this.evading) {
@@ -158,18 +151,20 @@ export class AIController {
             return;
         }
 
-        // ── Choose navigation goal and combat target ──
-        const { navGoal, fireTarget } = chooseGoalAndTarget(this, dt, me, enemies, map, objective);
+        // ── The swarm picks the goal; combat targeting picks the target ──
+        const { navGoal, fireTarget } = chooseSwarmGoal(this, dt, me, enemies, map);
+        this.currentGoal = navGoal;
 
         if (!navGoal) {
             patrol(this);
             return;
         }
 
-        // ── Update path and follow it ──
+        // ── Update path and follow it, bent by personal space ──
         updatePath(this, dt, me, navGoal);
         const wp = pickWaypoint(this, me, map);
-        steerToPoint(this, me, wp, { hasPath: this._path.length > 0, map });
+        const spacing = spacingOffset(this, me);
+        steerToPoint(this, me, { x: wp.x + spacing.x, y: wp.y + spacing.y }, { hasPath: this._path.length > 0, map });
 
         // ── AIM + FIRE at combat target ──
         if (fireTarget) {

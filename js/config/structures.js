@@ -4,6 +4,11 @@
  * Parallel to VEHICLES — every gameplay value that varies between
  * structure types lives here.  targetPriority only appears on
  * structures that can shoot (baseTower).
+ *
+ * isObjective + objectivePriority drive the swarm's food signal: only
+ * objective structures attract the swarm once discovered, and higher
+ * priority objectives win when several are known (the seam for a
+ * future mode with multiple capturable objectives).
  */
 export const BASE_STRUCTURES = {
     baseWall: {
@@ -31,5 +36,6 @@ export const BASE_STRUCTURES = {
         visHeight: 14,
         category: "hq",
         isObjective: true,
+        objectivePriority: 10,
     },
 };

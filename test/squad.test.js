@@ -29,10 +29,6 @@ describe("Infantry squad – config", () => {
         assert.ok(v.coverRadius > 0);
     });
 
-    it("squads never roll the defender role", () => {
-        assert.equal(VEHICLES.squad.roleWeights.defender, 0);
-    });
-
     it("defines all four member types", () => {
         for (const key of ["rifleman", "mg", "rpg", "shotgun"]) {
             assert.ok(SQUAD_MEMBERS[key], `missing member ${key}`);

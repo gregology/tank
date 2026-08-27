@@ -92,6 +92,17 @@ export class Tank extends GameEntity {
         /** Knocked-out subsystems ("turret" / "leftTrack" / "rightTrack"). */
         this.disabledSubsystems = new Set();
 
+        // Swarm state (read by the pheromone system in js/systems/swarm.js)
+        this.lastHitAt = null; // game time of the last hit taken (alarm signal)
+        /** Recent tiles walked (crumb trail substrate; lit when the unit
+         *  personally reaches an objective). */
+        this.routeHistory = [];
+        /** Objectives this unit has personally sighted (per life). */
+        this.objectivesSeen = new Set();
+        this.recentSpeed = 0; // smoothed tiles/sec (convoy leadership requires motion)
+        this.convoyLeadable = false; // stamped per tick by the swarm system
+        this.underAttack = false; // stamped per tick: recently hit (alarm source)
+
         // Visual feedback
         this.flashTimer = 0; // invulnerability flash after respawn
         this.recoilTimer = 0; // barrel recoil animation
@@ -366,16 +377,24 @@ export class Tank extends GameEntity {
         game.mode.onKill(game, source.team, this);
     }
 
-    respawnAt(x, y) {
+    respawnAt(x, y, rng = Math.random) {
         this.x = x;
         this.y = y;
-        this.angle = Math.random() * Math.PI * 2;
+        this.angle = rng() * Math.PI * 2;
         this.turretAngle = 0; // turret starts aligned with hull
 
         // Clear all damage
         this.damaged = false;
         this.damageAccum = 0;
         this.disabledSubsystems.clear();
+
+        // A fresh life: no alarm history, no walked route, nothing sighted
+        this.lastHitAt = null;
+        this.routeHistory = [];
+        this.objectivesSeen = new Set();
+        this.recentSpeed = 0;
+        this.convoyLeadable = false;
+        this.underAttack = false;
 
         // Recreate per-vehicle components (squad members, SPG charge) at
         // the new spawn position — the behaviour owns their state.

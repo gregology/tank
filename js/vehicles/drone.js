@@ -4,11 +4,12 @@
  * (distance falloff), then destroys itself.
  *
  * Drones don't aim or navigate with the normal AI flow — aiThink routes
- * to the AI's drone flight loop.
+ * to the AI's drone flight loop, which takes its goal from the swarm
+ * (chooseSwarmGoal) and flies straight (drones fly over everything).
  */
 
 import { patrol } from "../ai/navigation.js";
-import { chooseGoalAndTarget } from "../ai/roles.js";
+import { chooseSwarmGoal, spacingOffset } from "../ai/swarm/behaviours.js";
 import { targetPriorityOf } from "../ai/targeting.js";
 import { ACTIONS, BASE_STRUCTURES, CONFIG, VEHICLES } from "../config.js";
 import { GAME_EVENTS } from "../events.js";
@@ -45,8 +46,9 @@ export const drone = {
 
     aim(_ai, _me, _target, _map) {},
 
-    aiThink(ai, dt, me, enemies, map, objective) {
-        const { navGoal, fireTarget } = chooseGoalAndTarget(ai, dt, me, enemies, map, objective);
+    aiThink(ai, dt, me, enemies, map) {
+        const { navGoal, fireTarget } = chooseSwarmGoal(ai, dt, me, enemies, map);
+        ai.currentGoal = navGoal;
 
         // If we have a fire target nearby, prioritise diving at it.
         let target = navGoal;
@@ -59,14 +61,17 @@ export const drone = {
             return true;
         }
 
-        // Navigate directly (drones fly over everything).
-        const desired = Math.atan2(target.y - me.y, target.x - me.x);
+        // Navigate directly (drones fly over everything), bent by spacing.
+        const spacing = spacingOffset(ai, me);
+        const tx = target.x + spacing.x,
+            ty = target.y + spacing.y;
+        const desired = Math.atan2(ty - me.y, tx - me.x);
         const diff = angleDiff(me.angle, desired);
 
         if (diff > CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.right] = true;
         if (diff < -CONFIG.AIM_DEADZONE) ai.keys[ACTIONS.left] = true;
 
-        const dist = Math.hypot(target.x - me.x, target.y - me.y);
+        const dist = Math.hypot(tx - me.x, ty - me.y);
         if (Math.abs(diff) < Math.PI * 0.7 && dist > 0.5) {
             ai.keys[ACTIONS.forward] = true;
         }
@@ -84,11 +89,13 @@ export const drone = {
                 return true;
             }
         }
-        // Check the objective (tower).
-        if (objective?.alive) {
-            const d = Math.hypot(objective.x - me.x, objective.y - me.y);
-            if (d < detonateRange + BASE_STRUCTURES.baseHQ.size) {
+        // Check discovered objectives (e.g. the enemy base's HQ).
+        for (const obj of ai.swarm.intel.objectives()) {
+            const d = Math.hypot(obj.x - me.x, obj.y - me.y);
+            const size = obj.entity.hq?.size ?? BASE_STRUCTURES.baseHQ.size;
+            if (d < detonateRange + size) {
                 ai.keys[ACTIONS.fire] = true;
+                return true;
             }
         }
         return true;

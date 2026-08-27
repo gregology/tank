@@ -14,7 +14,7 @@ main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
 game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js,
             modes.js, systems/, vehicles/
 ai.js  ──▶ pathfinder.js, vehicles/, ai/          (thin controller)
-ai/    ──▶ config.js                              (roles, targeting,
+ai/    ──▶ config.js                              (swarm, targeting,
             navigation, recovery, aiming — pure helpers over AI state)
 menu.js ──▶ lobby.js, menu/                       (thin shell)
 menu/  ──▶ config.js, render/vehicles/, render/canvas-utils.js
@@ -84,14 +84,14 @@ The single source of truth for everything that varies:
   (passable/solid/road/water/building/height/hp), indexed by that enum;
   `TILE_VISUALS` — per-tile *visual* semantics (draw kind, palette key,
   variation, minimap colour), also indexed by that enum.
-- `CONFIG` — flat constants (map size, speed, armour arcs, role ranges, …).
+- `CONFIG` — flat constants (map size, speed, armour arcs, …).
 - `PLAYER_COLORS` — team colours in join order.
 - `ACTIONS` — the input action vocabulary (frozen).
 - `GAME_TYPES` — `skirmish` / `battle`: win condition, team set, bases flag,
   allowed vehicles, and which `GAME_OPTIONS` each shows.
 - `GAME_OPTIONS` + `resolveSettings()` — pre-game options resolved to a flat
   settings object.
-- `VEHICLES` — per-vehicle stats, `roleWeights`, `targetPriority`, `armour`,
+- `VEHICLES` — per-vehicle stats, `swarm` identity, `targetPriority`, `armour`,
   and the interaction flags (`flies` / `soft` / `crushable` / `canCrush` /
   `hasSquad`) plus `hudGlyph` / `minimapShape`.
 - `TARGET_TYPES` / `TARGET_CLASS_DEFAULTS` — the canonical target-type
@@ -171,7 +171,7 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
   plan into `Tank` / `Camera` / `AIController` entities.
 - `Game` owns the simulation: tanks, bullets, bases, win logic, scores. It
   exposes **uniform accessors** — `allTanks`, `humanTanks`, `bots` (as
-  `{ tank, role }` pairs), `factions`, `cameras`, `bases`, `baseStructures`,
+  records), `factions`, `cameras`, `bases`, `baseStructures`,
   `damageables`, `scores`, `winnerColor` — so the renderer and HUD stay
   game-type-agnostic. The strategies (modes and vehicle behaviours) are
   written against this public surface — the accessors plus `setBases`,
@@ -247,8 +247,8 @@ capability getter, or a hook to a behaviour instead.**
 
 `getMode(gameType)` returns the Skirmish or Battle strategy. Each mode is a
 plain object with hooks for everything the modes do differently: `hasBases`,
-`init` (battle: compounds + structure map), `spawn`, `setupBot`,
-`aiObjective` / `enemyStructures`, `afterSeparation` / `afterBullets`,
+`init` (battle: compounds + structure map), `spawn`,
+`afterSeparation` / `afterBullets`,
 `respawn`, `onKill`, `checkWin`, `factionLabel` / `winnerLabel`. The shared
 loop stays in `Game`. **A third mode = one `GAME_TYPES` entry + one strategy
 object — never more `if (typeDef.bases)` sprinkles.**
@@ -256,19 +256,23 @@ object — never more `if (typeDef.bases)` sprinkles.**
 ### 7. Map + shared geometry API (`map.js` → `js/map/`)
 
 `GameMap` (`js/map.js`) is a facade over the `js/map/` package: `grid.js`
-(tile data + tile-property queries, data-driven from `TILE_PROPS`),
-`queries.js` (the spatial geometry below), `generation.js` (procedural
-terrain, reading the per-biome `MAP_STYLES` table), `compounds.js` (base
-layout + spawn helpers; the per-tier compound shapes are dispatched by the
-`COMPOUND_STAMPERS` registry, with the square tiers sharing one
-`stampSquareCompound`). One implementation per geometric question; nothing
-re-implements them:
+(tile data + tile-property queries, data-driven from `TILE_PROPS` —
+including the `opaque` axis, which line-of-sight reads independently of
+`solid`), `noise.js` (seeded hash/noise/fbm shared by every stage),
+`queries.js` (the spatial geometry below), `generation/` (the ordered
+stage pipeline — terrain, settlements, …; a new feature is one stage
+module + one registry entry), `compounds.js` (base layout + spawn helpers;
+repulsion-sampled placement with centre-facing entrances; the per-tier
+compound shapes are dispatched by the `COMPOUND_STAMPERS` registry, with
+the square tiers sharing one `stampSquareCompound`). One implementation
+per geometric question; nothing re-implements them:
 
 - `map.canStand(wx, wy, size)` — the four-corner passability box (movement,
   separation, structure pushing, base spawn).
-- `map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin })` — the LOS query
-  (tanks, towers, squad members, the AI). `skipOrigin` keeps the
-  tower-on-its-own-tile exception explicit; it is harmless for tanks.
+- `map.hasLineOfSight(x1, y1, x2, y2, { skipOrigin, skipTarget })` — the
+  LOS query (tanks, towers, squad members, the AI). `skipOrigin` keeps the
+  tower-on-its-own-tile exception explicit; `skipTarget` lets a solid
+  structure be *seen* (swarm discovery) without its own tile blocking.
 - `map.hasWalkableLine(x1, y1, x2, y2)` — the AI's direct-waypoint check.
 
 ### 8. The component pattern (`squad.js`)
@@ -284,27 +288,43 @@ isn't shared by all vehicles, a **component on the entity** (like `Squad`) is
 the established precedent — not a new subclass and not a new `vehicleType`
 switch.
 
-### 9. AI roles, targeting, navigation, and recovery (`js/ai/`)
+### 9. Swarm AI, targeting, navigation, and recovery (`js/ai/`)
 
-`AIController` (`ai.js`, ~210 lines) is the orchestration glue — the
+`AIController` (`ai.js`, ~205 lines) is the orchestration glue — the
 `InputDevice` implementation, the per-life state, and the `think` loop —
-over a package of focused helper modules that all take the controller as
-their first argument:
+over a package of focused helper modules.  There are **no roles**: each
+faction owns one `Swarm` (`js/ai/swarm/`), and every bot reacts to its
+colony's shared signals; cooperation emerges from simple local rules.
 
-- `roles.js` — `AI_ROLES`, `pickRoleForVehicle`, and `ROLE_STRATEGIES`:
-  each role (`cavalry`, `sniper`, `defender`, `scout`) plus the no-role
-  default is a plain strategy object with a `goal(ai, ctx)` hook,
-  dispatched by `chooseGoalAndTarget` from `ai.role`. Per-role per-life
-  state lives on the controller's opaque `roleState` object (the role owns
-  it, so a new role doesn't edit `AIController`).
-- `positioning.js` — shared position scoring (`findBestPosition`,
-  `computeFlankPoint`), extracted from `roles.js`.
+- `swarm/index.js` — the `Swarm` bundle per faction: pheromone `fields`,
+  `intel`, the live `tuning` object (shared by reference with the Game,
+  so sandbox sliders and sweep overrides apply immediately), the
+  faction's human-driven leaders, and its `home` reference point.
+- `swarm/fields.js` — `SignalFields`: one tile grid per signal type
+  (`trail` crumbs / lit `route` / `alarm` / `food` / `visited`,
+  declared in the `SIGNALS`
+  table) with deposit / decay / diffusion / peak queries.  `tick(params)`
+  reads decay+diffusion from live tuning each update.
+- `swarm/intel.js` — `FactionIntel`: what the faction has *discovered*
+  (sight range + LOS, checked by the swarm system — objectives are never
+  omniscient).  Two views: `knownStructures()` (fog-of-war targetability)
+  and `objectives()` (priority-sorted march targets; the dead drop out).
+- `swarm/behaviours.js` — `chooseSwarmGoal`: candidate goals (rally /
+  objective / trail / convoy / hunt / explore) each scored
+  strength × the vehicle's `swarm` sensitivity block (`VEHICLES`);
+  argmax wins so A* targets stay discrete.  `spacingOffset` is the
+  general personal-space steering (applies to air units too).
+  Per-vehicle identity (`attraction`, `follow`, `flank`, `keepRange`,
+  `aggression`, `alarm`, `trail`, `explore`, `personalSpace`,
+  `engageRange`) is data in `VEHICLES[type].swarm`; every numeric
+  parameter is one line in `SWARM_TUNABLES` (`js/config/swarm.js`).
 - `targeting.js` — `pickTarget(candidates, priorities, origin, opts)`: the
   shared weighted `weight / distance` scoring core (with range/LOS filters),
-  used by `bestTarget(ai, me, enemies)` and by the watch-tower system
-  (`js/systems/towers.js`).  `targetPriorityOf(priorities, targetType)`
-  resolves a shooter's weight via explicit override → `TARGET_TYPES` class
-  default → 1, so a new target type is one `TARGET_TYPES` entry.
+  used by `bestTarget(ai, me, enemies)` (over enemies + *discovered*
+  structures) and by the watch-tower system (`js/systems/towers.js`).
+  `targetPriorityOf(priorities, targetType)` resolves a shooter's weight
+  via explicit override → `TARGET_TYPES` class default → 1, so a new
+  target type is one `TARGET_TYPES` entry.
 - `navigation.js` — `updatePath` (A* refresh), `pickWaypoint` (walkable
   skip-ahead), `steerToPoint` (turn-and-drive), `patrol`.
 - `recovery.js` — `updateStuck` (position-history sampling), `handleStuck`
@@ -312,16 +332,39 @@ their first argument:
 - `aiming.js` — `steerTurretTo` (the shared turret-steering primitive),
   `aimTurretForward`, `updateWobble`.
 
+`js/systems/swarm.js` runs before the think pass: it discovers
+structures/objectives for each faction (a unit within SIGHT_RANGE with
+LOS — with `skipTarget` so a solid structure's own tile doesn't hide it),
+deposits the signals from observable state (visited under every unit,
+alarm under living victims, food on known objectives, weak `trail`
+crumbs under every moving unit), lights `route` fields when a unit
+*personally* sights an objective (its walked path lights up, strength ∝
+1/path length — followers who reach the objective reinforce their own
+paths, so routes optimize and stale ones fade), and ticks
+decay/diffusion.  Key semantics: the alarm dies with the victim (no
+rallying to a corpse); a dead objective's food is erased on the spot; a
+bot only leads a convoy while moving or pursuing a goal
+(`convoyLeadable`), so parked bots can't hold idle blobs; escorting a
+leader who marches on the objective (`ESCORT_BONUS`) turns a trickle
+into a massed assault.
+
 Behavioural invariants: the AI navigates with A* (`pathfinder.js`) and
-follows waypoints; navigation and combat are **separated** (bots navigate
-toward their objective and fire at enemies they pass, rather than chasing);
-per-role tuning lives in `CONFIG` and `VEHICLES[].roleWeights`. The public
-seams the vehicle behaviours call (`ai.steerTurretTo`, `ai.aimAndFire`,
+follows waypoints (the swarm picks *goals*, the pathfinder routes to
+them — this is what will let bots funnel through future choke points
+like bridges); navigation and combat are **separated** (bots navigate
+toward their goal and fire at enemies they pass).  The public seams the
+vehicle behaviours call (`ai.steerTurretTo`, `ai.aimAndFire`,
 `ai.tryShootWall`, `ai.holdPosition`, `ai.rng`) stay methods on the
-controller; per-vehicle *think* now lives in the behaviour's `aiThink`, not
-the controller. **A new role = one `ROLE_STRATEGIES` entry + a `roleWeights`
-entry; a new AI capability (e.g. group/pheromone behaviour or lead-aiming)
-lands in the matching helper module, not in the controller.**
+controller; per-vehicle *think* lives in the behaviour's `aiThink`.
+**A new signal type = one `SIGNALS` entry + its deposit/sense sites; a
+new tunable = one `SWARM_TUNABLES` line; a new vehicle personality =
+one `swarm` block in `VEHICLES`.**
+
+Matches are deterministic: `Game` owns a seeded master stream
+(`js/rng.js`) and per-bot derived streams, so `settings.seed` reproduces
+a match bit-for-bit — the foundation of `tools/sim.js` (headless
+metrics), `tools/sweep.js` (parameter optimization), `tools/adopt.js`
+(guarded adoption), and `sandbox.html` (visual tuner).
 
 ### 10. Menu screens (`js/menu/`)
 
@@ -367,9 +410,9 @@ All five refactor rounds are done; these are the current boundaries to keep,
 not expand:
 
 - `game.js` stays a thin orchestration shell — the per-frame passes live in
-  `js/systems/` (`think`, `movement`, `update`, `firing`, `projectiles`,
-  `collision`, `towers`, `respawn`, `effects`, `camera`, `win`).  New
-  simulation logic is a system module, not a `Game` method.
+  `js/systems/` (`swarm`, `think`, `movement`, `update`, `firing`,
+  `projectiles`, `collision`, `towers`, `respawn`, `effects`, `camera`,
+  `win`).  New simulation logic is a system module, not a `Game` method.
 - `renderer.js` stays a thin shell over `js/render/`; `js/render/vehicles.js`
   and `js/render/structures.js` stay thin barrels over `js/render/vehicles/`
   and `js/render/structures/` (sprites dispatched by the `SPRITES` /
@@ -405,8 +448,8 @@ proxy cluster and the hardcoded subsystem booleans (now a `body` strategy +
 `disabledSubsystems` Set + `SUBSYSTEM_EFFECTS`), the inline think/movement/
 update/firing loops in `_update` (now `js/systems/`), the hardcoded structure
 category (`entityType === "baseHQ"…` — now `category`/`isObjective` +
-`structuresOf`), the depth-sort `switch`/tile `if/else`/role-vocab/HP-bar
-duplication (now `DEPTH_DRAWERS`/`DRAW_KINDS`/`ROLE_PRESENTATION`/
+`structuresOf`), the depth-sort `switch`/tile `if/else`/HP-bar
+duplication (now `DEPTH_DRAWERS`/`DRAW_KINDS`/
 `healthColor`/`drawHealthBar`), the `if (gameType === "battle")` lobby
 branching and `["skirmish","battle"]` literal (now `teamSet` +
 `GAME_TYPE_ORDER` + `mode.hud`), the `grid._compoundTier` side-channel (now an
