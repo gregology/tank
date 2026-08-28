@@ -2,21 +2,12 @@
  * Lobby — the pure match-setup state machine.
  *
  * Holds who has joined, which team each player is on, the selected game
- * type, and the pre-game option values.  It resolves all of that into a
+ * type, and the chosen map size.  It resolves all of that into a
  * MatchConfig for Game.  No rendering and no input here — the Menu drives
  * it from device events and draws it.
  */
 
-import {
-    GAME_OPTIONS,
-    GAME_TYPE_ORDER,
-    GAME_TYPES,
-    getDefaultOptionValues,
-    MAX_PLAYERS,
-    opinionatedSettings,
-    PLAYER_COLORS,
-    resolveSettings,
-} from "./config.js";
+import { GAME_TYPE_ORDER, GAME_TYPES, MAP_SIZES, MAX_PLAYERS, opinionatedSettings, PLAYER_COLORS } from "./config.js";
 
 export class Lobby {
     constructor() {
@@ -24,10 +15,10 @@ export class Lobby {
         this.gameType = "battle";
         /** @type {{device: object, team: number}[]} */
         this.players = [];
-        /** Settings-row cursor index (host). */
+        /** Settings-row cursor index (host): 0 = game type, 1 = map size, 2 = start. */
         this.cursor = 0;
-        /** Map<string, number> of current option indices/values. */
-        this.optionValues = getDefaultOptionValues(this.gameType);
+        /** Index into MAP_SIZES (0 = small, 1 = medium, 2 = large). */
+        this.mapSizeIndex = 1;
     }
 
     /* ── players & teams ──────────────────────────────────── */
@@ -68,12 +59,11 @@ export class Lobby {
         return this.teamSet === "two" ? (joinIndex % 2) + 1 : joinIndex + 1;
     }
 
-    /* ── game type & options ──────────────────────────────── */
+    /* ── game type & map size ─────────────────────────────── */
 
     setGameType(type) {
         if (type === this.gameType) return;
         this.gameType = type;
-        this.optionValues = getDefaultOptionValues(type);
         this.cursor = 0;
         // Re-default teams for the new team set (Skirmish = per-colour,
         // Battle = RED/BLUE).
@@ -82,12 +72,9 @@ export class Lobby {
         });
     }
 
-    /** Settings rows: game type, per-type options, then START. */
+    /** Settings rows: game type, map size, then START. */
     rows() {
-        const rows = [{ type: "gameType" }];
-        for (const key of GAME_TYPES[this.gameType].options) rows.push({ type: "option", key });
-        rows.push({ type: "start" });
-        return rows;
+        return [{ type: "gameType" }, { type: "mapSize" }, { type: "start" }];
     }
 
     changeRow(row, right) {
@@ -96,20 +83,17 @@ export class Lobby {
             this.setGameType(GAME_TYPE_ORDER[(idx + 1) % GAME_TYPE_ORDER.length]);
             return;
         }
-        if (row.type !== "option") return;
-        const opt = GAME_OPTIONS.find((o) => o.key === row.key);
-        if (!opt) return;
-        const cur = this.optionValues.get(row.key);
-        const n = opt.choices.length;
-        const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
-        this.optionValues.set(row.key, next);
+        if (row.type === "mapSize") {
+            const n = MAP_SIZES.length;
+            this.mapSizeIndex = right ? (this.mapSizeIndex + 1) % n : (this.mapSizeIndex - 1 + n) % n;
+        }
     }
 
     /* ── resolution ───────────────────────────────────────── */
 
     /** Resolve the lobby into a MatchConfig for Game. */
     buildMatch() {
-        const mapSizeIndex = this.optionValues.get("mapSize") ?? 0;
+        const { w, h } = MAP_SIZES[this.mapSizeIndex];
         return {
             gameType: this.gameType,
             humans: this.players.map((p, i) => {
@@ -123,8 +107,8 @@ export class Lobby {
                 };
             }),
             settings: {
-                ...resolveSettings(this.optionValues),
-                ...opinionatedSettings(this.gameType, mapSizeIndex),
+                mapSize: { w, h },
+                ...opinionatedSettings(this.gameType, this.mapSizeIndex),
             },
         };
     }

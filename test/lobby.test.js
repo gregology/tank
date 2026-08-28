@@ -93,26 +93,27 @@ describe("Lobby – game type & options", () => {
         assert.equal(lobby.gameType, "battle");
     });
 
-    it("cycles the map-size option", () => {
+    it("cycles the map size", () => {
         const lobby = new Lobby();
-        lobby.setGameType("battle");
-        const mapSize = lobby.rows().find((r) => r.key === "mapSize");
-        const before = lobby.optionValues.get("mapSize");
+        const mapSize = lobby.rows().find((r) => r.type === "mapSize");
+        const before = lobby.mapSizeIndex;
         lobby.changeRow(mapSize, true);
-        assert.equal(lobby.optionValues.get("mapSize"), (before + 1) % 3);
+        assert.equal(lobby.mapSizeIndex, (before + 1) % 3);
+        lobby.changeRow(mapSize, false);
+        assert.equal(lobby.mapSizeIndex, before);
     });
 
-    it("shows only map size beside the game type (no hidden unit/density/base options)", () => {
+    it("shows only game type, map size, and start", () => {
         const lobby = new Lobby();
         assert.deepEqual(
-            lobby.rows().map((r) => (r.type === "option" ? r.key : r.type)),
+            lobby.rows().map((r) => r.type),
             ["gameType", "mapSize", "start"],
         );
     });
 });
 
 describe("Lobby – match resolution", () => {
-    it("builds a battle match config with opinionated team size, density, and base type", () => {
+    it("builds a battle match config with opinionated team size and density", () => {
         const lobby = new Lobby();
         lobby.join({ id: "a" });
         const match = lobby.buildMatch();
@@ -123,10 +124,9 @@ describe("Lobby – match resolution", () => {
         assert.ok(match.settings.mapSize);
         assert.equal(match.settings.teamSize, 24, "medium map → 24 units");
         assert.equal(match.settings.buildingDensity, 1.5, "dense");
-        assert.equal(match.settings.baseType, "compound");
     });
 
-    it("resolves a skirmish match with high density and no team size/base", () => {
+    it("resolves a skirmish match with high density and no team size", () => {
         const lobby = new Lobby();
         lobby.setGameType("skirmish");
         lobby.join({ id: "a" });
@@ -134,7 +134,6 @@ describe("Lobby – match resolution", () => {
         assert.equal(match.gameType, "skirmish");
         assert.equal(match.settings.buildingDensity, 2, "high");
         assert.equal(match.settings.teamSize, undefined);
-        assert.equal(match.settings.baseType, undefined);
     });
 
     it("resolves a skirmish free-for-all with distinct colours", () => {

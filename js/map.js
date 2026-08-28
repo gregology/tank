@@ -50,8 +50,8 @@ export class GameMap extends TileGrid {
     }
 
     /** Build two base compounds; returns the layout pair (see compounds.js). */
-    buildBaseCompounds(baseType) {
-        return buildBaseCompounds(this, baseType);
+    buildBaseCompounds() {
+        return buildBaseCompounds(this);
     }
 
     /** Random passable spawn point inside a compound's interior. */

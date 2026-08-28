@@ -47,7 +47,6 @@ export function start(doc) {
             settings: {
                 mapSize: { w: size, h: size },
                 buildingDensity: Number(els.density.value),
-                baseType: "compound",
                 teamSize: Number(els.teamSize.value),
                 seed: Number(els.seed.value) || 1,
             },

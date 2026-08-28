@@ -506,7 +506,6 @@ describe("swarm integration (real match)", () => {
                 settings: {
                     mapSize: { w: 128, h: 128 },
                     buildingDensity: 1.0,
-                    baseType: "compound",
                     teamSize: 3,
                     seed,
                 },

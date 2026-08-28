@@ -47,10 +47,10 @@ export const DEFAULTS = {
  * Run one seeded match to completion (or the time cap) and collect metrics.
  *
  * @param {object} opts  see DEFAULTS (seed, type, map, cap) plus explicit
- *                       overrides (teamSize, baseType, density) and
- *                       `tuning`: per-match swarm parameter overrides.
- *                       Team size / density / base type default to the
- *                       opinionated match defaults (js/config/match.js).
+ *                       overrides (teamSize, density) and `tuning`:
+ *                       per-match swarm parameter overrides.  Team size and
+ *                       density default to the opinionated match defaults
+ *                       (js/config/match.js).
  * @returns {object} plain-JSON metrics for the match
  */
 export function runMatch(opts = {}) {
@@ -77,7 +77,6 @@ export function runMatch(opts = {}) {
         settings: {
             mapSize: { w: o.map, h: o.map },
             buildingDensity: o.density ?? opinionated.buildingDensity,
-            baseType: o.baseType ?? opinionated.baseType,
             teamSize: o.teamSize ?? opinionated.teamSize,
             seed: o.seed,
             tuning: o.tuning,
@@ -264,7 +263,7 @@ function parseArgs(argv) {
         seeds = [Number(opts.seed)];
     }
     const matchOpts = {};
-    for (const k of ["type", "baseType"]) if (opts[k]) matchOpts[k] = opts[k];
+    if (opts.type) matchOpts.type = opts.type;
     for (const k of ["map", "teamSize", "density", "cap", "passive"]) if (opts[k]) matchOpts[k] = Number(opts[k]);
     if (opts.tuning) {
         // --tuning KEY=VALUE,KEY=VALUE — per-match swarm overrides

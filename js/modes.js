@@ -4,8 +4,8 @@
  * A mode is a plain strategy object with hooks for everything the two
  * modes do differently; the shared simulation loop (movement, firing,
  * bullets, separation) stays in Game.  GAME_TYPES declares *what* each
- * mode is (win, teamSet, bases, vehicles, options); these objects
- * implement *how* it behaves at runtime.
+ * mode is (win, teamSet, bases, vehicles); these objects implement *how*
+ * it behaves at runtime.
  *
  * Hooks (all take the Game as the first argument):
  *   hasBases         whether compounds/towers/HQ exist
@@ -134,8 +134,7 @@ const battle = {
 
     /** Build both factions' compounds and register their structures. */
     init(game) {
-        const baseType = game.settings.baseType ?? "compound";
-        const [layout1, layout2] = game.map.buildBaseCompounds(baseType);
+        const [layout1, layout2] = game.map.buildBaseCompounds();
         game.setBases([
             buildBase(layout1, 1, game.factions[0].color, game.factions[0].darkColor),
             buildBase(layout2, 2, game.factions[1].color, game.factions[1].darkColor),

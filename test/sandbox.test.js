@@ -24,7 +24,7 @@ function seededMatch() {
     return new Game({
         gameType: "battle",
         humans: [],
-        settings: { mapSize: { w: 64, h: 64 }, buildingDensity: 0.5, baseType: "compound", teamSize: 3, seed: 3 },
+        settings: { mapSize: { w: 64, h: 64 }, buildingDensity: 0.5, teamSize: 3, seed: 3 },
     });
 }
 

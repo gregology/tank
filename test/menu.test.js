@@ -190,19 +190,18 @@ describe("Menu – lobby", () => {
         assert.equal(menu.lobby.gameType, "battle");
     });
 
-    it("host changing an option row updates optionValues", () => {
+    it("host changing the map size row cycles the map size", () => {
         const menu = new Menu();
         const kb = makeDevice();
         kb.press(ACTIONS.confirm);
         menu.update(0.016, input(kb), spyAudio());
         kb.press(ACTIONS.down); // cursor → mapSize
         menu.update(0.016, input(kb), spyAudio());
-        const rows = menu.lobby.rows();
-        const before = menu.lobby.optionValues.get("mapSize");
+        const before = menu.lobby.mapSizeIndex;
         kb.press(ACTIONS.right);
         menu.update(0.016, input(kb), spyAudio());
-        assert.notEqual(menu.lobby.optionValues.get("mapSize"), before);
-        assert.equal(rows[menu.lobby.cursor].key, "mapSize");
+        assert.notEqual(menu.lobby.mapSizeIndex, before);
+        assert.equal(menu.lobby.rows()[menu.lobby.cursor].type, "mapSize");
     });
 
     it("host confirming the start row builds a match", () => {

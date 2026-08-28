@@ -24,7 +24,6 @@ function battleMatch(seed, overrides = {}) {
         settings: {
             mapSize: { w: 64, h: 64 },
             buildingDensity: 1.0,
-            baseType: "compound",
             teamSize: 3,
             ...overrides,
             seed,

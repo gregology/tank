@@ -24,7 +24,7 @@ Prefer a seam you can grow *through* — an interface, a data table, a strategy,
 a component — over one more `if (type === "x")` branch.
 
 - The project already leans data-driven: `VEHICLES`, `BASE_STRUCTURES`,
-  `SQUAD_MEMBERS`, `GAME_TYPES`, `GAME_OPTIONS`, `MATCH_TUNABLES` in
+  `SQUAD_MEMBERS`, `GAME_TYPES`, `MAP_SIZES`, `MATCH_TUNABLES` in
   `js/config.js` are tables, not code. A new vehicle / role / mode / option
   should usually be a **new entry in a table** or a **new object behind an
   existing interface**, not a new `switch` arm.
@@ -200,7 +200,7 @@ around them. (Details live in `js/AGENTS.md`.)
 - **Data-driven tables in `config.js`** — `TILES` + `TILE_PROPS` + `TILE_VISUALS`
   (per-tile gameplay + visual semantics), `TARGET_TYPES` +
   `TARGET_CLASS_DEFAULTS`, `CONFIG`, `PLAYER_COLORS`, `ACTIONS`, `GAME_TYPES`,
-  `GAME_OPTIONS`, `MATCH_TUNABLES` (+ `opinionatedSettings`), `VEHICLES`,
+  `MAP_SIZES`, `MATCH_TUNABLES` (+ `opinionatedSettings`), `VEHICLES`,
   `SQUAD_MEMBERS`, `SQUAD_ATTENTION_ORDER`, `BASE_STRUCTURES`. Gameplay values
   that vary belong here, not hardcoded in logic files.
 - **Entity hierarchy + capability getters** (`entity.js`) — `GameEntity` is the

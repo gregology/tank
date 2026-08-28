@@ -36,12 +36,13 @@ const COMPOUND_STAMPERS = {
  *   Medium (<=160): 14x14 square, 4 corner towers
  *   Large  (>160):  circular r=10, 6 towers (2 entrance + 4 distributed)
  *
- * @param {string} [baseType='compound']  'compound' = walls+towers+HQ,
- *                                        'hq_only'  = just HQ building
+ * Every compound is the full shape (walls + towers + HQ) — there is no
+ * alternative base type.
+ *
  * @returns {[CompoundLayout, CompoundLayout]}  layout data for
  *          game.js to create entity objects from.
  */
-export function buildBaseCompounds(grid, baseType) {
+export function buildBaseCompounds(grid) {
     const cx = grid.width / 2,
         cy = grid.height / 2;
     const maxR = Math.min(grid.width, grid.height) / 2 - 1;
@@ -72,8 +73,8 @@ export function buildBaseCompounds(grid, baseType) {
 
     // Stamp compounds onto the map (size scales with map)
     const stamp = COMPOUND_STAMPERS[tier];
-    const layout1 = stamp(grid, Math.floor(p1.x), Math.floor(p1.y), dir1, baseType);
-    const layout2 = stamp(grid, Math.floor(p2.x), Math.floor(p2.y), dir2, baseType);
+    const layout1 = stamp(grid, Math.floor(p1.x), Math.floor(p1.y), dir1);
+    const layout2 = stamp(grid, Math.floor(p2.x), Math.floor(p2.y), dir2);
 
     // Carve a wide path between the two bases
     clearPath(grid, p1, p2, pathHW);
@@ -167,17 +168,15 @@ function entranceEdgePos(dir, dx, dy, size) {
  * (walls/towers/gaps via `classifyPerimeter`), then the HQ tiles.  The two
  * square tiers differ only in `half` and how the perimeter is classified.
  */
-function stampSquareCompound(grid, cx, cy, dir, baseType, half, classifyPerimeter) {
+function stampSquareCompound(grid, cx, cy, dir, half, classifyPerimeter) {
     const SIZE = half * 2;
     const ox = cx - half,
         oy = cy - half;
-    const hqOnly = baseType === "hq_only";
 
     fillSand(grid, ox, oy, SIZE);
     const walls = [],
         towers = [];
-
-    if (!hqOnly) placePerimeter(grid, ox, oy, SIZE, classifyPerimeter, walls, towers);
+    placePerimeter(grid, ox, oy, SIZE, classifyPerimeter, walls, towers);
 
     const hqTilesArr = hqTiles(ox, oy, half, dir);
     return finishLayout(grid, ox, oy, half, SIZE, walls, towers, hqTilesArr, dir);
@@ -185,10 +184,10 @@ function stampSquareCompound(grid, cx, cy, dir, baseType, half, classifyPerimete
 
 /* -- Small compound (64x64): 10x10 square, 2 entrance towers -- */
 
-function stampCompoundSmall(grid, cx, cy, dir, baseType) {
+function stampCompoundSmall(grid, cx, cy, dir) {
     const half = COMPOUND_HALF.small;
     const SIZE = half * 2;
-    return stampSquareCompound(grid, cx, cy, dir, baseType, half, (dx, dy) => {
+    return stampSquareCompound(grid, cx, cy, dir, half, (dx, dy) => {
         const edgePos = entranceEdgePos(dir, dx, dy, SIZE);
         if (edgePos < 0) return "wall";
         if (edgePos === 4 || edgePos === 5) return "gap";
@@ -199,11 +198,11 @@ function stampCompoundSmall(grid, cx, cy, dir, baseType) {
 
 /* -- Medium compound (128x128): 14x14 square, 4 corner towers -- */
 
-function stampCompoundMedium(grid, cx, cy, dir, baseType) {
+function stampCompoundMedium(grid, cx, cy, dir) {
     const half = COMPOUND_HALF.medium;
     const SIZE = half * 2;
     const corners = new Set(["0,0", `${SIZE - 1},0`, `0,${SIZE - 1}`, `${SIZE - 1},${SIZE - 1}`]);
-    return stampSquareCompound(grid, cx, cy, dir, baseType, half, (dx, dy) => {
+    return stampSquareCompound(grid, cx, cy, dir, half, (dx, dy) => {
         if (corners.has(`${dx},${dy}`)) return "tower";
         const edgePos = entranceEdgePos(dir, dx, dy, SIZE);
         if (edgePos < 0) return "wall";
@@ -215,13 +214,12 @@ function stampCompoundMedium(grid, cx, cy, dir, baseType) {
 
 /* -- Large compound (192x192): circular r=10, 6 towers -- */
 
-function stampCompoundLarge(grid, cx, cy, dir, baseType) {
+function stampCompoundLarge(grid, cx, cy, dir) {
     const RADIUS = COMPOUND_HALF.large; // circle radius in tiles
     const SIZE = RADIUS * 2 + 1; // bounding box
     const half = RADIUS;
     const ox = cx - half,
         oy = cy - half;
-    const hqOnly = baseType === "hq_only";
 
     // Fill circular area with sand
     for (let dy = 0; dy < SIZE; dy++) {
@@ -237,73 +235,71 @@ function stampCompoundLarge(grid, cx, cy, dir, baseType) {
     const walls = [],
         towers = [];
 
-    if (!hqOnly) {
-        // Entrance direction angle
-        const dirAngle = dir === "E" ? 0 : dir === "S" ? Math.PI / 2 : dir === "W" ? Math.PI : -Math.PI / 2;
+    // Entrance direction angle
+    const dirAngle = dir === "E" ? 0 : dir === "S" ? Math.PI / 2 : dir === "W" ? Math.PI : -Math.PI / 2;
 
-        // Place 6 tower angles: 2 flanking entrance, 4 evenly around rest
-        const entranceSpread = Math.PI / 12; // 15 degrees
-        const towerAngles = [dirAngle - entranceSpread, dirAngle + entranceSpread];
-        for (let i = 1; i <= 4; i++) {
-            towerAngles.push(dirAngle + entranceSpread + (i * (2 * Math.PI - 2 * entranceSpread)) / 5);
-        }
+    // Place 6 tower angles: 2 flanking entrance, 4 evenly around rest
+    const entranceSpread = Math.PI / 12; // 15 degrees
+    const towerAngles = [dirAngle - entranceSpread, dirAngle + entranceSpread];
+    for (let i = 1; i <= 4; i++) {
+        towerAngles.push(dirAngle + entranceSpread + (i * (2 * Math.PI - 2 * entranceSpread)) / 5);
+    }
 
-        // Entrance towers (first 2) sit on the wall ring;
-        // the other 4 are placed just outside so they have
-        // clear line-of-sight over the wall.
-        const entranceTowerSet = new Set();
-        for (let ti = 0; ti < 2; ti++) {
-            const a = towerAngles[ti];
-            const tx = half + Math.round(Math.cos(a) * RADIUS);
-            const ty = half + Math.round(Math.sin(a) * RADIUS);
-            entranceTowerSet.add(`${tx},${ty}`);
-        }
+    // Entrance towers (first 2) sit on the wall ring;
+    // the other 4 are placed just outside so they have
+    // clear line-of-sight over the wall.
+    const entranceTowerSet = new Set();
+    for (let ti = 0; ti < 2; ti++) {
+        const a = towerAngles[ti];
+        const tx = half + Math.round(Math.cos(a) * RADIUS);
+        const ty = half + Math.round(Math.sin(a) * RADIUS);
+        entranceTowerSet.add(`${tx},${ty}`);
+    }
 
-        // Outer towers: RADIUS + 2 so they sit outside the wall
-        const outerTowerPositions = [];
-        for (let ti = 2; ti < towerAngles.length; ti++) {
-            const a = towerAngles[ti];
-            const tx = ox + half + Math.round(Math.cos(a) * (RADIUS + 2));
-            const ty = oy + half + Math.round(Math.sin(a) * (RADIUS + 2));
-            outerTowerPositions.push({ gx: tx, gy: ty });
-        }
+    // Outer towers: RADIUS + 2 so they sit outside the wall
+    const outerTowerPositions = [];
+    for (let ti = 2; ti < towerAngles.length; ti++) {
+        const a = towerAngles[ti];
+        const tx = ox + half + Math.round(Math.cos(a) * (RADIUS + 2));
+        const ty = oy + half + Math.round(Math.sin(a) * (RADIUS + 2));
+        outerTowerPositions.push({ gx: tx, gy: ty });
+    }
 
-        // Entrance gap: tiles within +/-gapAngle of entrance direction
-        const gapAngle = Math.PI / 16; // ~11 degrees gap on each side
+    // Entrance gap: tiles within +/-gapAngle of entrance direction
+    const gapAngle = Math.PI / 16; // ~11 degrees gap on each side
 
-        // Walk the circular perimeter — walls + entrance towers
-        for (let dy = 0; dy < SIZE; dy++) {
-            for (let dx = 0; dx < SIZE; dx++) {
-                const ddx = dx - half,
-                    ddy = dy - half;
-                const dist = Math.sqrt(ddx * ddx + ddy * ddy);
-                // Only perimeter tiles (ring at RADIUS +/- 0.7)
-                if (dist < RADIUS - 0.7 || dist > RADIUS + 0.7) continue;
+    // Walk the circular perimeter — walls + entrance towers
+    for (let dy = 0; dy < SIZE; dy++) {
+        for (let dx = 0; dx < SIZE; dx++) {
+            const ddx = dx - half,
+                ddy = dy - half;
+            const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+            // Only perimeter tiles (ring at RADIUS +/- 0.7)
+            if (dist < RADIUS - 0.7 || dist > RADIUS + 0.7) continue;
 
-                const gx = ox + dx,
-                    gy = oy + dy;
-                const tileAngle = Math.atan2(ddy, ddx);
-                let angleDiff = tileAngle - dirAngle;
-                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+            const gx = ox + dx,
+                gy = oy + dy;
+            const tileAngle = Math.atan2(ddy, ddx);
+            let angleDiff = tileAngle - dirAngle;
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-                if (Math.abs(angleDiff) < gapAngle) {
-                    grid.setTile(gx, gy, T.DIRT);
-                } else if (entranceTowerSet.has(`${dx},${dy}`)) {
-                    towers.push({ gx, gy });
-                    grid.setTile(gx, gy, T.BASE_STRUCTURE);
-                } else {
-                    walls.push({ gx, gy });
-                    grid.setTile(gx, gy, T.BASE_STRUCTURE);
-                }
+            if (Math.abs(angleDiff) < gapAngle) {
+                grid.setTile(gx, gy, T.DIRT);
+            } else if (entranceTowerSet.has(`${dx},${dy}`)) {
+                towers.push({ gx, gy });
+                grid.setTile(gx, gy, T.BASE_STRUCTURE);
+            } else {
+                walls.push({ gx, gy });
+                grid.setTile(gx, gy, T.BASE_STRUCTURE);
             }
         }
+    }
 
-        // Place outer towers on sand just outside the wall
-        for (const pos of outerTowerPositions) {
-            grid.setTile(pos.gx, pos.gy, T.BASE_STRUCTURE);
-            towers.push(pos);
-        }
+    // Place outer towers on sand just outside the wall
+    for (const pos of outerTowerPositions) {
+        grid.setTile(pos.gx, pos.gy, T.BASE_STRUCTURE);
+        towers.push(pos);
     }
 
     const hqTilesArr = hqTiles(ox, oy, half, dir);

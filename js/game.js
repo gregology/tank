@@ -7,7 +7,7 @@
  *   {
  *     gameType: "skirmish" | "battle",   // rules from GAME_TYPES
  *     humans: [ { device, color, darkColor, label, team } ],
- *     settings: { mapSize, buildingDensity, baseType?, teamSize? },
+ *     settings: { mapSize, buildingDensity, teamSize? },
  *   }
  *
  * `team` is a faction id (1..MAX_PLAYERS).  Game resolves factions from

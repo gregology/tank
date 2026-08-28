@@ -1,15 +1,18 @@
 /**
  * Opinionated match defaults — the tunables behind the simplified lobby.
  *
- * The lobby no longer asks the player for team size, building density, or
- * base type: it derives them here from the game type and map size.  Keeping
- * them as a tunables table (the same { key, min, max, value, doc } shape as
+ * The lobby no longer asks the player for team size or building density:
+ * it derives them here from the game type and map size.  Keeping them as a
+ * tunables table (the same { key, min, max, value, doc } shape as
  * SWARM_TUNABLES) is what makes them the "environment variables" the sandbox
  * and tuning tooling can adjust without touching any UI code.
  *
  *   battle:  16 / 24 / 32 units per team on small / medium / large maps,
- *            dense buildings (1.5), compound bases
+ *            dense buildings (1.5)
  *   skirmish:  high buildings (2.0)
+ *
+ * Base type is not a tunable: it is always the compound base (the only
+ * shape `js/map/compounds.js` stamps).
  */
 
 export const MATCH_TUNABLES = Object.freeze([
@@ -87,7 +90,6 @@ export function opinionatedSettings(gameType, mapSizeIndex = 1) {
         return {
             teamSize: battleTeamSize(mapSizeIndex),
             buildingDensity: matchTuning("battleDensity"),
-            baseType: "compound",
         };
     }
     return { buildingDensity: matchTuning("skirmishDensity") };

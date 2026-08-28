@@ -2,11 +2,11 @@
  * Match-default tunables tests (js/config/match.js).
  *
  * Bugs these catch:
- *   - the opinionated team-size / density / base-type defaults drifting
- *     from the spec (16/24/32, dense, high, compound),
+ *   - the opinionated team-size / density defaults drifting from the
+ *     spec (16/24/32, dense, high),
  *   - the map-size index mapping to the wrong team-size tunable,
  *   - a resolver returning the wrong shape, so the lobby builds a broken
- *     MatchConfig (missing teamSize, or skirmish gaining a base type).
+ *     MatchConfig (missing teamSize, or skirmish gaining a team size).
  */
 
 import assert from "node:assert/strict";
@@ -45,16 +45,15 @@ describe("match tunables", () => {
 });
 
 describe("opinionatedSettings", () => {
-    it("resolves battle settings: team size by map, dense density, compound base", () => {
+    it("resolves battle settings: team size by map and dense density", () => {
         for (let i = 0; i < 3; i++) {
             const settings = opinionatedSettings("battle", i);
             assert.equal(settings.teamSize, battleTeamSize(i));
             assert.equal(settings.buildingDensity, matchTuning("battleDensity"));
-            assert.equal(settings.baseType, "compound");
         }
     });
 
-    it("resolves skirmish settings: density only, no team size or base", () => {
+    it("resolves skirmish settings: density only, no team size", () => {
         assert.deepEqual(opinionatedSettings("skirmish", 1), {
             buildingDensity: matchTuning("skirmishDensity"),
         });

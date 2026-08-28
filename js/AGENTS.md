@@ -88,13 +88,13 @@ The single source of truth for everything that varies:
 - `PLAYER_COLORS` — team colours in join order.
 - `ACTIONS` — the input action vocabulary (frozen).
 - `GAME_TYPES` — `skirmish` / `battle`: win condition, team set, bases flag,
-  allowed vehicles, and which `GAME_OPTIONS` each shows.
-- `GAME_OPTIONS` + `resolveSettings()` — the user-facing pre-game options
-  (today just map size) resolved to a flat settings object.
+  and allowed vehicles.
+- `MAP_SIZES` — the one user-facing setup choice (label + dimensions); its
+  index is the `mapSizeIndex` the lobby carries.
 - `MATCH_TUNABLES` + `opinionatedSettings(gameType, mapSizeIndex)` — the
-  opinionated team size / building density / base type derived from the game
-  type and map size (`js/config/match.js`); these are what the sandbox and
-  tuning tooling adjust, not what the player sees.
+  opinionated team size / building density derived from the game type and map
+  size (`js/config/match.js`); these are what the sandbox and tuning tooling
+  adjust, not what the player sees.
 - `VEHICLES` — per-vehicle stats, `swarm` identity, `targetPriority`, `armour`,
   and the interaction flags (`flies` / `soft` / `crushable` / `canCrush` /
   `hasSquad`) plus `hudGlyph` / `minimapShape`.
@@ -166,13 +166,14 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
 {
   gameType: "skirmish" | "battle",
   humans:   [ { device, color, darkColor, label, team } ],
-  settings: { mapSize, buildingDensity, baseType?, teamSize? },
+  settings: { mapSize, buildingDensity, teamSize? },
 }
 ```
 
-The lobby fills `buildingDensity` / `baseType` / `teamSize` from
+The lobby fills `buildingDensity` / `teamSize` from
 `opinionatedSettings(gameType, mapSizeIndex)` (`js/config/match.js`) rather
-than asking the player — only `mapSize` is user-facing.
+than asking the player — only `mapSize` is user-facing, and base type is
+always the compound shape (`js/map/compounds.js`).
 
 - `planFactions()` (`factions.js`) is the **pure** planner: given the game type
   and humans, it decides factions and bot-fill counts. `Game` materialises the
