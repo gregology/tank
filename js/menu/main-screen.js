@@ -45,7 +45,7 @@ export const mainScreen = {
 
         // Title
         ctx.font = 'bold 58px "Courier New", monospace';
-        ctx.fillStyle = "#cc3333";
+        ctx.fillStyle = "#cccccc";
         ctx.fillText("TANKED", cx, 130);
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#555";
