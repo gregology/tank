@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { Game } from "../js/game.js";
 import { Lobby } from "../js/lobby.js";
 
 describe("Lobby – players & teams", () => {
@@ -149,5 +150,16 @@ describe("Lobby – match resolution", () => {
         );
         const colours = new Set(match.humans.map((h) => h.color));
         assert.equal(colours.size, 3);
+    });
+
+    it("materialises the opinionated team size into a full match (24 per team on medium)", () => {
+        const lobby = new Lobby();
+        lobby.join({ id: "a" });
+        lobby.join({ id: "b" });
+        const game = new Game(lobby.buildMatch());
+        assert.equal(game.factions.length, 2);
+        assert.equal(game.factions[0].entities.length, 24);
+        assert.equal(game.factions[1].entities.length, 24);
+        assert.equal(game.allTanks.length, 48);
     });
 });
