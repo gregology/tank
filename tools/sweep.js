@@ -20,16 +20,19 @@
 import { availableParallelism } from "node:os";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { opinionatedSettings, SWARM, SWARM_TUNABLES } from "../js/config.js";
+import { MAP_SIZES, opinionatedSettings, SWARM, SWARM_TUNABLES } from "../js/config.js";
 import { mulberry32 } from "../js/rng.js";
 import { runMatch, summarize } from "./sim.js";
 
+/** Sweep time cap (seconds) per map size, aligned with MAP_SIZES order. */
+const SIZE_CAPS = [300, 420, 600];
+
 /** The tuning matrix: every map size at its opinionated team size. */
-export const SIZE_MATRIX = [
-    { map: 64, teamSize: opinionatedSettings("battle", 0).teamSize, cap: 300 },
-    { map: 128, teamSize: opinionatedSettings("battle", 1).teamSize, cap: 420 },
-    { map: 192, teamSize: opinionatedSettings("battle", 2).teamSize, cap: 600 },
-];
+export const SIZE_MATRIX = MAP_SIZES.map((size, index) => ({
+    map: size.w,
+    teamSize: opinionatedSettings("battle", index).teamSize,
+    cap: SIZE_CAPS[index],
+}));
 
 export const DEFAULT_GOALS = {
     decisive: 3,

@@ -87,8 +87,8 @@ The single source of truth for everything that varies:
 - `CONFIG` — flat constants (map size, speed, armour arcs, …).
 - `PLAYER_COLORS` — team colours in join order.
 - `ACTIONS` — the input action vocabulary (frozen).
-- `GAME_TYPES` — `skirmish` / `battle`: win condition, team set, bases flag,
-  and allowed vehicles.
+- `GAME_TYPES` — `skirmish` / `battle`: team set and allowed vehicles
+  (win condition and base presence live in the `js/modes.js` strategy).
 - `MAP_SIZES` — the one user-facing setup choice (label + dimensions); its
   index is the `mapSizeIndex` the lobby carries.
 - `MATCH_TUNABLES` + `opinionatedSettings(gameType, mapSizeIndex)` — the
@@ -175,9 +175,10 @@ The lobby fills `buildingDensity` / `teamSize` from
 than asking the player — only `mapSize` is user-facing, and base type is
 always the compound shape (`js/map/compounds.js`).
 
-- `planFactions()` (`factions.js`) is the **pure** planner: given the game type
-  and humans, it decides factions and bot-fill counts. `Game` materialises the
-  plan into `Tank` / `Camera` / `AIController` entities.
+- `planFactions()` (`factions.js`) is the **pure** planner: given the game type,
+  humans, and (for battle) the team size, it decides factions and bot-fill
+  counts. `Game` materialises the plan into `Tank` / `Camera` / `AIController`
+  entities.
 - `Game` owns the simulation: tanks, bullets, bases, win logic, scores. It
   exposes **uniform accessors** — `allTanks`, `humanTanks`, `bots` (as
   records), `factions`, `cameras`, `bases`, `baseStructures`,
@@ -198,7 +199,7 @@ always the compound shape (`js/map/compounds.js`).
   dispatched by `getVehicleBehaviour(tank.vehicleType)`); Skirmish-vs-Battle
   branching (spawn, win, scoring, labels) lives in the mode strategy
   (`js/modes.js`, `getMode(gameType)`). New logic belongs behind those seams,
-  not as new `if (vehicleType === …)` / `if (typeDef.bases)` branches here.
+  not as new `if (vehicleType === …)` / `if (gameType === …)` branches here.
 - The **event bus** (`game.on(event, fn)` / `game.emit(event, data)`) decouples
   cross-cutting concerns. The event names are the frozen `GAME_EVENTS`
   constants (`js/events.js`) with normalised payloads (`fire` → `{ source,
@@ -260,7 +261,7 @@ plain object with hooks for everything the modes do differently: `hasBases`,
 `afterSeparation` / `afterBullets`,
 `respawn`, `onKill`, `checkWin`, `factionLabel` / `winnerLabel`. The shared
 loop stays in `Game`. **A third mode = one `GAME_TYPES` entry + one strategy
-object — never more `if (typeDef.bases)` sprinkles.**
+object — never more `if (gameType === …)` sprinkles.**
 
 ### 7. Map + shared geometry API (`map.js` → `js/map/`)
 

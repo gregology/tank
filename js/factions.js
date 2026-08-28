@@ -1,10 +1,10 @@
 /**
  * Faction planning — the pure "who fights whom" resolution of a match.
  *
- * Given a game type, the human players with their chosen teams, and the
- * resolved settings, compute the faction plan: which factions exist, their
- * colours, and how many humans/bots each holds.  Game then materialises
- * that plan into Tank / Camera / AI entities.
+ * Given a game type, the human players with their chosen teams, and (for
+ * battle) the team size, compute the faction plan: which factions exist,
+ * their colours, and how many humans/bots each holds.  Game then
+ * materialises that plan into Tank / Camera / AI entities.
  *
  * Kept pure (no entities, no input, no rendering) so the bot-fill rules can
  * be unit-tested in isolation.
@@ -15,15 +15,14 @@ import { GAME_TYPES, MAX_PLAYERS, PLAYER_COLORS } from "./config.js";
 /**
  * @param {'skirmish'|'battle'} gameType
  * @param {{team:number}[]} humans  human players (team = faction id)
- * @param {object} settings  resolved settings (teamSize, …)
+ * @param {number} [teamSize]  battle team size (bots fill each team to this)
  * @returns {{id:number, color:string, darkColor:string, humanCount:number, botCount:number}[]}
  */
-export function planFactions(gameType, humans = [], settings = {}) {
+export function planFactions(gameType, humans = [], teamSize) {
     const def = GAME_TYPES[gameType] ?? GAME_TYPES.skirmish;
 
     if (def.teamSet === "two") {
         // Battle: fixed RED (1) vs BLUE (2), bots fill each to teamSize.
-        const teamSize = settings.teamSize ?? 5;
         return [1, 2].map((team) => {
             const humanCount = humans.filter((h) => h.team === team).length;
             const col = PLAYER_COLORS[team - 1];

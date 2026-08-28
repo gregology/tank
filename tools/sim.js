@@ -23,7 +23,7 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { opinionatedSettings, TILE_PROPS } from "../js/config.js";
+import { mapSizeIndexFor, opinionatedSettings, TILE_PROPS } from "../js/config.js";
 import { GAME_EVENTS } from "../js/events.js";
 import { Game } from "../js/game.js";
 
@@ -56,7 +56,7 @@ export const DEFAULTS = {
 export function runMatch(opts = {}) {
     const o = { ...DEFAULTS, ...opts };
     const dt = 1 / 60;
-    const opinionated = opinionatedSettings(o.type, mapIndexFor(o.map));
+    const opinionated = opinionatedSettings(o.type, mapSizeIndexFor(o.map));
 
     // Skirmish plans factions from humans only, so bot-vs-bot needs
     // passive stand-ins: humans on distinct teams whose device does
@@ -127,13 +127,6 @@ export function runMatch(opts = {}) {
         clustering: Object.fromEntries([...clusterSamples].map(([id, s]) => [id, s.length ? round3(mean(s)) : null])),
         deaths,
     };
-}
-
-/** Map size in tiles → map-size option index (0 small, 1 medium, 2 large). */
-function mapIndexFor(map) {
-    if (map <= 64) return 0;
-    if (map >= 192) return 2;
-    return 1;
 }
 
 /* ── metric internals ─────────────────────────────────────── */

@@ -43,7 +43,7 @@ describe("planFactions – Skirmish", () => {
 
 describe("planFactions – Battle", () => {
     it("fills each team to teamSize with bots", () => {
-        const factions = planFactions("battle", [{ team: 1 }, { team: 1 }], { teamSize: 5 });
+        const factions = planFactions("battle", [{ team: 1 }, { team: 1 }], 5);
         const red = factions.find((f) => f.id === 1);
         const blue = factions.find((f) => f.id === 2);
         assert.equal(red.humanCount, 2);
@@ -53,12 +53,12 @@ describe("planFactions – Battle", () => {
     });
 
     it("caps bot count at zero when humans exceed teamSize", () => {
-        const factions = planFactions("battle", [{ team: 1 }, { team: 1 }, { team: 1 }], { teamSize: 2 });
+        const factions = planFactions("battle", [{ team: 1 }, { team: 1 }, { team: 1 }], 2);
         assert.equal(factions.find((f) => f.id === 1).botCount, 0);
     });
 
     it("always produces the fixed RED and BLUE factions", () => {
-        const factions = planFactions("battle", [], { teamSize: 3 });
+        const factions = planFactions("battle", [], 3);
         assert.deepEqual(
             factions.map((f) => [f.id, f.color]),
             [

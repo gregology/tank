@@ -224,7 +224,7 @@ export class Game {
         this._structureMap = new Map(); // "gx,gy" → BaseStructure
         this._scores = new Map();
 
-        const factions = planFactions(this.gameType, this._humanPlan, this.settings).map((f) => ({
+        const factions = planFactions(this.gameType, this._humanPlan, this.settings.teamSize).map((f) => ({
             ...f,
             entities: [],
         }));

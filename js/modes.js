@@ -4,8 +4,8 @@
  * A mode is a plain strategy object with hooks for everything the two
  * modes do differently; the shared simulation loop (movement, firing,
  * bullets, separation) stays in Game.  GAME_TYPES declares *what* each
- * mode is (win, teamSet, bases, vehicles); these objects implement *how*
- * it behaves at runtime.
+ * mode is (teamSet, vehicles); these objects implement *how* it behaves
+ * at runtime.
  *
  * Hooks (all take the Game as the first argument):
  *   hasBases         whether compounds/towers/HQ exist
