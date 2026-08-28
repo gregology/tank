@@ -131,6 +131,13 @@ export function fakeCtx() {
             get(target, prop) {
                 if (typeof prop === "symbol") return undefined;
                 if (prop in target) return target[prop];
+                if (prop === "measureText") {
+                    return (text) => {
+                        calls.push(prop);
+                        const px = Number.parseFloat(target.font) || 10;
+                        return { width: String(text).length * px * 0.6 };
+                    };
+                }
                 const record = () => {
                     calls.push(prop);
                 };
