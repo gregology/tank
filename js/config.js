@@ -13,6 +13,7 @@
 export * from "./config/actions.js";
 export * from "./config/biomes.js";
 export * from "./config/constants.js";
+export * from "./config/match.js";
 export * from "./config/options.js";
 export * from "./config/players.js";
 export * from "./config/structures.js";

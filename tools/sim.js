@@ -23,7 +23,7 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { TILE_PROPS } from "../js/config.js";
+import { opinionatedSettings, TILE_PROPS } from "../js/config.js";
 import { GAME_EVENTS } from "../js/events.js";
 import { Game } from "../js/game.js";
 
@@ -40,23 +40,23 @@ export const DEFAULTS = {
     type: "battle",
     seed: 1,
     map: 128,
-    teamSize: 5,
-    baseType: "compound",
-    density: 1.0,
     cap: 300,
 };
 
 /**
  * Run one seeded match to completion (or the time cap) and collect metrics.
  *
- * @param {object} opts  see DEFAULTS (seed, type, map, teamSize, baseType,
- *                       density, cap) plus `tuning`: per-match swarm
- *                       parameter overrides (e.g. { EXPLORE_RADIUS: 22 })
+ * @param {object} opts  see DEFAULTS (seed, type, map, cap) plus explicit
+ *                       overrides (teamSize, baseType, density) and
+ *                       `tuning`: per-match swarm parameter overrides.
+ *                       Team size / density / base type default to the
+ *                       opinionated match defaults (js/config/match.js).
  * @returns {object} plain-JSON metrics for the match
  */
 export function runMatch(opts = {}) {
     const o = { ...DEFAULTS, ...opts };
     const dt = 1 / 60;
+    const opinionated = opinionatedSettings(o.type, mapIndexFor(o.map));
 
     // Skirmish plans factions from humans only, so bot-vs-bot needs
     // passive stand-ins: humans on distinct teams whose device does
@@ -76,9 +76,9 @@ export function runMatch(opts = {}) {
         humans,
         settings: {
             mapSize: { w: o.map, h: o.map },
-            buildingDensity: o.density,
-            baseType: o.baseType,
-            teamSize: o.teamSize,
+            buildingDensity: o.density ?? opinionated.buildingDensity,
+            baseType: o.baseType ?? opinionated.baseType,
+            teamSize: o.teamSize ?? opinionated.teamSize,
             seed: o.seed,
             tuning: o.tuning,
         },
@@ -128,6 +128,13 @@ export function runMatch(opts = {}) {
         clustering: Object.fromEntries([...clusterSamples].map(([id, s]) => [id, s.length ? round3(mean(s)) : null])),
         deaths,
     };
+}
+
+/** Map size in tiles → map-size option index (0 small, 1 medium, 2 large). */
+function mapIndexFor(map) {
+    if (map <= 64) return 0;
+    if (map >= 192) return 2;
+    return 1;
 }
 
 /* ── metric internals ─────────────────────────────────────── */

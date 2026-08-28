@@ -29,7 +29,12 @@ Choose from the start menu:
 | Mode | Description |
 |------|-------------|
 | **Skirmish** | Kill race to 10. Up to 4 players; defaults to a free-for-all (each player a different colour) but players can team up. One player faces a single bot. |
-| **Battle** | Base objective: destroy the enemy HQ. Two teams (RED vs BLUE), all vehicle types; bots fill each team to the chosen team size. |
+| **Battle** | Base objective: destroy the enemy HQ. Two teams (RED vs BLUE), all vehicle types; each team is 16 / 24 / 32 units on small / medium / large maps, and bots fill in the rest. |
+
+**Battle is the default.** Match setup is deliberately opinionated — you only
+pick the map size. Team size (16 / 24 / 32 by map size), building density
+(dense in Battle, high in Skirmish), and the compound base type are fixed per
+mode and tuned in `sandbox.html`, not by players.
 
 ## Controls
 

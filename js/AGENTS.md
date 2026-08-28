@@ -89,8 +89,12 @@ The single source of truth for everything that varies:
 - `ACTIONS` — the input action vocabulary (frozen).
 - `GAME_TYPES` — `skirmish` / `battle`: win condition, team set, bases flag,
   allowed vehicles, and which `GAME_OPTIONS` each shows.
-- `GAME_OPTIONS` + `resolveSettings()` — pre-game options resolved to a flat
-  settings object.
+- `GAME_OPTIONS` + `resolveSettings()` — the user-facing pre-game options
+  (today just map size) resolved to a flat settings object.
+- `MATCH_TUNABLES` + `opinionatedSettings(gameType, mapSizeIndex)` — the
+  opinionated team size / building density / base type derived from the game
+  type and map size (`js/config/match.js`); these are what the sandbox and
+  tuning tooling adjust, not what the player sees.
 - `VEHICLES` — per-vehicle stats, `swarm` identity, `targetPriority`, `armour`,
   and the interaction flags (`flies` / `soft` / `crushable` / `canCrush` /
   `hasSquad`) plus `hudGlyph` / `minimapShape`.
@@ -165,6 +169,10 @@ A match is a `MatchConfig` (built by the lobby in `menu.js`):
   settings: { mapSize, buildingDensity, baseType?, teamSize? },
 }
 ```
+
+The lobby fills `buildingDensity` / `baseType` / `teamSize` from
+`opinionatedSettings(gameType, mapSizeIndex)` (`js/config/match.js`) rather
+than asking the player — only `mapSize` is user-facing.
 
 - `planFactions()` (`factions.js`) is the **pure** planner: given the game type
   and humans, it decides factions and bot-fill counts. `Game` materialises the

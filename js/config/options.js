@@ -1,12 +1,17 @@
 /**
- * Game types and pre-game options.
+ * Game types and the pre-game map-size option.
  *
  * GAME_TYPES       — Skirmish / Battle declarations
- * GAME_OPTIONS     — master list of every option, defined once with
- *                    type, labels, and defaults
+ * GAME_OPTIONS     — master list of every user-facing option, defined once
+ *                    with its choices and default
  * GAME_TYPES[].options — which options each game type shows
  * getDefaultOptionValues() / resolveSettings() — defaults + overrides
  *                    merged into a flat settings object
+ *
+ * Team size, building density, and base type are deliberately NOT options:
+ * they are opinionated defaults derived from the game type and map size in
+ * `js/config/match.js` (see `opinionatedSettings`), so the player never sees
+ * or changes them — the sandbox tunes them instead.
  */
 
 /**
@@ -34,7 +39,7 @@ export const GAME_TYPES = {
         teamSet: "players",
         bases: false,
         vehicles: ["tank"],
-        options: ["mapSize", "buildingDensity"],
+        options: ["mapSize"],
         defaults: { mapSize: 0 },
     },
     battle: {
@@ -44,24 +49,18 @@ export const GAME_TYPES = {
         teamSet: "two",
         bases: true,
         vehicles: ["tank", "ifv", "drone", "spg", "squad"],
-        options: ["mapSize", "buildingDensity", "baseType", "teamSize"],
+        options: ["mapSize"],
     },
 };
 
 /** The ordered game-type list for the lobby toggle (and any UI that lists modes). */
-export const GAME_TYPE_ORDER = ["skirmish", "battle"];
+export const GAME_TYPE_ORDER = ["battle", "skirmish"];
 
 /**
- * Available game options.  Each defines its UI type, labels, allowed
- * values, and a global default.
- *
- * 'enum' type:
- *   choices[]       — { label, value } pairs shown in the UI
- *   defaultIndex    — index into choices[] used when no override exists
- *
- * 'range' type:
- *   min, max, step  — numeric range
- *   default         — initial value when no override exists
+ * Available game options.  Each defines its UI label, allowed choices, and a
+ * global default.  Today the only user-facing option is map size — the rest
+ * of a match's shape (team size, building density, base type) is opinionated
+ * and lives in `js/config/match.js`.
  */
 export const GAME_OPTIONS = [
     {
@@ -75,37 +74,6 @@ export const GAME_OPTIONS = [
         ],
         defaultIndex: 1,
     },
-    {
-        key: "buildingDensity",
-        label: "BUILDING DENSITY",
-        type: "enum",
-        choices: [
-            { label: "Sparse", value: 0.5 },
-            { label: "Normal", value: 1.0 },
-            { label: "Dense", value: 1.5 },
-        ],
-        defaultIndex: 1,
-    },
-    {
-        key: "baseType",
-        label: "BASE TYPE",
-        type: "enum",
-        choices: [
-            { label: "HQ Only", value: "hq_only" },
-            { label: "Compound", value: "compound" },
-        ],
-        defaultIndex: 1,
-    },
-    {
-        key: "teamSize",
-        label: "TEAM SIZE",
-        type: "range",
-        min: 2,
-        max: 32,
-        maxByMapSize: [16, 24, 32],
-        step: 1,
-        default: 5,
-    },
 ];
 
 /** Look up an option definition by key. */
@@ -118,9 +86,7 @@ function optionDef(key) {
  *   1. global GAME_OPTIONS defaults
  *   2. per-type GAME_TYPES[gameType].defaults overrides
  *
- * Returns a Map<string, number> where:
- *   enum  options → current choice index
- *   range options → current numeric value
+ * Returns a Map<string, number> mapping each option key to its choice index.
  */
 export function getDefaultOptionValues(gameType) {
     const def = GAME_TYPES[gameType];
@@ -131,42 +97,23 @@ export function getDefaultOptionValues(gameType) {
     for (const key of keys) {
         const opt = optionDef(key);
         if (!opt) continue;
-        if (key in typeDefaults) {
-            values.set(key, typeDefaults[key]);
-        } else if (opt.type === "enum") {
-            values.set(key, opt.defaultIndex);
-        } else {
-            values.set(key, opt.default);
-        }
+        values.set(key, key in typeDefaults ? typeDefaults[key] : opt.defaultIndex);
     }
     return values;
 }
 
 /**
- * Resolve a Map<string, index/value> into a flat settings object
- * with concrete gameplay values.
+ * Resolve a Map<string, choice-index> into a flat settings object with
+ * concrete gameplay values.
  *
  * Example output:
- *   { mapSize: { w: 100, h: 100 }, buildingDensity: 1.0,
- *     baseType: 'compound', teamSize: 5 }
+ *   { mapSize: { w: 128, h: 128 } }
  */
 export function resolveSettings(optionValues) {
     const settings = {};
     for (const [key, val] of optionValues) {
         const opt = optionDef(key);
-        if (!opt) continue;
-        if (opt.type === "enum") {
-            settings[key] = opt.choices[val].value;
-        } else {
-            settings[key] = val;
-        }
-    }
-    // Clamp teamSize to the per-map-size maximum
-    const tsOpt = optionDef("teamSize");
-    if (tsOpt?.maxByMapSize && settings.teamSize != null) {
-        const msIdx = optionValues.get("mapSize") ?? 0;
-        const cap = tsOpt.maxByMapSize[msIdx] ?? tsOpt.max;
-        if (settings.teamSize > cap) settings.teamSize = cap;
+        if (opt) settings[key] = opt.choices[val].value;
     }
     return settings;
 }

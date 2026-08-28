@@ -181,13 +181,13 @@ describe("Menu – lobby", () => {
         const kb = makeDevice();
         kb.press(ACTIONS.confirm);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "skirmish");
+        assert.equal(menu.lobby.gameType, "battle");
         kb.press(ACTIONS.right);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "battle");
+        assert.equal(menu.lobby.gameType, "skirmish");
         kb.press(ACTIONS.left);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "skirmish");
+        assert.equal(menu.lobby.gameType, "battle");
     });
 
     it("host changing an option row updates optionValues", () => {
@@ -226,7 +226,7 @@ describe("Menu – lobby", () => {
 
         assert.equal(menu.confirmed, true);
         assert.ok(menu.match, "match built");
-        assert.equal(menu.match.gameType, "skirmish");
+        assert.equal(menu.match.gameType, "battle");
         assert.equal(menu.match.humans.length, 2);
         assert.ok(menu.match.settings, "settings resolved");
     });

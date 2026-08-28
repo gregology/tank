@@ -13,6 +13,7 @@ import {
     GAME_TYPES,
     getDefaultOptionValues,
     MAX_PLAYERS,
+    opinionatedSettings,
     PLAYER_COLORS,
     resolveSettings,
 } from "./config.js";
@@ -20,7 +21,7 @@ import {
 export class Lobby {
     constructor() {
         /** @type {'skirmish' | 'battle'} */
-        this.gameType = "skirmish";
+        this.gameType = "battle";
         /** @type {{device: object, team: number}[]} */
         this.players = [];
         /** Settings-row cursor index (host). */
@@ -99,40 +100,16 @@ export class Lobby {
         const opt = GAME_OPTIONS.find((o) => o.key === row.key);
         if (!opt) return;
         const cur = this.optionValues.get(row.key);
-        if (opt.type === "enum") {
-            const n = opt.choices.length;
-            const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
-            this.optionValues.set(row.key, next);
-            this.clampDependent();
-        } else if (opt.type === "range") {
-            const effMax = this.effectiveMax(opt);
-            const delta = right ? opt.step : -opt.step;
-            this.optionValues.set(row.key, Math.min(effMax, Math.max(opt.min, cur + delta)));
-        }
-    }
-
-    effectiveMax(opt) {
-        if (opt.maxByMapSize) {
-            const msIdx = this.optionValues.get("mapSize") ?? 0;
-            return opt.maxByMapSize[msIdx] ?? opt.max;
-        }
-        return opt.max;
-    }
-
-    clampDependent() {
-        for (const k of this.optionValues.keys()) {
-            const o = GAME_OPTIONS.find((d) => d.key === k);
-            if (!o || o.type !== "range" || !o.maxByMapSize) continue;
-            const cur = this.optionValues.get(k);
-            const effMax = this.effectiveMax(o);
-            if (cur > effMax) this.optionValues.set(k, effMax);
-        }
+        const n = opt.choices.length;
+        const next = right ? (cur + 1) % n : (cur - 1 + n) % n;
+        this.optionValues.set(row.key, next);
     }
 
     /* ── resolution ───────────────────────────────────────── */
 
     /** Resolve the lobby into a MatchConfig for Game. */
     buildMatch() {
+        const mapSizeIndex = this.optionValues.get("mapSize") ?? 0;
         return {
             gameType: this.gameType,
             humans: this.players.map((p, i) => {
@@ -145,7 +122,10 @@ export class Lobby {
                     team: p.team,
                 };
             }),
-            settings: resolveSettings(this.optionValues),
+            settings: {
+                ...resolveSettings(this.optionValues),
+                ...opinionatedSettings(this.gameType, mapSizeIndex),
+            },
         };
     }
 }

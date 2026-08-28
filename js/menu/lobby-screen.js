@@ -175,9 +175,7 @@ export const lobbyScreen = {
             } else {
                 const opt = GAME_OPTIONS.find((o) => o.key === row.key);
                 label = opt?.label ?? row.key;
-                if (opt?.type === "enum") value = opt.choices[lobby.optionValues.get(row.key)].label;
-                else if (opt?.type === "range")
-                    value = `${lobby.optionValues.get(row.key)} / ${lobby.effectiveMax(opt)}`;
+                value = opt?.choices[lobby.optionValues.get(row.key)]?.label ?? "";
             }
 
             ctx.textAlign = "left";

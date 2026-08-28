@@ -20,15 +20,15 @@
 import { availableParallelism } from "node:os";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { SWARM, SWARM_TUNABLES } from "../js/config.js";
+import { opinionatedSettings, SWARM, SWARM_TUNABLES } from "../js/config.js";
 import { mulberry32 } from "../js/rng.js";
 import { runMatch, summarize } from "./sim.js";
 
-/** The tuning matrix: every map size at its maximum team size. */
+/** The tuning matrix: every map size at its opinionated team size. */
 export const SIZE_MATRIX = [
-    { map: 64, teamSize: 16, cap: 300 },
-    { map: 128, teamSize: 24, cap: 420 },
-    { map: 192, teamSize: 32, cap: 600 },
+    { map: 64, teamSize: opinionatedSettings("battle", 0).teamSize, cap: 300 },
+    { map: 128, teamSize: opinionatedSettings("battle", 1).teamSize, cap: 420 },
+    { map: 192, teamSize: opinionatedSettings("battle", 2).teamSize, cap: 600 },
 ];
 
 export const DEFAULT_GOALS = {

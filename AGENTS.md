@@ -24,10 +24,10 @@ Prefer a seam you can grow *through* — an interface, a data table, a strategy,
 a component — over one more `if (type === "x")` branch.
 
 - The project already leans data-driven: `VEHICLES`, `BASE_STRUCTURES`,
-  `SQUAD_MEMBERS`, `GAME_TYPES`, `GAME_OPTIONS` in `js/config.js` are tables,
-  not code. A new vehicle / role / mode / option should usually be a **new
-  entry in a table** or a **new object behind an existing interface**, not a
-  new `switch` arm.
+  `SQUAD_MEMBERS`, `GAME_TYPES`, `GAME_OPTIONS`, `MATCH_TUNABLES` in
+  `js/config.js` are tables, not code. A new vehicle / role / mode / option
+  should usually be a **new entry in a table** or a **new object behind an
+  existing interface**, not a new `switch` arm.
 - Before locking a shape, ask: *"How would I add an N+1th of this?"* If the
   honest answer is "touch six files", the abstraction is not extensible enough
   and should be refactored *now*, not worked around.
@@ -91,6 +91,47 @@ enough. Rename, extract a function, or simplify — don't annotate.
 - A comment that restates the code is actively harmful: it doubles the reading
   surface and can rot out of sync. Use comments sparingly, and only when they
   add information the code itself cannot carry.
+
+---
+
+## The implementation discipline: make the change easy, then make the easy change
+
+Every non-trivial feature is built in three moves, in this order. This is
+normative, and it applies to **agents and humans alike**:
+
+1. **Decide on the optimal abstraction first.** Before writing feature code,
+   name the load-bearing seam the feature should *extend* — a data table, a
+   strategy object, a component, a registry, a pipeline stage, a capability
+   getter. Ask the N+1th question: *"How would I add one more of this?"* If
+   the honest answer is "touch six files", the seam is wrong and the
+   pre-refactor below fixes it.
+
+2. **Pre-refactor to make the change easy.** Land the seam itself as a
+   behaviour-preserving refactor — *before* the feature. This is often the
+   harder step, and it is the point: pay the hard cost once, where the diff
+   is a clean "same behaviour, new shape", not buried inside a feature diff
+   that also changes behaviour. Tests stay green throughout.
+
+3. **Then make the easy change.** With the seam in place, the feature becomes
+   a small, almost mechanical change through it: a new table entry, a new
+   strategy object, a new pipeline stage. It should read as "one more of the
+   thing", not as a parallel implementation.
+
+The warning in Kent Beck's phrasing — *"make the change easy (warning: this
+may be hard)"* — is the point. Skipping step 2 and forcing the feature in
+directly produces exactly what principles 1 and 3 forbid: one-off code,
+type branches, and a second live way to do one thing.
+
+Apply the same taste test as principle 3's converse: a pre-refactor is
+justified when variation is *real* — a genuine N+1th is coming — not to
+satisfy an abstract notion of completeness. If the feature is truly one-off,
+the easy change is the only change.
+
+This is how this repository has actually been built. The refactor rounds that
+split the god objects and established the data tables, registries, pipeline
+stages, and capability getters were step 2; the rivers, bridges, fields,
+roads, and villages that followed were step 3 — each a new stage or table
+entry, not a new parallel code path.
 
 ---
 
@@ -159,9 +200,9 @@ around them. (Details live in `js/AGENTS.md`.)
 - **Data-driven tables in `config.js`** — `TILES` + `TILE_PROPS` + `TILE_VISUALS`
   (per-tile gameplay + visual semantics), `TARGET_TYPES` +
   `TARGET_CLASS_DEFAULTS`, `CONFIG`, `PLAYER_COLORS`, `ACTIONS`, `GAME_TYPES`,
-  `GAME_OPTIONS`, `VEHICLES`, `SQUAD_MEMBERS`, `SQUAD_ATTENTION_ORDER`,
-  `BASE_STRUCTURES`. Gameplay values that vary belong here, not hardcoded in
-  logic files.
+  `GAME_OPTIONS`, `MATCH_TUNABLES` (+ `opinionatedSettings`), `VEHICLES`,
+  `SQUAD_MEMBERS`, `SQUAD_ATTENTION_ORDER`, `BASE_STRUCTURES`. Gameplay values
+  that vary belong here, not hardcoded in logic files.
 - **Entity hierarchy + capability getters** (`entity.js`) — `GameEntity` is the
   root; `Tank` and `BaseStructure` extend it. Capability getters
   (`targetable`, `collidable`, `mobile`, `isShooter`, `isVehicle`,
