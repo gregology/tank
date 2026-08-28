@@ -1,4 +1,4 @@
-# Tank Battle
+# Tanked
 
 A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step.
 

@@ -1,4 +1,4 @@
-# AGENTS.md — Tank Battle
+# AGENTS.md — Tanked
 
 Canonical guide for anyone (human or agent) working in this repository. It
 describes **how we design abstractions, how we write code, and how we test**.
