@@ -49,7 +49,7 @@ export const VEHICLE_INFO = [
     {
         type: "drone",
         name: "DRONE",
-        tagline: "FPV Kamikaze Quadcopter",
+        tagline: "Kamikaze Quadcopter",
         color: "#44bb44",
         dark: "#228822",
         desc: [
