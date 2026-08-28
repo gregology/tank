@@ -3,7 +3,7 @@
  * start) and its rendering.
  */
 
-import { ACTIONS, GAME_OPTIONS, GAME_TYPE_ORDER, GAME_TYPES, MAX_PLAYERS, PLAYER_COLORS } from "../config.js";
+import { ACTIONS, GAME_TYPE_ORDER, GAME_TYPES, MAP_SIZES, MAX_PLAYERS, PLAYER_COLORS } from "../config.js";
 import { roundedRect } from "../render/canvas-utils.js";
 import { cursorBar, drawGrid } from "./background.js";
 import { anyPressed, joinCandidates } from "./input.js";
@@ -173,11 +173,8 @@ export const lobbyScreen = {
                 label = "";
                 value = "START";
             } else {
-                const opt = GAME_OPTIONS.find((o) => o.key === row.key);
-                label = opt?.label ?? row.key;
-                if (opt?.type === "enum") value = opt.choices[lobby.optionValues.get(row.key)].label;
-                else if (opt?.type === "range")
-                    value = `${lobby.optionValues.get(row.key)} / ${lobby.effectiveMax(opt)}`;
+                label = "MAP SIZE";
+                value = MAP_SIZES[lobby.mapSizeIndex].label;
             }
 
             ctx.textAlign = "left";

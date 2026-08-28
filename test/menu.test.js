@@ -181,28 +181,27 @@ describe("Menu – lobby", () => {
         const kb = makeDevice();
         kb.press(ACTIONS.confirm);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "skirmish");
+        assert.equal(menu.lobby.gameType, "battle");
         kb.press(ACTIONS.right);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "battle");
+        assert.equal(menu.lobby.gameType, "skirmish");
         kb.press(ACTIONS.left);
         menu.update(0.016, input(kb), spyAudio());
-        assert.equal(menu.lobby.gameType, "skirmish");
+        assert.equal(menu.lobby.gameType, "battle");
     });
 
-    it("host changing an option row updates optionValues", () => {
+    it("host changing the map size row cycles the map size", () => {
         const menu = new Menu();
         const kb = makeDevice();
         kb.press(ACTIONS.confirm);
         menu.update(0.016, input(kb), spyAudio());
         kb.press(ACTIONS.down); // cursor → mapSize
         menu.update(0.016, input(kb), spyAudio());
-        const rows = menu.lobby.rows();
-        const before = menu.lobby.optionValues.get("mapSize");
+        const before = menu.lobby.mapSizeIndex;
         kb.press(ACTIONS.right);
         menu.update(0.016, input(kb), spyAudio());
-        assert.notEqual(menu.lobby.optionValues.get("mapSize"), before);
-        assert.equal(rows[menu.lobby.cursor].key, "mapSize");
+        assert.notEqual(menu.lobby.mapSizeIndex, before);
+        assert.equal(menu.lobby.rows()[menu.lobby.cursor].type, "mapSize");
     });
 
     it("host confirming the start row builds a match", () => {
@@ -226,7 +225,7 @@ describe("Menu – lobby", () => {
 
         assert.equal(menu.confirmed, true);
         assert.ok(menu.match, "match built");
-        assert.equal(menu.match.gameType, "skirmish");
+        assert.equal(menu.match.gameType, "battle");
         assert.equal(menu.match.humans.length, 2);
         assert.ok(menu.match.settings, "settings resolved");
     });

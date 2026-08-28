@@ -23,7 +23,7 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { TILE_PROPS } from "../js/config.js";
+import { mapSizeIndexFor, opinionatedSettings, TILE_PROPS } from "../js/config.js";
 import { GAME_EVENTS } from "../js/events.js";
 import { Game } from "../js/game.js";
 
@@ -40,23 +40,23 @@ export const DEFAULTS = {
     type: "battle",
     seed: 1,
     map: 128,
-    teamSize: 5,
-    baseType: "compound",
-    density: 1.0,
     cap: 300,
 };
 
 /**
  * Run one seeded match to completion (or the time cap) and collect metrics.
  *
- * @param {object} opts  see DEFAULTS (seed, type, map, teamSize, baseType,
- *                       density, cap) plus `tuning`: per-match swarm
- *                       parameter overrides (e.g. { EXPLORE_RADIUS: 22 })
+ * @param {object} opts  see DEFAULTS (seed, type, map, cap) plus explicit
+ *                       overrides (teamSize, density) and `tuning`:
+ *                       per-match swarm parameter overrides.  Team size and
+ *                       density default to the opinionated match defaults
+ *                       (js/config/match.js).
  * @returns {object} plain-JSON metrics for the match
  */
 export function runMatch(opts = {}) {
     const o = { ...DEFAULTS, ...opts };
     const dt = 1 / 60;
+    const opinionated = opinionatedSettings(o.type, mapSizeIndexFor(o.map));
 
     // Skirmish plans factions from humans only, so bot-vs-bot needs
     // passive stand-ins: humans on distinct teams whose device does
@@ -76,9 +76,8 @@ export function runMatch(opts = {}) {
         humans,
         settings: {
             mapSize: { w: o.map, h: o.map },
-            buildingDensity: o.density,
-            baseType: o.baseType,
-            teamSize: o.teamSize,
+            buildingDensity: o.density ?? opinionated.buildingDensity,
+            teamSize: o.teamSize ?? opinionated.teamSize,
             seed: o.seed,
             tuning: o.tuning,
         },
@@ -257,7 +256,7 @@ function parseArgs(argv) {
         seeds = [Number(opts.seed)];
     }
     const matchOpts = {};
-    for (const k of ["type", "baseType"]) if (opts[k]) matchOpts[k] = opts[k];
+    if (opts.type) matchOpts.type = opts.type;
     for (const k of ["map", "teamSize", "density", "cap", "passive"]) if (opts[k]) matchOpts[k] = Number(opts[k]);
     if (opts.tuning) {
         // --tuning KEY=VALUE,KEY=VALUE — per-match swarm overrides

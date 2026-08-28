@@ -9,6 +9,7 @@
  * All DOM access lives here; view/panel stay testable without a browser.
  */
 
+import { DENSITY_KEYS, opinionatedSettings, tunableBounds } from "../config.js";
 import { Game } from "../game.js";
 import { applyTuning, resetTuning, sliderSpecs, teamSizeRange } from "./panel.js";
 import { drawSandbox } from "./view.js";
@@ -23,6 +24,7 @@ export function start(doc) {
         mapSize: doc.getElementById("mapSize"),
         teamSize: doc.getElementById("teamSize"),
         gameType: doc.getElementById("gameType"),
+        density: doc.getElementById("density"),
         field: doc.getElementById("field"),
         faction: doc.getElementById("faction"),
         speed: doc.getElementById("speed"),
@@ -44,8 +46,7 @@ export function start(doc) {
             humans: [],
             settings: {
                 mapSize: { w: size, h: size },
-                buildingDensity: 1.0,
-                baseType: "compound",
+                buildingDensity: Number(els.density.value),
                 teamSize: Number(els.teamSize.value),
                 seed: Number(els.seed.value) || 1,
             },
@@ -64,6 +65,15 @@ export function start(doc) {
             els.teamSize.append(option);
         }
         els.teamSize.value = String(Math.min(Math.max(current, min), max));
+    }
+
+    /** Clamp the density input to the tunables and default it per mode. */
+    function syncDensity() {
+        const { min, max } = tunableBounds(DENSITY_KEYS);
+        els.density.min = min;
+        els.density.max = max;
+        els.density.step = 0.1;
+        els.density.value = String(opinionatedSettings(els.gameType.value, els.mapSize.selectedIndex).buildingDensity);
     }
 
     function buildSliders() {
@@ -127,12 +137,14 @@ export function start(doc) {
 
     els.newMatch.addEventListener("click", newMatch);
     els.mapSize.addEventListener("change", rebuildTeamSizes);
+    els.gameType.addEventListener("change", syncDensity);
     els.pause.addEventListener("click", () => {
         paused = !paused;
         els.pause.textContent = paused ? "Resume" : "Pause";
     });
 
     rebuildTeamSizes();
+    syncDensity();
     buildSliders();
     newMatch();
     requestAnimationFrame(frame);

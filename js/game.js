@@ -7,7 +7,7 @@
  *   {
  *     gameType: "skirmish" | "battle",   // rules from GAME_TYPES
  *     humans: [ { device, color, darkColor, label, team } ],
- *     settings: { mapSize, buildingDensity, baseType?, teamSize? },
+ *     settings: { mapSize, buildingDensity, teamSize? },
  *   }
  *
  * `team` is a faction id (1..MAX_PLAYERS).  Game resolves factions from
@@ -224,7 +224,7 @@ export class Game {
         this._structureMap = new Map(); // "gx,gy" → BaseStructure
         this._scores = new Map();
 
-        const factions = planFactions(this.gameType, this._humanPlan, this.settings).map((f) => ({
+        const factions = planFactions(this.gameType, this._humanPlan, this.settings.teamSize).map((f) => ({
             ...f,
             entities: [],
         }));

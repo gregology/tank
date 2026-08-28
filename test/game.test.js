@@ -1062,7 +1062,6 @@ const battleConfig = (humans, settings = {}) => ({
     settings: {
         mapSize: { w: 64, h: 64 },
         buildingDensity: 0,
-        baseType: "compound",
         teamSize: 1,
         ...settings,
     },

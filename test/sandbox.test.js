@@ -24,7 +24,7 @@ function seededMatch() {
     return new Game({
         gameType: "battle",
         humans: [],
-        settings: { mapSize: { w: 64, h: 64 }, buildingDensity: 0.5, baseType: "compound", teamSize: 3, seed: 3 },
+        settings: { mapSize: { w: 64, h: 64 }, buildingDensity: 0.5, teamSize: 3, seed: 3 },
     });
 }
 
@@ -54,13 +54,14 @@ describe("sandbox panel", () => {
         assert.equal(game.tuning.SIGHT_RANGE, SWARM.SIGHT_RANGE);
     });
 
-    it("team sizes come from GAME_OPTIONS caps per map size", () => {
+    it("team sizes default to the opinionated per-map values, within a shared range", () => {
         // Bug caught: the sandbox hardcoded a max of 8 while the game
-        // allows 16/24/32 on small/medium/large maps.
-        assert.equal(teamSizeRange(0).max, 16, "64² cap");
-        assert.equal(teamSizeRange(1).max, 24, "128² cap");
-        assert.equal(teamSizeRange(2).max, 32, "192² cap");
-        assert.equal(teamSizeRange(1).min, 2);
+        // defaults to 16/24/32 on small/medium/large maps.
+        assert.equal(teamSizeRange(0).defaultValue, 16, "64² default");
+        assert.equal(teamSizeRange(1).defaultValue, 24, "128² default");
+        assert.equal(teamSizeRange(2).defaultValue, 32, "192² default");
+        assert.equal(teamSizeRange(0).min, 2);
+        assert.equal(teamSizeRange(0).max, 32);
     });
 });
 
