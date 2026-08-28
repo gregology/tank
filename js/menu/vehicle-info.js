@@ -53,9 +53,9 @@ export const VEHICLE_INFO = [
         color: "#44bb44",
         dark: "#228822",
         desc: [
-            "Extremely fast FPV drone that flies",
-            "over ALL terrain including water,",
-            "hills, rocks, and buildings.",
+            "Extremely fast first-person-view drone",
+            "that flies over ALL terrain including",
+            "water, hills, rocks, and buildings.",
             "",
             "No gun \u2014 press FIRE to detonate!",
             "Deals area-of-effect blast damage",
@@ -91,9 +91,9 @@ export const VEHICLE_INFO = [
         desc: [
             "Five-man squad that fights on its own.",
             "Each member auto-fires at its target:",
-            " \u2022 RPG        \u2192 vehicles",
-            " \u2022 Shotgun    \u2192 drones",
-            " \u2022 Rifles/MG  \u2192 enemy squads",
+            " \u2022 Rocket-propelled grenade \u2192 vehicles",
+            " \u2022 Shotgun                  \u2192 drones",
+            " \u2022 Rifles / machine guns    \u2192 enemy squads",
             "",
             "Members drop as the squad takes hits.",
             "FIRE to dig in; buildings give cover.",
@@ -134,10 +134,10 @@ export function getStatValue(type, key) {
 export function vehicleStats(type) {
     const v = VEHICLES[type];
     return {
-        SPD: v.speed,
-        ARM: v.displayArmour ?? 1,
-        DMG: v.displayDmg,
-        ROF: v.displayRoF,
-        TUR: v.turret === "independent" ? "Yes" : "No",
+        SPEED: v.speed,
+        ARMOUR: v.displayArmour ?? 1,
+        DAMAGE: v.displayDmg,
+        "RATE OF FIRE": v.displayRoF,
+        TURRET: v.turret === "independent" ? "Yes" : "No",
     };
 }
