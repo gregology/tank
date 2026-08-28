@@ -1,5 +1,5 @@
 {
-  "name": "tank-battle",
+  "name": "tanked",
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
