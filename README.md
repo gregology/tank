@@ -1,4 +1,4 @@
-# Tank Battle
+# Tanked
 
 A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step.
 
@@ -29,7 +29,7 @@ Choose from the start menu:
 | Mode | Description |
 |------|-------------|
 | **Skirmish** | Kill race to 10. Up to 4 players; defaults to a free-for-all (each player a different colour) but players can team up. One player faces a single bot. |
-| **Battle** | Base objective: destroy the enemy HQ. Two teams (RED vs BLUE), all vehicle types; each team is 16 / 24 / 32 units on small / medium / large maps, and bots fill in the rest. |
+| **Battle** | Base objective: destroy the enemy headquarters. Two teams (RED vs BLUE), all vehicle types; each team is 16 / 24 / 32 units on small / medium / large maps, and bots fill in the rest. |
 
 **Battle is the default.** Match setup is deliberately opinionated — you only
 pick the map size. Team size (16 / 24 / 32 by map size), building density
@@ -84,7 +84,7 @@ Keyboard and gamepads can be used at the same time (e.g. one player on the keybo
   - **Second hit from any direction** — destroyed
 - Damaged tanks trail **smoke** and show visual damage (broken tracks, locked turret with red ✕, darkened hull).
 - In **Skirmish**, the first player or team to **10 kills** wins.
-- In **Battle**, each team has a **base compound** (HQ, walls, and watch towers) at their side. Destroy the enemy **HQ** to win (it takes 20 hits); watch towers fire at enemies, and walls block movement. Tanks respawn inside their team's compound.
+- In **Battle**, each team has a **base compound** (headquarters, walls, and watch towers) at their side. Destroy the enemy **headquarters** to win (it takes 20 hits); watch towers fire at enemies, and walls block movement. Tanks respawn inside their team's compound.
 - **Buildings block movement and bullets** — use them as cover. All buildings are destructible (small: 3 hits, medium: 5, large: 8).
 - Each viewport has a **minimap** in the corner showing the full island, all players, and base structures.
 
@@ -121,7 +121,7 @@ In **Battle**, each vehicle is **randomly assigned** at spawn and respawn from t
 |------|------|---------|-------|-----|-------|
 | Speed | 1× | 1.5× | 2× | 0.7× | 0.9× |
 | Armour | 2 hits | 1 hit | 1 hit | 1 hit | 5 members |
-| Firepower | 1× (full damage) | 0.25× (rapid fire) | Kamikaze (1× at point blank) | 1× arcing shell + splash | Auto-fire (rifle/RPG) |
+| Firepower | 1× (full damage) | 0.25× (rapid fire) | Kamikaze (1× at point blank) | 1× arcing shell + splash | Auto-fire (rifle/rocket-propelled grenade) |
 | Bullet speed | 1× | 1.5× | N/A | N/A (arcing shell) | N/A (member weapons) |
 | Turret | Independent rotation | Fixed (fires forward) | N/A | Independent (slow) | N/A (auto-target) |
 | Movement | Ground only | Ground only | **Flies over everything** | Ground only | Ground only |
@@ -133,11 +133,11 @@ In **Battle**, each vehicle is **randomly assigned** at spawn and respawn from t
 
 IFV bullets deal 25% damage — four hits equal one tank hit. This creates an asymmetric dynamic: IFVs harass and whittle down tanks, but one return shot ends them.
 
-**Drones** are FPV kamikaze quadcopters inspired by modern warfare. They fly over all terrain — buildings, hills, rocks, and water — at 2× speed. They carry no gun; instead, the pilot flies into a target and presses fire to **detonate**. Damage falls off with distance: point-blank deals 1.0 (equivalent to a tank shell), dropping linearly to 0 at the blast radius edge (2.5 tiles). Directional armour applies based on the drone's approach angle — diving into a tank's rear is an instant kill, while a sloppy approach from the front only disables the turret. The drone is always destroyed on detonation, even if it misses.
+**Drones** are first-person-view kamikaze quadcopters inspired by modern warfare. They fly over all terrain — buildings, hills, rocks, and water — at 2× speed. They carry no gun; instead, the pilot flies into a target and presses fire to **detonate**. Damage falls off with distance: point-blank deals 1.0 (equivalent to a tank shell), dropping linearly to 0 at the blast radius edge (2.5 tiles). Directional armour applies based on the drone's approach angle — diving into a tank's rear is an instant kill, while a sloppy approach from the front only disables the turret. The drone is always destroyed on detonation, even if it misses.
 
 **SPGs** are heavy self-propelled artillery. Hold **fire** to charge range, then release to launch — the longer the hold, the further the shell flies (up to 25 tiles). Shells arc **over** terrain obstacles and detonate with splash damage, so an SPG can bombard enemies hiding behind buildings. Its gun is an independently rotating turret, but the vehicle is slow and fragile — one hit destroys it, so it must stay at range.
 
-**Squads** are five-man infantry fireteams that fight on their own. Members auto-target and auto-fire independently: the RPG engages vehicles and base structures, the shotgun is a dedicated counter to drones, and rifles/machine-guns engage enemy squads. The squad loses members one by one as it takes damage, and pressing **fire** makes it dig in for reduced incoming damage; buildings provide cover.
+**Squads** are five-man infantry fireteams that fight on their own. Members auto-target and auto-fire independently: the rocket-propelled grenade engages vehicles and base structures, the shotgun is a dedicated counter to drones, and rifles/machine-guns engage enemy squads. The squad loses members one by one as it takes damage, and pressing **fire** makes it dig in for reduced incoming damage; buildings provide cover.
 
 ## Swarm AI
 

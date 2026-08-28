@@ -80,7 +80,7 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
         const x = i === 0 ? cx - barW - gap : cx + gap;
         const y = vy + 14;
         const frac = hq?.alive ? hq.hp / hq.maxHp : 0;
-        const label = base.team === 1 ? "RED HQ" : "BLUE HQ";
+        const label = base.team === 1 ? "RED HEADQUARTERS" : "BLUE HEADQUARTERS";
 
         // Background
         ctx.fillStyle = "rgba(0,0,0,0.5)";
@@ -171,7 +171,7 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
                 ctx.fillRect(barX, barY, barW * bestDmg, barH);
                 ctx.font = 'bold 9px "Courier New", monospace';
                 ctx.fillStyle = "#fff";
-                ctx.fillText(`DMG ${pct}%`, cx, barY + 7);
+                ctx.fillText(`DAMAGE ${pct}%`, cx, barY + 7);
             } else {
                 ctx.font = '10px "Courier New", monospace';
                 ctx.fillStyle = "#666";
@@ -198,7 +198,7 @@ export function drawBattleHUD(ctx, game, _humanIndex, vx, vy, vw, vh, focusTank)
             ctx.font = 'bold 9px "Courier New", monospace';
             ctx.fillStyle = "#fff";
             ctx.textAlign = "center";
-            ctx.fillText(`RNG ${range.toFixed(0)}`, cx, barY + 7);
+            ctx.fillText(`RANGE ${range.toFixed(0)}`, cx, barY + 7);
         } else if (focusTank.fireCooldown > 0) {
             ctx.font = '10px "Courier New", monospace';
             ctx.fillStyle = "#666";

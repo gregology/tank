@@ -45,10 +45,8 @@ export const mainScreen = {
 
         // Title
         ctx.font = 'bold 58px "Courier New", monospace';
-        ctx.fillStyle = "#cc3333";
-        ctx.fillText("TANK", cx - 90, 130);
-        ctx.fillStyle = "#3366dd";
-        ctx.fillText("BATTLE", cx + 100, 130);
+        ctx.fillStyle = "#cccccc";
+        ctx.fillText("TANKED", cx, 130);
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#555";
         ctx.fillText("ISOMETRIC  WARFARE", cx, 157);
