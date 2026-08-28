@@ -43,14 +43,10 @@ export const mainScreen = {
         drawGrid(ctx, W, H, t);
         ctx.textAlign = "center";
 
-        // Title — one word, split across the two team colours.
-        const title = "TANKED";
+        // Title
         ctx.font = 'bold 58px "Courier New", monospace';
-        const titleX = cx - ctx.measureText(title).width / 2;
         ctx.fillStyle = "#cc3333";
-        ctx.fillText("TANK", titleX, 130);
-        ctx.fillStyle = "#3366dd";
-        ctx.fillText("ED", titleX + ctx.measureText("TANK").width, 130);
+        ctx.fillText("TANKED", cx, 130);
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#555";
         ctx.fillText("ISOMETRIC  WARFARE", cx, 157);
