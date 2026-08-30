@@ -82,6 +82,10 @@ export const mainScreen = {
         ctx.fillText("first to press becomes Player 1", cx, H / 2 + 152);
 
         ctx.font = '13px "Courier New", monospace';
+        ctx.fillStyle = menu.gamepadCount > 0 ? "#4a4" : "#544";
+        ctx.fillText(`${menu.gamepadCount} controller${menu.gamepadCount === 1 ? "" : "s"} detected`, cx, H / 2 + 180);
+
+        ctx.font = '13px "Courier New", monospace';
         ctx.fillStyle = "#444";
         ctx.fillText("B / Esc   Vehicle info", cx, H - 30);
     },

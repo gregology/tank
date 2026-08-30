@@ -29,6 +29,9 @@ export class Menu {
         this._screen = "main"; // 'main' | 'lobby' | 'about'
         this._aboutIndex = 0;
         this._time = 0;
+        /** Connected gamepads last frame — surfaced so players can verify
+         *  couch co-op detection (Steam Input can merge pads into one). */
+        this.gamepadCount = 0;
         /** Set true (with `match` populated) when the host starts. */
         this.confirmed = false;
         /** Resolved MatchConfig (populated when confirmed). */
@@ -55,6 +58,7 @@ export class Menu {
 
     update(dt, input, audio) {
         this._time += dt;
+        this.gamepadCount = input.connectedGamepads?.length ?? 0;
         this._screens[this._screen].update(this, input, audio);
     }
 

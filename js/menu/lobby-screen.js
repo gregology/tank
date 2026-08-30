@@ -98,6 +98,13 @@ export const lobbyScreen = {
         ctx.fillStyle = "#555";
         ctx.fillText(GAME_TYPES[lobby.gameType].desc, cx, 66);
 
+        // Detection diagnostic: if this shows 1 while two pads are plugged
+        // in, the OS/launcher (e.g. Steam Input) is merging them.
+        ctx.textAlign = "right";
+        ctx.fillStyle = menu.gamepadCount >= menu.lobby.players.length ? "#4a4" : "#a54";
+        ctx.fillText(`${menu.gamepadCount} CONTROLLER${menu.gamepadCount === 1 ? "" : "S"}`, W - 24, 30);
+        ctx.textAlign = "center";
+
         // Game type toggle (cursor row 0)
         const gtY = 92;
         if (lobby.cursor === 0) cursorBar(ctx, cx - 200, gtY - 20, 400, 32, t);
