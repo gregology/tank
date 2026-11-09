@@ -4,3 +4,4 @@ reports/
 .stryker-tmp/
 *.lcov
 .fallow
+build/

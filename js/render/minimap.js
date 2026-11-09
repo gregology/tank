@@ -39,6 +39,33 @@ const MARKERS = {
     },
 };
 
+/** One terrain layer per map, shared by every viewport and dropped with its map. */
+const terrainLayers = new WeakMap();
+
+/**
+ * The map's terrain at `px` pixels per tile, repainted only after a tile
+ * changes: repainting every tile for every viewport each frame held a
+ * four-player match to 24 fps on the Steam Machine.
+ */
+function terrainLayer(map, px) {
+    let layer = terrainLayers.get(map);
+    if (!layer) {
+        const canvas = new OffscreenCanvas(map.width * px, map.height * px);
+        layer = { canvas, ctx: canvas.getContext("2d"), revision: null };
+        terrainLayers.set(map, layer);
+    }
+    if (layer.revision !== map.tileRevision) {
+        for (let gy = 0; gy < map.height; gy++) {
+            for (let gx = 0; gx < map.width; gx++) {
+                layer.ctx.fillStyle = TILE_VISUALS[map.getTile(gx, gy)]?.mapColor ?? "#000";
+                layer.ctx.fillRect(gx * px, gy * px, px, px);
+            }
+        }
+        layer.revision = map.tileRevision;
+    }
+    return layer.canvas;
+}
+
 export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
     const map = game.map;
     const px = Math.max(1, Math.min(2, Math.floor(140 / Math.max(map.width, map.height)))); // scale to fit
@@ -52,14 +79,7 @@ export function drawMinimap(ctx, game, playerNum, vx, vy, vw, vh) {
     ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(mmX - 2, mmY - 2, mmW + 4, mmH + 4);
 
-    // Tiles (simple top-down coloured squares)
-    for (let gy = 0; gy < map.height; gy++) {
-        for (let gx = 0; gx < map.width; gx++) {
-            const t = map.getTile(gx, gy);
-            ctx.fillStyle = TILE_VISUALS[t]?.mapColor ?? "#000";
-            ctx.fillRect(mmX + gx * px, mmY + gy * px, px, px);
-        }
-    }
+    ctx.drawImage(terrainLayer(map, px), mmX, mmY);
 
     // Tank dots (shape varies by vehicle type)
     for (const t of game.allTanks) {

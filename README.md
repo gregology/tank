@@ -1,6 +1,6 @@
 # Tanked
 
-A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step.
+A split-screen isometric pixel-art tank game running entirely in the browser. No dependencies, no build step. There is also a desktop build for the Steam Machine (see [Steam Machine](#steam-machine)).
 
 ## Setup
 
@@ -53,24 +53,49 @@ The keyboard drives a single player:
 The turret rotates independently from the hull, slower than hull rotation. This creates a skill gap between positioning and aiming — you can drive in one direction while shooting in another. AI bots track targets with the turret while navigating along their path.
 
 **Menu:** ↑↓ or W/S to select, ←→ or A/D to change, Enter or Space to confirm, Esc to go back.
+**Pause:** Esc or P to pause and resume, R to quit the match.
 **Game over:** Space/Enter for rematch, Esc/R for menu.
 
 ## Gamepad
 
-Up to **four** standard-mapping controllers (Xbox, PlayStation, Steam Deck built-in controls) work alongside the keyboard. The first device to press **A / Start** becomes **Player 1**; each additional player presses A/Start to join in turn. The pad mapping is layout-independent (Xbox, PlayStation and Nintendo pads all work). Face buttons are described by position below.
+Up to **four** standard-mapping controllers work alongside the keyboard. The first device to press the **bottom face button** or **Start** becomes **Player 1**, and each additional player presses it to join in turn. Face buttons are described by position, because their letters differ between pads, and on-screen prompts show the position as a picture.
 
-| Action   | Gamepad |
-|----------|---------|
-| Forward  | **Top face button** (Y / △ / X) — D-pad ↑ or stick ↑ also work |
-| Reverse  | **Left face button** (X / □ / Y) — D-pad ↓ or stick ↓ also work |
-| Steer left / right | D-pad ←→ (digital) or left stick ←→ (**analog** — turn rate scales with deflection) |
-| Turret left / right | LT / RT (**analog** — speed scales with trigger pull) |
-| Fire     | **Bottom face button** (A / ✕ / B) — right face button and Start also work |
-| Menu: navigate / confirm / back | D-pad or stick / **bottom button** / **right button** |
-| Lobby: join / switch team / leave | **A** or Start / **X** (left face) / **B** (right face) |
-| Game over: rematch / menu | Bottom button / right button |
+| Action | Two-stick pads | Small pads with no sticks (Steam Machine build) |
+|--------|----------------|-------------------------------------------------|
+| Drive | Left stick or D-pad (steering is **analog** on the stick) | D-pad |
+| Forward / reverse | Top / left face button also work | Top / left face button also work |
+| Turret left / right | Right stick ←→ (**analog**) or LB / RB | L or L2 / R or R2 |
+| Fire | **Right trigger** or bottom face button | Bottom face button |
+| Pause | Start | Start, or hold L + R for half a second |
+| Paused: resume / quit | Bottom / right face button (only the player who paused) | The same |
+| Menu: navigate / confirm / back | D-pad or stick / bottom button / right button | The same |
+| Lobby: join / switch team / leave | Bottom button / left button / right button | The same |
+| Game over: rematch / menu | Bottom button / right button, after two seconds | The same |
 
 Keyboard and gamepads can be used at the same time (e.g. one player on the keyboard, the rest on pads).
+
+## Steam Machine
+
+The browser's Gamepad API can't do split screen under Steam, so the Steam Machine build wraps the unchanged game in a small Electron shell (`electron/`) that reads controllers from the kernel's event nodes. The findings behind that are in `Servers/SteamMachine/AGENTS.md` §6.
+
+```bash
+steam/package.sh              # builds build/tanked-<version>-linux-x64.tar.gz
+# copy it to the console, unpack it, then:
+./install.sh                  # installs to ~/Games/tanked, adds it to Steam and sets its library artwork
+```
+
+The library artwork is in `steam/artwork/`, drawn with the game's own sprites by `tools/artwork.js`. After changing it, re-render with `CHROME=/path/to/chromium node tools/make-artwork.mjs`. Steam shows new artwork after it restarts.
+
+Logs, screenshots and Chromium's profile go in `~/.local/share/tanked/`. For unattended tests, put options in `next_launch_args.txt` there (it affects one launch) or pass them on the command line:
+
+| Option | What it does |
+|--------|--------------|
+| `--diagnose` | Writes `diagnose-<time>.txt`: GPU, screen, frame rate, and controllers with every press and its raw code |
+| `--demo=<scenario>` | Starts a match with robot players (`battle-4p`, `battle-4p-large`, `battle-2p`, `skirmish-4p`) |
+| `--quit-at=<seconds>` | Quits by itself |
+| `--shots=<s,s,...>` | Saves screenshots at those times, to `screenshots/` |
+
+F12 also saves a screenshot. Output from the last run is in `last-run-output.log`.
 
 ## How to Play
 

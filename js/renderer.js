@@ -14,7 +14,7 @@
  *   effects.js    bullets (incl. arcing shells) + particles
  *   hud.js        score HUD (Skirmish) + battle HUD (Battle)
  *   minimap.js    per-player minimap
- *   overlay.js    game-over screen + SPG targeting indicator
+ *   overlay.js    game-over + pause screens, SPG targeting indicator
  *
  * Split-screen modes show two side-by-side viewports.  Rendering is
  * depth-sorted so elevated terrain correctly occludes entities behind it
@@ -23,7 +23,7 @@
 
 import { layoutViewports } from "./layout.js";
 import { drawBattleHUD, drawScoreHUD } from "./render/hud.js";
-import { drawGameOver } from "./render/overlay.js";
+import { drawGameOver, drawPause } from "./render/overlay.js";
 import { drawViewportBorders, renderViewport } from "./render/viewport.js";
 
 /** HUD draw functions, keyed by the mode strategy's `hud` field. */
@@ -44,7 +44,9 @@ export class Renderer {
 
     /* ── public entry point ───────────────────────────────── */
 
-    render(game) {
+    /** @param {import("./match-session.js").MatchSession} session */
+    render(session) {
+        const game = session.game;
         const ctx = this.ctx;
         const cw = this.canvas.width,
             ch = this.canvas.height;
@@ -62,6 +64,7 @@ export class Renderer {
 
         drawViewportBorders(ctx, rects, cw, ch);
 
-        if (game.gameOver) drawGameOver(ctx, game, cw, ch);
+        if (session.paused) drawPause(ctx, session.pausedByLabel, cw, ch);
+        else if (game.gameOver) drawGameOver(ctx, game, cw, ch, session.resultPromptsReady);
     }
 }

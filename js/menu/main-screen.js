@@ -3,8 +3,10 @@
  */
 
 import { ACTIONS } from "../config.js";
+import { anyPressed } from "../input.js";
+import { drawPrompt, faceButton } from "../render/pad-prompts.js";
 import { drawGrid, drawMenuVehicle } from "./background.js";
-import { anyPressed, firstJoiner } from "./input.js";
+import { firstJoiner } from "./input.js";
 import { VEHICLE_INFO } from "./vehicle-info.js";
 
 export const mainScreen = {
@@ -75,18 +77,18 @@ export const mainScreen = {
         const pulse = 0.6 + Math.sin(t * 4) * 0.3;
         ctx.font = 'bold 26px "Courier New", monospace';
         ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-        ctx.fillText("PRESS  A / START", cx, H / 2 + 120);
+        drawPrompt(ctx, cx, H / 2 + 120, ["PRESS", faceButton("bottom"), "TO JOIN"], 36);
 
         ctx.font = '14px "Courier New", monospace';
         ctx.fillStyle = "#666";
-        ctx.fillText("first to press becomes Player 1", cx, H / 2 + 152);
+        ctx.fillText("first to press becomes Player 1  ·  keyboard: Enter", cx, H / 2 + 156);
 
         ctx.font = '13px "Courier New", monospace';
         ctx.fillStyle = menu.gamepadCount > 0 ? "#4a4" : "#544";
-        ctx.fillText(`${menu.gamepadCount} controller${menu.gamepadCount === 1 ? "" : "s"} detected`, cx, H / 2 + 180);
+        ctx.fillText(`${menu.gamepadCount} controller${menu.gamepadCount === 1 ? "" : "s"} detected`, cx, H / 2 + 184);
 
-        ctx.font = '13px "Courier New", monospace';
-        ctx.fillStyle = "#444";
-        ctx.fillText("B / Esc   Vehicle info", cx, H - 30);
+        ctx.font = '15px "Courier New", monospace';
+        ctx.fillStyle = "#888";
+        drawPrompt(ctx, cx, H - 30, [faceButton("right"), "Vehicle info  (Esc)"]);
     },
 };

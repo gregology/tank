@@ -126,7 +126,7 @@ export function fakeDevice({ held = [], pressed = [] } = {}) {
 export function fakeCtx() {
     const calls = [];
     const ctx = new Proxy(
-        {},
+        { measureText: (text) => ({ width: text.length * 8 }) },
         {
             get(target, prop) {
                 if (typeof prop === "symbol") return undefined;

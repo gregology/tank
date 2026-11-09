@@ -1,27 +1,31 @@
 /**
  * Entry point – state machine that switches between the menu and gameplay.
  *
- *   MENU  ──host confirms──▶  PLAYING  ──back──▶  MENU (lobby, joins kept)
- *                                 └──confirm (game over)──▶ rematch
+ *   MENU  ──host confirms──▶  PLAYING  ──players leave──▶  MENU (lobby, joins kept)
+ *
+ * `window.tankedShell` exists only under the desktop shell (electron/), which
+ * supplies the pads because the Gamepad API can't tell Steam's virtual pads
+ * apart.  In a browser it is absent and pads come from the Gamepad API.
  */
 
 import { AudioManager } from "./audio.js";
-import { ACTIONS } from "./config.js";
-import { Game } from "./game.js";
+import { demoMatch } from "./demo.js";
 import { InputManager } from "./input.js";
+import { MatchSession } from "./match-session.js";
 import { Menu } from "./menu.js";
 import { Renderer } from "./renderer.js";
 
 /* ── Singletons ───────────────────────────────────────────── */
 
 const canvas = document.getElementById("game-canvas");
-const input = new InputManager();
+const shell = globalThis.tankedShell;
+const input = new InputManager(shell?.readPads);
 const audio = new AudioManager();
 const renderer = new Renderer(canvas);
 const menu = new Menu();
 
-let game = null;
-let state = "menu"; // 'menu' | 'playing'
+/** The running match, or null while the menu is showing. */
+let session = null;
 
 /* ── Game loop ────────────────────────────────────────────── */
 
@@ -33,58 +37,32 @@ function loop(timestamp) {
 
     input.poll(); // refresh devices + edges before anything reads input
 
-    if (state === "menu") {
+    if (session === null) {
         menu.update(dt, input, audio);
         menu.render(renderer.ctx, renderer.canvas);
 
         if (menu.confirmed) {
             menu.confirmed = false;
-            startGame(menu.match);
+            startMatch(menu.match);
         }
+    } else if (session.update(dt, input)) {
+        renderer.render(session);
     } else {
-        // ── Playing ──
-        if (game.gameOver) {
-            // Rematch (same match, fresh map) — any device confirms.
-            if (anyPressed(ACTIONS.confirm)) {
-                audio.init();
-                game.restart();
-            }
-            // Back to the lobby (joins preserved) — any device backs out.
-            if (anyPressed(ACTIONS.back)) {
-                state = "menu";
-                game = null;
-            }
-        }
-
-        if (game) {
-            game.update(dt);
-            renderer.render(game);
-        }
+        session = null;
     }
 
     input.endFrame();
     requestAnimationFrame(loop);
 }
 
-/* ── Helpers ──────────────────────────────────────────────── */
-
-/** True if any device (keyboard or connected pad) pressed the action. */
-function anyPressed(action) {
-    if (input.keyboard.wasPressed(action)) return true;
-    for (const gp of input.connectedGamepads) {
-        if (gp.wasPressed(action)) return true;
-    }
-    return false;
-}
-
-function startGame(matchConfig) {
+function startMatch(matchConfig) {
     audio.init();
-    game = new Game(matchConfig);
-    audio.hookIntoGame(game);
-    state = "playing";
+    session = new MatchSession(matchConfig, audio);
 }
 
 /* ── Kick off ─────────────────────────────────────────────── */
+
+if (shell?.demoScenario) startMatch(demoMatch(shell.demoScenario));
 
 requestAnimationFrame((ts) => {
     lastTime = ts;

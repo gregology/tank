@@ -4,9 +4,11 @@
  */
 
 import { ACTIONS, GAME_TYPE_ORDER, GAME_TYPES, MAP_SIZES, MAX_PLAYERS, PLAYER_COLORS } from "../config.js";
+import { anyPressed } from "../input.js";
 import { roundedRect } from "../render/canvas-utils.js";
+import { drawPrompt, faceButton } from "../render/pad-prompts.js";
 import { cursorBar, drawGrid } from "./background.js";
-import { anyPressed, joinCandidates } from "./input.js";
+import { joinCandidates } from "./input.js";
 
 export const lobbyScreen = {
     update(menu, input, audio) {
@@ -158,8 +160,8 @@ export const lobbyScreen = {
                 ctx.fillStyle = col.color;
                 ctx.fillText(col.label, x + cardW / 2, cardY + 76);
             } else {
-                ctx.fillStyle = "#444";
-                ctx.fillText("PRESS A", x + cardW / 2, cardY + 76);
+                ctx.fillStyle = "#777";
+                drawPrompt(ctx, x + cardW / 2, cardY + 78, ["PRESS", faceButton("bottom")], 22);
             }
         }
 
@@ -196,12 +198,22 @@ export const lobbyScreen = {
         }
 
         // ── Hints ──
-        ctx.font = '13px "Courier New", monospace';
-        ctx.fillStyle = "#444";
-        ctx.fillText(
-            "A join  \u00b7  X/Tab switch team  \u00b7  B leave  \u00b7  host: \u2191\u2193 select  \u25C4\u25BA change  \u00b7  A start",
-            cx,
-            H - 24,
-        );
+        ctx.font = '15px "Courier New", monospace';
+        ctx.fillStyle = "#888";
+        drawPrompt(ctx, cx, H - 52, [
+            faceButton("bottom"),
+            "join",
+            "\u00b7",
+            faceButton("left"),
+            "switch team (Tab)",
+            "\u00b7",
+            faceButton("right"),
+            "leave",
+        ]);
+        drawPrompt(ctx, cx, H - 24, [
+            "First player:  \u2191\u2193 select  \u25C4\u25BA change  \u00b7",
+            faceButton("bottom"),
+            "start",
+        ]);
     },
 };

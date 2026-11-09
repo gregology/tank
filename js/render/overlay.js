@@ -1,10 +1,12 @@
 /**
- * Full-screen overlays: the game-over dim + winner banner, and the SPG
- * targeting indicator drawn in camera space while an SPG charges.
+ * Full-screen overlays: the game-over dim + winner banner, the pause screen,
+ * and the SPG targeting indicator drawn in camera space while an SPG charges.
  */
 
-/** Dim the whole canvas and announce the winner with rematch/menu prompts. */
-export function drawGameOver(ctx, game, cw, ch) {
+import { drawPrompt, faceButton } from "./pad-prompts.js";
+
+/** Rematch/menu prompts appear only once input is accepted, so they never lie. */
+export function drawGameOver(ctx, game, cw, ch, promptsReady) {
     // Dim
     ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.fillRect(0, 0, cw, ch);
@@ -20,12 +22,38 @@ export function drawGameOver(ctx, game, cw, ch) {
     ctx.fillStyle = winColor;
     ctx.fillText(`${label} WINS!`, cw / 2, ch / 2 - 30);
 
-    // Prompts
+    if (promptsReady) {
+        ctx.font = '20px "Courier New", monospace';
+        ctx.fillStyle = "#ddd";
+        drawPrompt(ctx, cw / 2, ch / 2 + 24, [faceButton("bottom"), "Rematch  (Enter)"], 24);
+        ctx.fillStyle = "#999";
+        drawPrompt(ctx, cw / 2, ch / 2 + 62, [faceButton("right"), "Menu  (R)"], 24);
+    }
+
+    ctx.restore();
+}
+
+/** Only the player who paused can use these prompts (see MatchSession). */
+export function drawPause(ctx, pausedByLabel, cw, ch) {
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, cw, ch);
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = 'bold 48px "Courier New", monospace';
+    ctx.fillStyle = "#eee";
+    ctx.fillText("PAUSED", cw / 2, ch / 2 - 30);
+
     ctx.font = '20px "Courier New", monospace';
-    ctx.fillStyle = "#aaa";
-    ctx.fillText("Space / Enter   Rematch", cw / 2, ch / 2 + 20);
-    ctx.fillStyle = "#666";
-    ctx.fillText("R   Menu", cw / 2, ch / 2 + 50);
+    ctx.fillStyle = "#ddd";
+    drawPrompt(ctx, cw / 2, ch / 2 + 24, [faceButton("bottom"), "Resume  (Esc)"], 24);
+    ctx.fillStyle = "#999";
+    drawPrompt(ctx, cw / 2, ch / 2 + 62, [faceButton("right"), "Quit match  (R)"], 24);
+    if (pausedByLabel) {
+        ctx.font = '14px "Courier New", monospace';
+        ctx.fillStyle = "#888";
+        ctx.fillText(`${pausedByLabel} has the controls`, cw / 2, ch / 2 + 96);
+    }
 
     ctx.restore();
 }
