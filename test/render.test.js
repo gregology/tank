@@ -26,7 +26,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CONFIG, TILES as T, VEHICLES } from "../js/config.js";
+import { CONFIG, TILES as T, TILE_PROPS, VEHICLES } from "../js/config.js";
 import { drawMenuVehicle } from "../js/menu/background.js";
 import { drawBuilding } from "../js/render/buildings.js";
 import { drawArcingBullet, drawBullet, drawParticle } from "../js/render/effects.js";
@@ -437,6 +437,61 @@ describe("effects smoke", () => {
     });
 });
 
+/** Node has no OffscreenCanvas.  Each fake records what is painted into it. */
+const offscreenCanvases = [];
+globalThis.OffscreenCanvas = class {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.painted = fakeCtx();
+        offscreenCanvases.push(this);
+    }
+    getContext() {
+        return this.painted.ctx;
+    }
+};
+
+describe("minimap terrain layer", () => {
+    const drawOn = (game) => drawMinimap(fakeCtx().ctx, game, 1, 0, 0, 400, 300);
+    const paintsIn = (canvas) => canvas.painted.calls.filter((call) => call === "fillRect").length;
+
+    it("paints each tile once however many viewports and frames draw it", () => {
+        const game = gameFixture();
+        const tileCount = game.map.width * game.map.height;
+        const canvasesBefore = offscreenCanvases.length;
+        for (let i = 0; i < 12; i++) drawOn(game);
+        assert.equal(offscreenCanvases.length, canvasesBefore + 1);
+        assert.equal(paintsIn(offscreenCanvases.at(-1)), tileCount);
+    });
+
+    it("repaints after a tile changes, so the minimap shows destroyed terrain", () => {
+        const game = gameFixture();
+        const tileCount = game.map.width * game.map.height;
+        const destructible = Number(Object.keys(TILE_PROPS).find((tile) => TILE_PROPS[tile].hp > 0));
+        drawOn(game);
+        const layer = offscreenCanvases.at(-1);
+
+        game.map.setTile(2, 2, destructible);
+        drawOn(game);
+        assert.equal(paintsIn(layer), tileCount * 2, "setTile should repaint");
+
+        while (!game.map.damageTile(2, 2, 1000));
+        drawOn(game);
+        assert.equal(paintsIn(layer), tileCount * 3, "a destroyed tile should repaint");
+
+        assert.ok(!game.map.damageTile(2, 2, 1000));
+        drawOn(game);
+        assert.equal(paintsIn(layer), tileCount * 3, "a miss should not repaint");
+    });
+
+    it("gives a rematch's new map its own layer", () => {
+        drawOn(gameFixture());
+        const first = offscreenCanvases.at(-1);
+        drawOn(gameFixture());
+        assert.notEqual(offscreenCanvases.at(-1), first);
+    });
+});
+
 describe("minimap + HUD smoke", () => {
     it("draws the minimap with every vehicle marker shape", () => {
         const allTanks = ["tank", "ifv", "spg", "drone", "squad"].map((type) =>
@@ -445,7 +500,7 @@ describe("minimap + HUD smoke", () => {
         const game = gameFixture({ allTanks, bases: [baseFixture(1), baseFixture(2)] });
         const { ctx, calls } = fakeCtx();
         assert.doesNotThrow(() => drawMinimap(ctx, game, 1, 0, 0, 400, 300));
-        assert.ok(calls.filter((c) => c === "fillRect").length > 10, "minimap should draw tiles");
+        assert.ok(calls.includes("drawImage"), "minimap should draw its terrain layer");
     });
 
     it("draws the score HUD alive and respawning", () => {
@@ -544,7 +599,7 @@ describe("overlay smoke", () => {
     it("draws the game-over screen with a winner", () => {
         const game = gameFixture({ gameOver: true, winner: 1, winnerLabel: "PLAYER 1", winnerColor: "#cc3333" });
         const { ctx, calls } = fakeCtx();
-        assert.doesNotThrow(() => drawGameOver(ctx, game, 800, 600));
+        assert.doesNotThrow(() => drawGameOver(ctx, game, 800, 600, true));
         assert.ok(calls.includes("fillText"), "winner banner should print");
     });
 
@@ -671,7 +726,7 @@ describe("Renderer shell", () => {
                 factions: [{ id: 1, color: "#cc3333", entities: [tank] }],
                 scores: new Map([[1, 0]]),
             });
-            assert.doesNotThrow(() => renderer.render(skirmish));
+            assert.doesNotThrow(() => renderer.render({ game: skirmish, paused: false }));
             assert.ok(calls.length > 0, "render should touch the context");
 
             // Battle: base HUD branch.
@@ -682,7 +737,7 @@ describe("Renderer shell", () => {
                 allTanks: [tank],
                 bases: [baseFixture(1), baseFixture(2)],
             });
-            assert.doesNotThrow(() => renderer.render(battle));
+            assert.doesNotThrow(() => renderer.render({ game: battle, paused: false }));
 
             // Game over: overlay branch.
             const over = gameFixture({
@@ -694,7 +749,10 @@ describe("Renderer shell", () => {
                 cameras: [{ x: 0, y: 0 }],
                 allTanks: [tank],
             });
-            assert.doesNotThrow(() => renderer.render(over));
+            assert.doesNotThrow(() => renderer.render({ game: over, paused: false, resultPromptsReady: true }));
+
+            // Paused: its overlay replaces the result screen.
+            assert.doesNotThrow(() => renderer.render({ game: over, paused: true, pausedByLabel: "P2" }));
         } finally {
             globalThis.window = oldWindow;
         }

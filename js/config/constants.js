@@ -48,6 +48,10 @@ export const CONFIG = {
     WIN_SCORE: 10,
 
     // ── Gamepad ────────────────────────────────────────────
-    GAMEPAD_STICK_DEADZONE: 0.35, // left-stick deflection needed to register a direction
-    GAMEPAD_TRIGGER_THRESHOLD: 0.35, // analogue LT/RT pull needed to rotate the turret
+    GAMEPAD_STICK_DEADZONE: 0.35, // stick deflection needed to register a direction
+    GAMEPAD_TRIGGER_THRESHOLD: 0.35, // analogue trigger pull that counts as pressed
+    PAUSE_CHORD_HOLD_FRAMES: 30, // long enough that rolling from one paddle to the other never pauses
+
+    // ── Couch flow ─────────────────────────────────────────
+    GAME_OVER_INPUT_LOCK_SECONDS: 2, // someone still mashing fire must not skip the result screen
 };

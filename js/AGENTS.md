@@ -10,7 +10,8 @@ Dependency flow (enforced by `.dependency-cruiser.cjs`; `config.js` is the
 leaf):
 
 ```
-main.js ──▶ game.js, renderer.js, audio.js, menu.js, input.js
+main.js ──▶ match-session.js, demo.js, renderer.js, audio.js, menu.js, input.js
+match-session.js ──▶ game.js, input.js
 game.js ──▶ map.js, tank.js, bullet.js, particles.js, camera.js, ai.js,
             modes.js, systems/, vehicles/
 ai.js  ──▶ pathfinder.js, vehicles/, ai/          (thin controller)
@@ -153,10 +154,19 @@ All over the shared `ACTIONS` vocabulary — no key-code indirection.
 - The AI (`ai.js`) implements the **same interface**, so gameplay code never
   branches on "is this a human or a bot".
 - `gamepadToActions(gp)` is a pure function (exported for tests) that maps a
-  standard gamepad snapshot to `{ held, axes }`.
+  standard gamepad snapshot to `{ held, axes }` through a `CONTROL_PROFILES`
+  entry (`js/config/controls.js`), chosen by the snapshot's `controlProfile`
+  field.  **A new pad layout is one table entry.**
 - `InputManager` is the device registry: owns the keyboard, creates/refreshes
-  `GamepadDevice`s from `navigator.getGamepads()`, and drives `poll()` /
-  `endFrame()` each frame.
+  `GamepadDevice`s from a snapshot source (`navigator.getGamepads()` unless one
+  is injected), and drives `poll()` / `endFrame()` each frame.  The Electron
+  shell injects `window.tankedShell.readPads`, and must never let the page call
+  `navigator.getGamepads()`: under Steam it merges all virtual pads into one and
+  opens the controllers' raw HID nodes.
+- `firstPresser(input, action)` / `anyPressed(input, action)` answer "who
+  pressed this" for the menu and `MatchSession`.
+- On-screen prompts name a pad's buttons by position, as a picture
+  (`js/render/pad-prompts.js`): the letter on the bottom button differs by pad.
 
 ### 4. `Game` and the event bus (`game.js`)
 

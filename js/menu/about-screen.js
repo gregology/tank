@@ -4,9 +4,10 @@
  */
 
 import { ACTIONS } from "../config.js";
+import { anyPressed } from "../input.js";
 import { roundedRect } from "../render/canvas-utils.js";
+import { drawPrompt, faceButton } from "../render/pad-prompts.js";
 import { drawGrid, drawMenuVehicle } from "./background.js";
-import { anyPressed } from "./input.js";
 import { getStatValue, STAT_METRICS, VEHICLE_INFO, vehicleStats } from "./vehicle-info.js";
 
 export const aboutScreen = {
@@ -129,8 +130,8 @@ export const aboutScreen = {
 
         // Nav hints
         ctx.font = '14px "Courier New", monospace';
-        ctx.fillStyle = "#444";
-        ctx.fillText("\u25C4  A/D  \u25BA   Switch Vehicle          Enter / Esc   Back", cx, H - 38);
+        ctx.fillStyle = "#888";
+        drawPrompt(ctx, cx, H - 38, ["\u25C4 \u25BA  Switch vehicle   \u00b7", faceButton("right"), "Back  (Esc)"]);
 
         const arrowPulse = Math.sin(t * 3) * 3;
         ctx.font = "bold 28px sans-serif";

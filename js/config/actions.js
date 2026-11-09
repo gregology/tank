@@ -19,4 +19,5 @@ export const ACTIONS = Object.freeze({
     confirm: "confirm",
     back: "back",
     cycleTeam: "cycleTeam",
+    pause: "pause",
 });

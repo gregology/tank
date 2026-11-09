@@ -10,7 +10,9 @@ this file gives the principles and the map.
 A split-screen isometric pixel-art tank game. Vanilla JavaScript, ES modules,
 **zero runtime dependencies**, no build step, HTML5 Canvas, served over HTTP
 (not `file://`). Two game modes: **Skirmish** (score race, no bases) and
-**Battle** (base objective with towers).
+**Battle** (base objective with towers). The Steam Machine build wraps the same
+game in an Electron shell (`electron/`, packaged by `steam/`); the game itself
+never depends on the shell.
 
 ---
 
@@ -139,6 +141,8 @@ entry, not a new parallel code path.
 
 ```
 main.js      composition root: state machine (menu ↔ playing) + RAF loop
+match-session.js one running match + the couch rules (pause, result-screen lock)
+demo.js      robot-player scenarios for unattended hardware tests
 config.js    the data "leaf": barrel over js/config/ — every constant and
              data table lives in the js/config/ package
 game.js      match simulation: tanks, bullets, bases, event bus — the shared
@@ -185,6 +189,12 @@ factions.js  pure "who fights whom" planner
 layout.js    HUD layout helpers
 utils.js     math/geometry helpers
 draw-helpers.js canvas primitives
+
+electron/    Steam Machine shell, outside the game: main.js (composition root),
+             pads/ (kernel event nodes → standard Gamepad snapshots),
+             launch-options, diagnostics, preload.cjs (window.tankedShell)
+steam/       packaging: package.sh, install.sh, tanked.sh (launcher), artwork/ +
+             steam_artwork.py (library art, rendered by tools/make-artwork.mjs)
 ```
 
 The dependency rule (enforced by `.dependency-cruiser.cjs`): `config.js` and
@@ -200,8 +210,8 @@ around them. (Details live in `js/AGENTS.md`.)
 - **Data-driven tables in `config.js`** — `TILES` + `TILE_PROPS` + `TILE_VISUALS`
   (per-tile gameplay + visual semantics), `TARGET_TYPES` +
   `TARGET_CLASS_DEFAULTS`, `CONFIG`, `PLAYER_COLORS`, `ACTIONS`, `GAME_TYPES`,
-  `MAP_SIZES`, `MATCH_TUNABLES` (+ `opinionatedSettings`), `VEHICLES`,
-  `SQUAD_MEMBERS`, `SQUAD_ATTENTION_ORDER`, `BASE_STRUCTURES`. Gameplay values
+  `MAP_SIZES`, `MATCH_TUNABLES` (+ `opinionatedSettings`), `CONTROL_PROFILES`,
+  `VEHICLES`, `SQUAD_MEMBERS`, `SQUAD_ATTENTION_ORDER`, `BASE_STRUCTURES`. Gameplay values
   that vary belong here, not hardcoded in logic files.
 - **Entity hierarchy + capability getters** (`entity.js`) — `GameEntity` is the
   root; `Tank` and `BaseStructure` extend it. Capability getters
@@ -212,7 +222,9 @@ around them. (Details live in `js/AGENTS.md`.)
 - **`InputDevice` interface** (`input.js`) — `isDown` / `wasPressed` / `analog`
   / `endFrame` over the shared `ACTIONS` vocabulary. Humans (keyboard/gamepad)
   and the AI implement the *same* interface, so gameplay code never cares who
-  is driving.
+  is driving.  A new pad layout is one `CONTROL_PROFILES` entry; pad snapshots
+  come from an injected source, which is how the Electron shell replaces the
+  Gamepad API without the game knowing.
 - **`Game` + event bus + systems** (`game.js` → `js/systems/`) — a match is
   described by a `MatchConfig` and materialised by `Game`. Cross-cutting
   concerns (audio, UI) subscribe via `game.on(event, fn)`; `game.js` never

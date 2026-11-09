@@ -7,9 +7,10 @@
  * pattern).  Each screen reads and mutates the menu as its context —
  * the same strategy-context arrangement Game uses with modes.
  *
- * The lobby is a console-style match setup: players press A/Start to
- * join, press ◀▶ / X to switch team, B to leave, and the host (first
- * joiner) selects the game type (Skirmish / Battle) and match options.
+ * The lobby is a console-style match setup: players press the bottom button
+ * to join, ◀▶ or the left button to switch team, the right button to leave,
+ * and the host (first joiner) selects the game type (Skirmish / Battle) and
+ * match options.
  *
  * All match-setup state lives in the pure Lobby (lobby.js), which resolves
  * to a MatchConfig that main.js hands to the Game.

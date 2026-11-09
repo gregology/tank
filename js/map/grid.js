@@ -34,6 +34,8 @@ export class TileGrid {
         this.maxHp = new Uint8Array(this.width * this.height);
         /** Seed for the noise functions: injected seeds make matches reproducible. */
         this.seed = seed ?? Math.floor(Math.random() * 2147483647);
+        /** Bumped on every tile change, so derived views know when they are stale. */
+        this.tileRevision = 0;
     }
 
     getTile(gx, gy) {
@@ -45,6 +47,7 @@ export class TileGrid {
         if (gx >= 0 && gx < this.width && gy >= 0 && gy < this.height) {
             const i = gy * this.width + gx;
             this.tiles[i] = type;
+            this.tileRevision++;
             // Initialise HP for destructible tiles from the data table.
             const h = TILE_PROPS[type]?.hp ?? 0;
             this.hp[i] = h;
@@ -120,6 +123,7 @@ export class TileGrid {
             // Destroyed → the biome's destroyed-tile fallback.
             const style = MAP_STYLES[this.style] ?? MAP_STYLES.island;
             this.tiles[i] = style.destroyedTile ?? T.GRASS;
+            this.tileRevision++;
             this.hp[i] = 0;
             this.maxHp[i] = 0;
             return true;
